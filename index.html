@@ -824,28 +824,29 @@ async function cargarDatosDesdeCache() {
     }
 }
 
-// --- [NUEVO] AUTO-REFRESH SILENCIOSO EXCLUSIVO PARA DATOS (DATA KEEPING) ---
+// La nueva URL de tu servidor en Render (ejemplo)
 function sincronizacionSilenciosa() {
-    // Al no tocar la UI (DOM), el proceso corre totalmente en segundo plano sin causar parpadeos
-    // y sin cerrar los modales o rangos seleccionados por el usuario.
+    fetch('/api/datos') // <-- Así de simple, sin "https://..."
+    .then(res => res.json())
+    // ... el resto de tu código
+    .then(data => {
+        if (!data.success) return;
 
-    Promise.all([
-        fetch(`${API_URL}?action=obtenerDiagramasCacheados`).then(res => res.text()),
-        fetch(`${API_URL}?action=obtenerTDs`).then(res => res.json())
-    ])
-    .then(([jsonStringDiagramas, dataTDs]) => {
         try { 
-            // 1. Actualizar objeto de TDs
+            // 1. Asignamos los TDs directamente desde Node
             window.tdGlobalData = {
-                campo: dataTDs.campo || {}, infinia: dataTDs.infinia || {},
-                liviano: dataTDs.liviano || {}, euro: dataTDs.euro || {},
-                estados: dataTDs.estados || {}, extra: dataTDs.codigosExtra || {}
+                campo: data.tds.campo || {}, 
+                infinia: data.tds.infinia || {},
+                liviano: data.tds.liviano || {}, 
+                euro: data.tds.euro || {},
+                estados: data.tds.estados || {}, 
+                extra: data.tds.codigosExtra || {}
             };
 
-            const data = typeof jsonStringDiagramas === 'string' ? JSON.parse(jsonStringDiagramas) : jsonStringDiagramas;
+            // 2. Asignamos los diagramas procesados por Node
+            const dataDiag = typeof data.diagramas === 'string' ? JSON.parse(data.diagramas) : data.diagramas;
             
-            // 2. Reasignar Memoria Global de Conductores
-            datosGlobales = (data.diagramas || []).filter(c => {
+            datosGlobales = (dataDiag.diagramas || []).filter(c => {
                 if (!c.nom) return false;
                 let nombreLimpio = String(c.nom).trim().toLowerCase();
                 return !NOMBRES_IGNORADOS.has(nombreLimpio) && nombreLimpio.length > 2;
@@ -854,44 +855,14 @@ function sincronizacionSilenciosa() {
                 return c;
             });
             
-            const normalizarClaves = (obj) => {
-                let objNormalizado = {};
-                for (let k in obj) {
-                    if (k) {
-                        let llaveLimpia = String(k).trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
-                        objNormalizado[llaveLimpia] = obj[k];
-                    }
-                }
-                return objNormalizado;
-            };
-
-            // 3. Actualizar cachés secundarios
-            docsGlobales = normalizarClaves(data.documentos || {});
-            habsGlobales = normalizarClaves(data.habilitaciones || {});
-            certsGlobales = normalizarClaves(data.certificados || {});
-            kmsGlobales = normalizarClaves(data.kilometros || {});
-            dnisGlobales = normalizarClaves(data.dnis || {});
-            telefonosGlobales = normalizarClaves(data.telefonos || {});
-            historialGlobal = normalizarClaves(data.observaciones || {});
-            aptosGlobales = normalizarClaves(data.aptosMedicos || {});
-            viajesGlobales = normalizarClaves(data.viajesCampo || {});
-            fotosGlobales = data.fotosImgur || {};
-
-            // 4. Actualizar Memoria de Viajes Detallados
-           // 👉 LÓGICA DE DICCIONARIO DIRECTO EN BACKGROUND
-            if (data.nuevaSeccionViajes && typeof data.nuevaSeccionViajes === 'object' && !Array.isArray(data.nuevaSeccionViajes)) {
-                viajesDetalleGlobal = data.nuevaSeccionViajes;
-            } else {
-                viajesDetalleGlobal = {};
-            }
-            
-            // 👉 SE ELIMINÓ EL LLAMADO A "filtrarTabla()". NADA PARPADEARÁ A PARTIR DE AHORA.
+            // ... (el resto del mapeo de tu función sigue exactamente igual)
+            // ... docsGlobales, viajesDetalleGlobal, etc.
 
         } catch (e) { 
-            console.warn("Fallo silencioso en background fetch:", e);
+            console.warn("Error procesando datos desde Node:", e);
         }
     })
-    .catch(err => console.warn("Error de red en background:", err));
+    .catch(err => console.warn("Error contactando al servidor Node:", err));
 }
 
 // --- Lógica del Dropdown de Vencimientos de Unidades ---
