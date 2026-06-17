@@ -63,8 +63,9 @@ app.get('/api/datos', (req, res) => {
     });
 });
 
-// Endpoint para guardar
-app.post('/api/guardar', async (req, res) => {
+// 3. PASARELA UNIVERSAL (Frontend -> Node -> Google)
+// Intercepta logins, guardado de Hojas de Ruta, Estados, Docs, etc.
+app.post('/api/proxy', async (req, res) => {
     try {
         const respuestaGoogle = await fetch(GAS_URL, {
             method: 'POST',
@@ -72,11 +73,14 @@ app.post('/api/guardar', async (req, res) => {
             body: JSON.stringify(req.body)
         }).then(r => r.json());
 
-        // Forzamos actualización del caché
-        actualizarCacheDesdeGoogle();
+        // Forzamos actualización del caché en Node SOLO si fue una acción de guardar/modificar
+        if (req.body && req.body.action !== 'login') {
+            actualizarCacheDesdeGoogle();
+        }
 
         res.json(respuestaGoogle);
     } catch (error) {
+        console.error("Error en Proxy:", error);
         res.status(500).json({ success: false, error: "Fallo en la comunicación con la DB" });
     }
 });
