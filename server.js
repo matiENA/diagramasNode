@@ -5,7 +5,9 @@ const cors = require('cors');
 const app = express();
 
 app.use(cors());
-app.use(express.json());
+
+// 👉 LA SOLUCIÓN AL ERROR: Le decimos a Node que lea "text/plain" y lo transforme en JSON
+app.use(express.json({ type: ['application/json', 'text/plain'] }));
 
 // 1. Decimos que la carpeta 'public' tiene nuestros archivos estáticos (index.html, css, imágenes)
 app.use(express.static(path.join(__dirname, 'public')));
@@ -44,12 +46,11 @@ async function actualizarCacheDesdeGoogle() {
 actualizarCacheDesdeGoogle();
 setInterval(actualizarCacheDesdeGoogle, 45000);
 
-
 // ==========================================
 // 3. RUTAS DE LA API (Deben ir ANTES del '*')
 // ==========================================
 
-// Endpoint para que lea el FrontEnd
+// Endpoint para que lea el FrontEnd al instante
 app.get('/api/datos', (req, res) => {
     if (!cacheDatosGlobales.diagramas) {
         return res.status(503).json({ error: "El servidor aún está cargando la base de datos." });
@@ -63,8 +64,7 @@ app.get('/api/datos', (req, res) => {
     });
 });
 
-// 3. PASARELA UNIVERSAL (Frontend -> Node -> Google)
-// Intercepta logins, guardado de Hojas de Ruta, Estados, Docs, etc.
+// 👉 EL PROXY UNIVERSAL: Recibe Todo (Login, Guardar HR, Estados) y se lo pasa a Google
 app.post('/api/proxy', async (req, res) => {
     try {
         const respuestaGoogle = await fetch(GAS_URL, {
@@ -73,7 +73,7 @@ app.post('/api/proxy', async (req, res) => {
             body: JSON.stringify(req.body)
         }).then(r => r.json());
 
-        // Forzamos actualización del caché en Node SOLO si fue una acción de guardar/modificar
+        // Actualizamos la RAM solo si se modificó algo (no en un login)
         if (req.body && req.body.action !== 'login') {
             actualizarCacheDesdeGoogle();
         }
@@ -84,7 +84,6 @@ app.post('/api/proxy', async (req, res) => {
         res.status(500).json({ success: false, error: "Fallo en la comunicación con la DB" });
     }
 });
-
 
 // ==========================================
 // 4. EL COMODÍN FRONTEND (Debe ir al FINAL)
