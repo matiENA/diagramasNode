@@ -1,11 +1,16 @@
 const express = require('express');
+const path = require('path');
 const cors = require('cors');
+
 const app = express();
 
-app.use(cors()); // Permite peticiones desde cualquier frontend
+app.use(cors());
 app.use(express.json());
 
-// La URL de tu Google Apps Script actual
+// 1. Decimos que la carpeta 'public' tiene nuestros archivos estáticos (index.html, css, imágenes)
+app.use(express.static(path.join(__dirname, 'public')));
+
+// La URL de tu Google Apps Script
 const GAS_URL = "https://script.google.com/macros/s/AKfycbzqk-ag2kmaEsGrScmN4s8SPjpwwEybyuF7Fy_vad8fiGuF_rbDsU5Iw_bZO3WvKrY/exec";
 
 // Memoria RAM del servidor (Caché)
@@ -15,18 +20,16 @@ let cacheDatosGlobales = {
     ultimaActualizacion: null
 };
 
-// 1. EL WORKER DE NODE (El único que hace Polling a Google)
+// 2. EL WORKER DE NODE (El único que hace Polling a Google)
 async function actualizarCacheDesdeGoogle() {
     try {
         console.log("Sincronizando con Google Sheets...");
         
-        // Hacemos las dos peticiones a Google al mismo tiempo
         const [resDiag, resTDs] = await Promise.all([
             fetch(`${GAS_URL}?action=obtenerDiagramasCacheados`).then(r => r.json()),
             fetch(`${GAS_URL}?action=obtenerTDs`).then(r => r.json())
         ]);
 
-        // Guardamos en la memoria RAM de Node.js
         cacheDatosGlobales.diagramas = resDiag;
         cacheDatosGlobales.tds = resTDs;
         cacheDatosGlobales.ultimaActualizacion = new Date().toISOString();
@@ -37,20 +40,21 @@ async function actualizarCacheDesdeGoogle() {
     }
 }
 
-// Ejecutar por primera vez al iniciar el servidor
+// Arranca el ciclo del backend
 actualizarCacheDesdeGoogle();
-
-// Configurar el Polling del Servidor (ej. cada 45 segundos)
 setInterval(actualizarCacheDesdeGoogle, 45000);
 
 
-// 2. EL ENDPOINT PARA EL FRONTEND (Responde en milisegundos)
+// ==========================================
+// 3. RUTAS DE LA API (Deben ir ANTES del '*')
+// ==========================================
+
+// Endpoint para que lea el FrontEnd
 app.get('/api/datos', (req, res) => {
     if (!cacheDatosGlobales.diagramas) {
         return res.status(503).json({ error: "El servidor aún está cargando la base de datos." });
     }
     
-    // Le entrega al front la memoria RAM al instante
     res.json({
         success: true,
         diagramas: cacheDatosGlobales.diagramas,
@@ -59,8 +63,7 @@ app.get('/api/datos', (req, res) => {
     });
 });
 
-// 3. PASARELA PARA GUARDAR DATOS (Frontend -> Node -> Google)
-// Así proteges la URL de Google y evitas problemas de CORS en el Front
+// Endpoint para guardar
 app.post('/api/guardar', async (req, res) => {
     try {
         const respuestaGoogle = await fetch(GAS_URL, {
@@ -69,7 +72,7 @@ app.post('/api/guardar', async (req, res) => {
             body: JSON.stringify(req.body)
         }).then(r => r.json());
 
-        // Forzamos una actualización inmediata del caché en Node tras un guardado
+        // Forzamos actualización del caché
         actualizarCacheDesdeGoogle();
 
         res.json(respuestaGoogle);
@@ -78,6 +81,17 @@ app.post('/api/guardar', async (req, res) => {
     }
 });
 
+
+// ==========================================
+// 4. EL COMODÍN FRONTEND (Debe ir al FINAL)
+// ==========================================
+
+// Si alguien entra a cualquier otra ruta de tu dominio, le mandas el index.html
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Iniciar servidor
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Servidor Node.js Híbrido corriendo en puerto ${PORT}`);
