@@ -337,8 +337,9 @@ window.sincronizarBackend = function() {
     });
 };
 
-// --- [TAG: CONEXIÓN BACKEND EXTERNO (FETCH)] ---
-    const API_URL = "https://script.google.com/macros/s/AKfycbzqk-ag2kmaEsGrScmN4s8SPjpwwEybyuF7Fy_vad8fiGuF_rbDsU5Iw_bZO3WvKrY/exec"; 
+// --- [TAG: CONEXIÓN BACKEND NATIVO (NODE.JS)] ---
+    // Ya no apuntamos a Google, apuntamos a nuestro propio servidor Node
+    const API_URL = "/api/proxy";
     
     function mostrarErrorGlobal(msg) {
         showToast("Error de conexión: " + msg, "error");
@@ -761,10 +762,15 @@ async function cargarDatosDesdeCache() {
     mostrarCargando(true);
     
     try {
-        const [resDiagramas, dataTDs] = await Promise.all([
-            fetch(`${API_URL}?action=obtenerDiagramasCacheados`).then(res => res.json()), 
-            fetch(`${API_URL}?action=obtenerTDs`).then(res => res.json())
-        ]);
+        // 👉 LE PEDIMOS TODO A NODE AL INSTANTE
+        const resNode = await fetch('/api/datos').then(res => res.json());
+        
+        if (!resNode.success) {
+            throw new Error(resNode.error || "El servidor aún está cargando la base de datos.");
+        }
+
+        const dataTDs = resNode.tds;
+        const resDiagramas = typeof resNode.diagramas === 'string' ? JSON.parse(resNode.diagramas) : resNode.diagramas;
 
         window.tdGlobalData = {
             campo:   dataTDs.campo || {},
@@ -795,7 +801,6 @@ async function cargarDatosDesdeCache() {
             aptosMedicos:   v => aptosGlobales = normalize(v),
             viajesCampo:    v => viajesGlobales = normalize(v),
             vencimientosObj: v => window.vencimientosCacheGlobal = v, 
-       // 👉 LÓGICA DE DICCIONARIO DIRECTO
             nuevaSeccionViajes: v => {
                 if (v && typeof v === 'object' && !Array.isArray(v)) {
                     viajesDetalleGlobal = v;
@@ -819,7 +824,7 @@ async function cargarDatosDesdeCache() {
         mostrarCargando(false); 
 
     } catch (e) { 
-        mostrarErrorGlobal("Error de sincronización: " + e.message); 
+        mostrarErrorGlobal("Error de sincronización con Node: " + e.message); 
         mostrarCargando(false); 
     }
 }
