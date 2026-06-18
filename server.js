@@ -21,14 +21,31 @@ const GAS_URL = "https://script.google.com/macros/s/AKfycbzqk-ag2kmaEsGrScmN4s8S
 
 let cacheDatosGlobales = { diagramas: null, tds: null, nombresMesActual: [], ultimaActualizacion: null };
 
+// 2. EL WORKER DE NODE (El único que hace Polling a Google)
 async function actualizarCacheDesdeGoogle() {
     try {
         console.log("Sincronizando con Google Sheets...");
-        const [resDiag, resTDs, resNombresMes] = await Promise.all([
+        
+        const [resDiag, resTDs, resNombresMes, resViajesDirecto] = await Promise.all([
             fetch(`${GAS_URL}?action=obtenerDiagramasCacheados`).then(r => r.json()),
             fetch(`${GAS_URL}?action=obtenerTDs`).then(r => r.json()),
-            fetch(`${GAS_URL}?action=obtenerNombresMesActual`).then(r => r.json()).catch(() => [])
+            fetch(`${GAS_URL}?action=obtenerNombresMesActual`).then(r => r.json()).catch(() => []),
+            // Si falla la lectura directa, capturamos el error para verlo en consola
+            fetch(`${GAS_URL}?action=obtenerViajesYHRDirecto`).then(r => r.json()).catch(e => {
+                console.error("❌ Fallo la lectura directa en Google. ¿Hiciste un New Deployment?");
+                return null;
+            })
         ]);
+
+        if (resDiag) {
+            if (resViajesDirecto) {
+                console.log(`✅ Lectura Directa HR exitosa: ${Object.keys(resViajesDirecto).length} choferes encontrados.`);
+                resDiag.nuevaSeccionViajes = resViajesDirecto; // Sobrescribe con la data real
+            } else {
+                console.log("⚠️ Usando objeto vacío para forzar la eliminación de la Fila 12.");
+                resDiag.nuevaSeccionViajes = {}; // MATAMOS EL FANTASMA DE LA FILA 12
+            }
+        }
 
         cacheDatosGlobales.diagramas = resDiag;
         cacheDatosGlobales.tds = resTDs;
@@ -37,11 +54,11 @@ async function actualizarCacheDesdeGoogle() {
         
         console.log("Caché actualizado con éxito.");
         
-        // 👉 NUEVO: Le avisamos a todos los navegadores conectados que hay data nueva
+        // Le avisamos a todos los navegadores conectados que hay data nueva
         io.emit('datos_actualizados', cacheDatosGlobales);
 
     } catch (error) {
-        console.error("Error leyendo de Google:", error);
+        console.error("Error crítico leyendo de Google:", error);
     }
 }
 
