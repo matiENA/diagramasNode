@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Extractor Maestro de Personal - EOR</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700;900&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Roboto', sans-serif; }
+    .easy-click:active { transform: scale(0.97); }
+    .tab-active { border-color: #6366f1; color: #818cf8; }
+    .tab-inactive { border-color: transparent; color: #64748b; }
+    .tab-inactive:hover { color: #cbd5e1; }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen p-4 sm:p-8">
+
+  <div class="max-w-5xl mx-auto">
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-700 pb-6 mb-6 gap-4">
+      <div>
+        <h1 class="text-2xl sm:text-3xl font-black text-indigo-400 tracking-tight">Recopilación Maestra de Personal</h1>
+        <p class="text-sm text-slate-400 mt-1">Base unificada de identidades cruzada de todas las planillas</p>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <button onclick="copiarEnMasa()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-md flex items-center gap-2">
+          📋 Copiar Lista Visible
+        </button>
+        <button onclick="exportarACSV()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-md flex items-center gap-2">
+          📊 Exportar a Excel
+        </button>
+      </div>
+    </div>
+
+    <div class="flex gap-6 border-b border-slate-700 mb-6">
+        <button id="btn-tab-general" onclick="cambiarTab('general')" class="pb-3 border-b-2 tab-active font-bold uppercase text-xs tracking-widest transition-all">Padrón Histórico Completo</button>
+        <button id="btn-tab-mes" onclick="cambiarTab('mes')" class="pb-3 border-b-2 tab-inactive font-bold uppercase text-xs tracking-widest transition-all flex items-center gap-2">
+            Planilla Mes Actual <span id="badge-mes" class="bg-indigo-500 text-white px-2 py-0.5 rounded-full text-[9px]">0</span>
+        </button>
+    </div>
+
+    <div class="bg-slate-800 p-4 rounded-xl border border-slate-700 mb-6 flex flex-col sm:flex-row justify-between items-center gap-4">
+      <input type="text" id="buscar" oninput="filtrar()" placeholder="Filtrar por nombre o DNI..." class="w-full sm:w-80 bg-slate-950 border border-slate-600 text-slate-100 text-sm rounded-lg p-2.5 outline-none focus:border-indigo-500 transition-all font-bold">
+      <span class="text-xs font-black text-slate-400 uppercase tracking-widest bg-slate-950 px-3 py-2 rounded-lg border border-slate-700">
+        Personal Listado: <span id="contador" class="text-indigo-400">0</span>
+      </span>
+    </div>
+
+    <div class="bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden shadow-2xl">
+      <div class="overflow-x-auto max-h-[600px] overflow-y-auto custom-scrollbar">
+        <table class="w-full text-left border-collapse relative">
+          <thead class="sticky top-0 z-10">
+            <tr class="bg-slate-950 text-slate-400 text-[10px] uppercase tracking-widest border-b border-slate-700 shadow-md">
+              <th class="p-4">Apellido y Nombre (Easy Click)</th>
+              <th class="p-4 w-48 text-center">DNI (Easy Click)</th>
+            </tr>
+          </thead>
+          <tbody id="tabla-cuerpo" class="divide-y divide-slate-700/60 font-medium text-xs">
+            <tr>
+              <td colspan="2" class="p-8 text-center text-slate-400 animate-pulse font-bold">Cargando y cruzando bases de datos...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let choferesGeneral = [];
+    let choferesMesActual = [];
+    let tabActiva = 'general';
+
+    // Normalizador estricto para cruzar listas
+    const normalizar = (n) => String(n||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
+
+    document.addEventListener("DOMContentLoaded", () => {
+        fetch('/api/maestro-choferes')
+        .then(res => res.json())
+        .then(data => {
+            if(data.success) {
+                choferesGeneral = data.choferes;
+                
+                // 👉 CRUZAMOS LA DATA: Filtramos el Padrón General usando los nombres extraídos de la nueva planilla
+                const nombresActivosSet = new Set( (data.nombresPlanillaMes || []).map(normalizar) );
+                
+                choferesMesActual = choferesGeneral.filter(c => nombresActivosSet.has(normalizar(c.nom)));
+
+                document.getElementById('badge-mes').innerText = choferesMesActual.length;
+                filtrar(); // Renderiza la tabla según la tab activa
+            } else {
+                document.getElementById("tabla-cuerpo").innerHTML = `<tr><td colspan="2" class="p-8 text-center text-red-400 font-bold">Error: ${data.error}</td></tr>`;
+            }
+        })
+        .catch(err => {
+            document.getElementById("tabla-cuerpo").innerHTML = `<tr><td colspan="2" class="p-8 text-center text-red-400 font-bold">Error conectando al motor híbrido.</td></tr>`;
+        });
+    });
+
+    function cambiarTab(tab) {
+        tabActiva = tab;
+        document.getElementById('btn-tab-general').className = tab === 'general' ? 'pb-3 border-b-2 tab-active font-bold uppercase text-xs tracking-widest transition-all' : 'pb-3 border-b-2 tab-inactive font-bold uppercase text-xs tracking-widest transition-all';
+        document.getElementById('btn-tab-mes').className = tab === 'mes' ? 'pb-3 border-b-2 tab-active font-bold uppercase text-xs tracking-widest transition-all flex items-center gap-2' : 'pb-3 border-b-2 tab-inactive font-bold uppercase text-xs tracking-widest transition-all flex items-center gap-2';
+        filtrar();
+    }
+
+    function filtrar() {
+        const val = document.getElementById("buscar").value.trim();
+        const valNorm = normalizar(val);
+        
+        let listaBase = tabActiva === 'general' ? choferesGeneral : choferesMesActual;
+
+        const filtrados = listaBase.filter(c => {
+            let nomNorm = normalizar(c.nom);
+            return nomNorm.includes(valNorm) || String(c.dni).includes(val);
+        });
+        
+        inyectarTabla(filtrados);
+    }
+
+    function inyectarTabla(lista) {
+        const cuerpo = document.getElementById("tabla-cuerpo");
+        document.getElementById("contador").innerText = lista.length;
+        
+        if(lista.length === 0) {
+            cuerpo.innerHTML = `<tr><td colspan="2" class="p-10 text-center text-slate-500 font-bold uppercase tracking-wider">Sin registros en esta vista</td></tr>`;
+            return;
+        }
+
+        cuerpo.innerHTML = lista.map(c => `
+            <tr class="hover:bg-slate-700/30 transition-colors">
+                <td class="p-2.5">
+                    <button onclick="easyClick('${c.nom.replace(/'/g, "\\'")}')" class="easy-click text-left w-full px-4 py-2.5 bg-slate-900/40 hover:bg-indigo-950/40 hover:text-indigo-300 border border-slate-700/60 rounded-xl transition-all font-bold tracking-wide flex items-center justify-between group">
+                        <span>${c.nom}</span>
+                        <span class="text-[9px] text-slate-500 group-hover:text-indigo-400 opacity-0 group-hover:opacity-100 uppercase tracking-widest font-black transition-opacity">Copiar</span>
+                    </button>
+                </td>
+                <td class="p-2.5">
+                    <button onclick="easyClick('${c.dni}')" class="easy-click text-center w-full px-4 py-2.5 bg-slate-900/40 hover:bg-emerald-950/40 hover:text-emerald-300 border border-slate-700/60 rounded-xl transition-all font-mono font-bold tracking-widest flex items-center justify-center gap-2 group">
+                        <span>${c.dni}</span>
+                        <span class="text-[8px] text-slate-500 group-hover:text-emerald-400 opacity-0 group-hover:opacity-100 uppercase font-black transition-opacity">📋</span>
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    // Easy Click
+    function easyClick(texto) {
+        if (!texto || texto === "Sin DNI") return;
+        navigator.clipboard.writeText(texto).then(() => {
+            const t = document.createElement('div');
+            t.className = "fixed bottom-5 left-1/2 -translate-x-1/2 bg-slate-950 border border-indigo-500/40 px-5 py-2.5 rounded-xl text-xs text-indigo-300 font-bold shadow-2xl transition-all duration-300 opacity-0 scale-90 z-50";
+            t.innerText = `⚡ Copiado: ${texto}`;
+            document.body.appendChild(t);
+            requestAnimationFrame(() => { t.classList.remove('opacity-0', 'scale-90'); });
+            setTimeout(() => { t.classList.add('opacity-0', 'scale-90'); setTimeout(() => t.remove(), 300); }, 1200);
+        });
+    }
+
+    function copiarEnMasa() {
+        let listaBase = tabActiva === 'general' ? choferesGeneral : choferesMesActual;
+        if(listaBase.length === 0) return;
+        
+        let strMasa = listaBase.map(c => `${c.nom}\t${c.dni}`).join('\n');
+        navigator.clipboard.writeText(strMasa).then(() => {
+            alert(`✅ ${listaBase.length} registros copiados.\nPresiona Ctrl+V / Cmd+V en tu Excel o Google Sheet.`);
+        });
+    }
+
+    function exportarACSV() {
+        let listaBase = tabActiva === 'general' ? choferesGeneral : choferesMesActual;
+        if(listaBase.length === 0) return;
+        
+        let csvContent = "\uFEFFNombre y Apellido;DNI\n";
+        listaBase.forEach(c => { csvContent += `"${c.nom}";"${c.dni}"\n`; });
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `personal_${tabActiva}_${new Date().toISOString().split('T')[0]}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+  </script>
+</body>
+</html>
