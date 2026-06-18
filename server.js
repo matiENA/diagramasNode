@@ -235,7 +235,8 @@ app.get('/api/maestro-choferes', (req, res) => {
         res.json({
             success: true,
             total: listaConsolidada.length,
-            choferes: listaConsolidada
+            choferes: listaConsolidada,
+            nombresPlanillaMes: cacheDatosGlobales.nombresMesActual 
         });
 
     } catch (error) {
