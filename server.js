@@ -85,13 +85,106 @@ app.post('/api/proxy', async (req, res) => {
     }
 });
 
+
+// ====================================================================
+// 👉 NUEVO: MÓDULO INDEPENDIENTE DE RECOPILACIÓN (EXTRACTOR)
+// Consolida identidades cruzando Diagramas, DNI, Teléfonos y Aptos
+// ====================================================================
+app.get('/api/maestro-choferes', (req, res) => {
+    if (!cacheDatosGlobales.diagramas) {
+        return res.status(503).json({ success: false, error: "Caché de base de datos no disponible aún." });
+    }
+
+    try {
+        const dataDiag = typeof cacheDatosGlobales.diagramas === 'string' 
+            ? JSON.parse(cacheDatosGlobales.diagramas) 
+            : cacheDatosGlobales.diagramas;
+
+        // Conjunto de nombres prohibidos (Filtro estricto)
+        const NOMBRES_IGNORADOS = new Set([
+            "campo", "abast", "glp", "grales", "grales.", "liviano", 
+            "metanol", "pasivo en base", "ypf", "apellido y nombre", 
+            "personal activo", "chofer", "choferes", "vacante", "-", "1"
+        ]);
+
+        let mapaMaestro = new Map();
+
+        // FUENTE 1: Lista de Diagramas Principales
+        if (dataDiag.diagramas && Array.isArray(dataDiag.diagramas)) {
+            dataDiag.diagramas.forEach(c => {
+                if (!c.nom) return;
+                let nomNormalizado = String(c.nom).trim();
+                let key = nomNormalizado.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
+                
+                if (nomNormalizado.length > 2 && !NOMBRES_IGNORADOS.has(key)) {
+                    mapaMaestro.set(key, { nom: nomNormalizado, dni: "Sin DNI" });
+                }
+            });
+        }
+
+        // FUENTE 2: Mapeo de DNI (Cruzar y enriquecer)
+        if (dataDiag.dnis && typeof dataDiag.dnis === 'object') {
+            Object.keys(dataDiag.dnis).forEach(key => {
+                let registroDni = dataDiag.dnis[key];
+                let dniValor = "Sin DNI";
+                if (registroDni) {
+                    dniValor = registroDni.dni || (typeof registroDni === 'string' ? registroDni : "Sin DNI");
+                }
+
+                if (mapaMaestro.has(key)) {
+                    let item = mapaMaestro.get(key);
+                    if (dniValor !== "Sin DNI") item.dni = String(dniValor).trim();
+                } else if (!NOMBRES_IGNORADOS.has(key) && key.length > 2) {
+                    // Si el chofer solo existía en el excel de DNIs, lo agregamos de respaldo
+                    let nombreEstetico = key.toUpperCase(); 
+                    mapaMaestro.set(key, { nom: nombreEstetico, dni: String(dniValor).trim() });
+                }
+            });
+        }
+
+        // FUENTE 3: Mapeo de Teléfonos/Legajos secundarios
+        if (dataDiag.telefonos && typeof dataDiag.telefonos === 'object') {
+            Object.keys(dataDiag.telefonos).forEach(key => {
+                let objTel = dataDiag.telefonos[key];
+                if (objTel && objTel.dni) {
+                    if (mapaMaestro.has(key)) {
+                        let item = mapaMaestro.get(key);
+                        if (item.dni === "Sin DNI") item.dni = String(objTel.dni).trim();
+                    }
+                }
+            });
+        }
+
+        // Convertimos el mapa en una lista limpia y ordenada alfabéticamente
+        const listaConsolidada = Array.from(mapaMaestro.values())
+            .filter(c => c.nom && c.dni)
+            .sort((a, b) => a.nom.localeCompare(b.nom));
+
+        res.json({
+            success: true,
+            total: listaConsolidada.length,
+            choferes: listaConsolidada
+        });
+
+    } catch (error) {
+        console.error("Error consolidando maestro de choferes:", error);
+        res.status(500).json({ success: false, error: "Error interno procesando identidades." });
+    }
+});
+
+
 // ==========================================
 // 4. EL COMODÍN FRONTEND (Debe ir al FINAL)
 // ==========================================
 
 // Si alguien entra a cualquier otra ruta de tu dominio, le mandas el index.html
 app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    // 👉 NUEVO: Verificamos si pidió el extractor, caso contrario le damos el index normal
+    if (req.path === '/extractor') {
+        res.sendFile(path.join(__dirname, 'public', 'extractor.html'));
+    } else {
+        res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    }
 });
 
 // Iniciar servidor
