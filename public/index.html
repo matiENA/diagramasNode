@@ -828,11 +828,10 @@ async function cargarDatosDesdeCache() {
         mostrarCargando(false); 
     }
 }
-// La nueva URL de tu servidor en Render (ejemplo)
+// --- AUTO-REFRESH (DATA KEEPING + SMART UI UPDATE) ---
 function sincronizacionSilenciosa() {
-    fetch('/api/datos') // <-- Así de simple, sin "https://..."
+    fetch('/api/datos') 
     .then(res => res.json())
-    // ... el resto de tu código
     .then(data => {
         if (!data.success) return;
 
@@ -859,8 +858,51 @@ function sincronizacionSilenciosa() {
                 return c;
             });
             
-            // ... (el resto del mapeo de tu función sigue exactamente igual)
-            // ... docsGlobales, viajesDetalleGlobal, etc.
+            // 3. Restauramos las funciones normalizadoras y el mapeo completo de la base
+            const normalize = (obj) => {
+                if (!obj) return {};
+                return Object.keys(obj).reduce((acc, k) => {
+                    const cleanKey = String(k).trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
+                    acc[cleanKey] = obj[k];
+                    return acc;
+                }, {});
+            };
+
+            docsGlobales = normalize(dataDiag.documentos);
+            habsGlobales = normalize(dataDiag.habilitaciones);
+            certsGlobales = normalize(dataDiag.certificados);
+            kmsGlobales = normalize(dataDiag.kilometros);
+            dnisGlobales = normalize(dataDiag.dnis);
+            telefonosGlobales = normalize(dataDiag.telefonos);
+            historialGlobal = normalize(dataDiag.observaciones);
+            aptosGlobales = normalize(dataDiag.aptosMedicos);
+            viajesGlobales = normalize(dataDiag.viajesCampo);
+            window.vencimientosCacheGlobal = dataDiag.vencimientosObj;
+            fotosGlobales = dataDiag.fotosImgur || {};
+
+            // Mapeo seguro del nuevo diccionario de Viajes (HR)
+            if (dataDiag.nuevaSeccionViajes && typeof dataDiag.nuevaSeccionViajes === 'object' && !Array.isArray(dataDiag.nuevaSeccionViajes)) {
+                viajesDetalleGlobal = dataDiag.nuevaSeccionViajes;
+            } else {
+                viajesDetalleGlobal = {};
+            }
+
+            // 4. [UX] REFRESCO INTELIGENTE DE INTERFAZ
+            // Verificamos qué está haciendo el usuario para no molestarlo
+            const isInputFocused = document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName);
+            const isModalOpen = !document.getElementById('modal-editor').classList.contains('hidden');
+            const isRangeSelected = seleccionInicioIso !== null;
+
+            // Si el usuario NO está tipeando ni editando en el modal
+            if (!isInputFocused && !isModalOpen) {
+                if (!isRangeSelected) {
+                    // Si está solo viendo la tabla general o la ficha, redibujamos con la data fresca
+                    filtrarTabla();
+                } else if (conductorSeleccionadoId) {
+                    // Si tiene un rango de fechas azul seleccionado, solo actualizamos el panel inferior
+                    ejecutarRenderLocalHR(conductorSeleccionadoId);
+                }
+            }
 
         } catch (e) { 
             console.warn("Error procesando datos desde Node:", e);
