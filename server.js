@@ -4,9 +4,10 @@ const cors = require('cors');
 const http = require('http'); 
 const { Server } = require('socket.io');
 
-// 👉 NUEVO: Librerías para conexión directa a Sheets
+// Librerías para conexión directa a Sheets y Supabase
 const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
+const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
 const server = http.createServer(app); 
@@ -21,59 +22,29 @@ app.use(express.static(path.join(__dirname, 'public')));
 // ==========================================
 const GAS_URL = "https://script.google.com/macros/s/AKfycbzqk-ag2kmaEsGrScmN4s8SPjpwwEybyuF7Fy_vad8fiGuF_rbDsU5Iw_bZO3WvKrY/exec";
 
-// Autenticación Directa de Google (Variables configuradas en Render)
+// Configuración Supabase
+const supabaseUrl = process.env.SUPABASE_URL || 'https://tu-proyecto.supabase.co';
+const supabaseKey = process.env.SUPABASE_KEY || 'tu-anon-key';
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+// Configuración Google Sheets
 const serviceAccountAuth = new JWT({
     email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-    // Este replace es VITAL para que los \n de la llave privada funcionen en Render
     key: process.env.GOOGLE_PRIVATE_KEY ? process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n') : '',
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
 });
-
-// Reemplaza esto por el ID real de tu planilla (lo sacas de la URL de Sheets)
 const ID_PLANILLA = process.env.SPREADSHEET_ID || 'T1eQ9Y5diL5fwxYTxvseNgZJFbX-lSUQ13axbp3cLiqPc'; 
 const doc = new GoogleSpreadsheet(ID_PLANILLA, serviceAccountAuth);
 
 let cacheDatosGlobales = { diagramas: null, tds: null, nombresMesActual: [], ultimaActualizacion: null };
 
 // ==========================================
-// 👉 FUNCIÓN MIGRADA 1: Obtener TDs Directo
-// ==========================================
-async function obtenerTDsDirecto() {
-    try {
-        await doc.loadInfo(); 
-        const sheetTDs = doc.sheetsByTitle['TD']; // Asegúrate de que la pestaña se llama exactamente 'TD'
-        if (!sheetTDs) throw new Error("No se encontró la pestaña 'TD'");
-
-        const filas = await sheetTDs.getRows();
-        let tdsMapeados = {};
-        
-        filas.forEach(fila => {
-            // ATENCIÓN: 'Nombre' y 'TD' deben ser exactamente los textos de la Fila 1 (Encabezados)
-            let nombreChofer = fila.get('Nombre') || fila.get('Chofer'); 
-            let codigoTD = fila.get('TD') || fila.get('Código');
-            
-            if (nombreChofer && codigoTD) {
-                tdsMapeados[nombreChofer] = codigoTD;
-            }
-        });
-        
-        console.log(`✅ Lectura Directa TDs exitosa: ${Object.keys(tdsMapeados).length} TDs cargados.`);
-        return tdsMapeados;
-    } catch (err) {
-        console.error("❌ Error leyendo TDs directamente de Sheets:", err.message);
-        return null;
-    }
-}
-
-// ==========================================
-// 2. EL WORKER DE NODE (Sincronización Híbrida)
-// ==========================================
 // 2. EL WORKER DE NODE (Sincronización Híbrida - Fase 0)
+// ==========================================
 async function actualizarCacheDesdeGoogle() {
     try {
         console.log("Sincronizando DB...");
         
-        // Helper blindado
         const fetchSeguro = async (url, nombre) => {
             try {
                 const r = await fetch(url);
@@ -89,7 +60,6 @@ async function actualizarCacheDesdeGoogle() {
             }
         };
 
-        // 👉 DEVOLVEMOS LOS TDs A GOOGLE MIENTRAS LOGRAMOS LA ESTABILIDAD 
         const [resDiag, resNombresMes, resViajesDirecto, resTDs] = await Promise.all([
             fetchSeguro(`${GAS_URL}?action=obtenerDiagramasCacheados`, 'Diagramas'),
             fetchSeguro(`${GAS_URL}?action=obtenerNombresMesActual`, 'Mes Actual'),
@@ -99,7 +69,6 @@ async function actualizarCacheDesdeGoogle() {
 
         if (resDiag) {
             if (resViajesDirecto) {
-                console.log(`✅ Lectura Directa HR exitosa: ${Object.keys(resViajesDirecto).length} choferes.`);
                 resDiag.nuevaSeccionViajes = resViajesDirecto; 
             } else {
                 resDiag.nuevaSeccionViajes = {}; 
@@ -107,7 +76,6 @@ async function actualizarCacheDesdeGoogle() {
             cacheDatosGlobales.diagramas = resDiag;
         }
 
-        // 👉 BLINDAJE ANTI-CRASH: Si Google falla, enviamos el esqueleto vacío en lugar de null
         cacheDatosGlobales.tds = resTDs || { campo: {}, infinia: {}, liviano: {}, euro: {}, estados: {}, codigosExtra: {} };
         cacheDatosGlobales.nombresMesActual = resNombresMes || [];
         cacheDatosGlobales.ultimaActualizacion = new Date().toISOString();
@@ -123,10 +91,9 @@ async function actualizarCacheDesdeGoogle() {
 // Arranca el ciclo del backend por primera vez
 actualizarCacheDesdeGoogle();
 
-// Polling General cada 45 segundos (Reemplaza a los Webhooks por ahora)
+// Polling General cada 45 segundos
 const TIEMPO_POLLING = 45000; 
 setInterval(() => {
-    console.log("🔄 [POLLING] Ejecutando sincronización automática...");
     actualizarCacheDesdeGoogle();
 }, TIEMPO_POLLING); 
 
@@ -138,19 +105,86 @@ app.get('/api/datos', (req, res) => {
     res.json({ success: true, diagramas: cacheDatosGlobales.diagramas, tds: cacheDatosGlobales.tds, timestamp: cacheDatosGlobales.ultimaActualizacion });
 });
 
+// 👉 EL INTERCEPTOR: Aquí atrapamos las peticiones antes de que vayan a GAS
 app.post('/api/proxy', async (req, res) => {
     try {
+        const body = req.body;
+
+        // 🌟 MÓDULO MIGRADO: DOCUMENTOS Y VENCIMIENTOS
+        if (body && body.action === 'guardarDocumentos') {
+            console.log(`Interceptando guardado de documentos para: ${body.nombre}`);
+            const { nombre, exVen, licVen, certVen } = body;
+            
+            // 1. TRADUCCIÓN: Buscar ID del chofer en Supabase
+            const { data: choferData, error: errChofer } = await supabase
+                .from('choferes')
+                .select('id')
+                .ilike('nombre', nombre) // ilike hace una búsqueda case-insensitive
+                .single();
+
+            if (errChofer || !choferData) {
+                console.error(`⚠️ Chofer '${nombre}' no encontrado en Supabase. Se guardará solo en Sheets.`);
+            } else {
+                const choferId = choferData.id;
+
+                // 2. ESCRITURA EN SUPABASE (Modo Relacional)
+                const { error: dbError } = await supabase
+                    .from('documentos_choferes')
+                    .upsert({ 
+                        chofer_id: choferId, 
+                        venc_periodico: exVen || null, 
+                        venc_licencia: licVen || null, 
+                        venc_cert_mp: certVen || null,
+                        actualizado_en: new Date()
+                    }, { onConflict: 'chofer_id' }); // IMPORTANTE: Define el conflicto para que actualice y no duplique
+                
+                if (dbError) console.error("❌ Error escribiendo en Supabase:", dbError.message);
+                else console.log(`✅ Supabase actualizado para ID: ${choferId}`);
+            }
+
+            // 3. MANDAR A GAS DE FONDO (Para que el Sheet se mantenga actualizado)
+            fetch(GAS_URL, {
+                method: 'POST',
+                headers: { "Content-Type": "text/plain;charset=utf-8" },
+                body: JSON.stringify(body)
+            }).then(r => r.json()).catch(e => console.error("Error Sheets:", e));
+
+            // 4. ACTUALIZAR LA RAM DE NODE.JS AL INSTANTE
+            const nLimpio = String(nombre).trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
+            
+            if (cacheDatosGlobales.diagramas) {
+                if (!cacheDatosGlobales.diagramas.documentos) cacheDatosGlobales.diagramas.documentos = {};
+                if (!cacheDatosGlobales.diagramas.habilitaciones) cacheDatosGlobales.diagramas.habilitaciones = {};
+                if (!cacheDatosGlobales.diagramas.certificados) cacheDatosGlobales.diagramas.certificados = {};
+
+                cacheDatosGlobales.diagramas.documentos[nLimpio] = { ven: exVen };
+                cacheDatosGlobales.diagramas.habilitaciones[nLimpio] = { ven: licVen };
+                cacheDatosGlobales.diagramas.certificados[nLimpio] = { ven: certVen };
+                
+                // 5. AVISAR A TODAS LAS PANTALLAS (Cero latencia para el usuario)
+                io.emit('datos_actualizados', cacheDatosGlobales);
+            }
+
+            // Respondemos rápido al usuario, sin esperar a que GAS termine
+            return res.json({ success: true, message: "Sincronizado correctamente." });
+        }
+
+        // =========================================================
+        // FLUJO LEGACY NORMAL (Si no es 'guardarDocumentos', va a GAS normal)
+        // =========================================================
         const respuestaGoogle = await fetch(GAS_URL, {
             method: 'POST',
             headers: { "Content-Type": "text/plain;charset=utf-8" },
-            body: JSON.stringify(req.body)
+            body: JSON.stringify(body)
         }).then(r => r.json());
 
-        if (req.body && req.body.action !== 'login') {
+        if (body && body.action !== 'login') {
             actualizarCacheDesdeGoogle();
         }
         res.json(respuestaGoogle);
+
     } catch (error) {
+        console.error("Fallo general en Proxy:", error);
         res.status(500).json({ success: false, error: "Fallo en la DB" });
     }
 });
