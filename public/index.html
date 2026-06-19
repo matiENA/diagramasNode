@@ -769,8 +769,7 @@ async function cargarDatosDesdeCache() {
             throw new Error(resNode.error || "El servidor aún está cargando la base de datos.");
         }
 
-        const dataTDs = resNode.tds;
-        const resDiagramas = typeof resNode.diagramas === 'string' ? JSON.parse(resNode.diagramas) : resNode.diagramas;
+        const dataTDs = resNode.tds || { campo: {}, infinia: {}, liviano: {}, euro: {}, estados: {}, extra: {} };        const resDiagramas = typeof resNode.diagramas === 'string' ? JSON.parse(resNode.diagramas) : resNode.diagramas;
 
         window.tdGlobalData = {
             campo:   dataTDs.campo || {},

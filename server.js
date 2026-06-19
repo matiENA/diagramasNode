@@ -68,17 +68,18 @@ async function obtenerTDsDirecto() {
 // ==========================================
 // 2. EL WORKER DE NODE (Sincronización Híbrida)
 // ==========================================
+// 2. EL WORKER DE NODE (Sincronización Híbrida - Fase 0)
 async function actualizarCacheDesdeGoogle() {
     try {
         console.log("Sincronizando DB...");
         
-        // Helper blindado para evitar el "Unexpected token <" de Apps Script
+        // Helper blindado
         const fetchSeguro = async (url, nombre) => {
             try {
                 const r = await fetch(url);
                 const text = await r.text();
                 if (text.trim().startsWith('<')) {
-                    console.error(`❌ Alerta en [${nombre}]: GAS devolvió HTML (Requiere New Deployment en Apps Script)`);
+                    console.error(`❌ Alerta en [${nombre}]: GAS devolvió HTML. (Requiere New Deployment)`);
                     return null;
                 }
                 return JSON.parse(text);
@@ -88,12 +89,12 @@ async function actualizarCacheDesdeGoogle() {
             }
         };
 
-        // Ejecutamos TODO en paralelo (Las peticiones legacy a GAS y la nueva petición directa)
-        const [resDiag, resNombresMes, resViajesDirecto, resTDsDirecto] = await Promise.all([
+        // 👉 DEVOLVEMOS LOS TDs A GOOGLE MIENTRAS LOGRAMOS LA ESTABILIDAD 
+        const [resDiag, resNombresMes, resViajesDirecto, resTDs] = await Promise.all([
             fetchSeguro(`${GAS_URL}?action=obtenerDiagramasCacheados`, 'Diagramas'),
             fetchSeguro(`${GAS_URL}?action=obtenerNombresMesActual`, 'Mes Actual'),
             fetchSeguro(`${GAS_URL}?action=obtenerViajesYHRDirecto`, 'Lectura HR'),
-            obtenerTDsDirecto() // <--- Nuestra nueva función nativa en Node
+            fetchSeguro(`${GAS_URL}?action=obtenerTDs`, 'TDs Legacy')
         ]);
 
         if (resDiag) {
@@ -106,9 +107,8 @@ async function actualizarCacheDesdeGoogle() {
             cacheDatosGlobales.diagramas = resDiag;
         }
 
-        // Si la lectura directa de TDs funcionó, la usamos.
-        if (resTDsDirecto) cacheDatosGlobales.tds = resTDsDirecto;
-        
+        // 👉 BLINDAJE ANTI-CRASH: Si Google falla, enviamos el esqueleto vacío en lugar de null
+        cacheDatosGlobales.tds = resTDs || { campo: {}, infinia: {}, liviano: {}, euro: {}, estados: {}, codigosExtra: {} };
         cacheDatosGlobales.nombresMesActual = resNombresMes || [];
         cacheDatosGlobales.ultimaActualizacion = new Date().toISOString();
         
