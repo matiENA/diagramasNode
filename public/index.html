@@ -1977,47 +1977,51 @@ window.mostrarPanelAcciones = function(safeId, startIso, endIso) {
             let hrArr = (detViaje && detViaje.hoja_ruta) ? detViaje.hoja_ruta : [];
             if (!Array.isArray(hrArr)) hrArr = [];
 
-            // Micro-badges para HR
+            // Micro-badges para HR ocupando el 100% del ancho interno (Vertical flow)
             let hrMicroBadges = hrArr.length > 0 && hrArr[0] !== "" ? hrArr.map(hr => `
-                <div class="bg-indigo-100 text-indigo-800 border border-indigo-200 px-2 py-1 rounded shadow-sm flex items-center gap-2 group">
-                    <span class="text-[11px] font-mono font-bold tracking-wide">${hr}</span>
-                    <button type="button" onclick="eliminarHojaDeRuta('${chofer._safeId}', '${isoCurr}', '${hr}'); event.stopPropagation();" class="text-indigo-400 hover:text-red-500 transition-colors" title="Eliminar N°">
-                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"></path></svg>
+                <div class="w-full bg-indigo-100 text-indigo-800 border border-indigo-200 px-2 py-0.5 rounded shadow-sm flex items-center justify-between group">
+                    <span class="text-[10px] font-mono font-bold tracking-wide">${hr}</span>
+                    <button type="button" onclick="eliminarHojaDeRuta('${chofer._safeId}', '${isoCurr}', '${hr}'); event.stopPropagation();" class="text-indigo-400 hover:text-red-500 transition-colors" title="Eliminar">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"></path></svg>
                     </button>
                 </div>
-            `).join('') : '<span class="text-[10px] font-bold text-indigo-300/80 italic">Sin datos cargados</span>';
+            `).join('') : '<span class="text-[9px] font-bold text-indigo-300/80 italic w-full text-center">Sin datos</span>';
 
             htmlDetalleViajes += `
-            <div class="bg-white border border-indigo-100 rounded-xl p-4 shadow-sm mb-3 hover:shadow-md transition-shadow">
-                <div class="flex justify-between items-center border-b border-gray-100 pb-2 mb-3">
-                    <span class="font-black text-indigo-900 text-sm flex items-center gap-1.5">
-                        <svg class="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg> 
-                        ${isoCurr.split('-').reverse().join('/')}
+            <div class="bg-white border border-indigo-100 rounded-xl p-3 shadow-sm flex flex-col h-full justify-between hover:shadow-md transition-shadow">
+                
+                <div class="flex flex-col gap-1 border-b border-gray-100 pb-2 mb-2 w-full text-center sm:text-left">
+                    <span class="font-black text-indigo-900 text-xs sm:text-sm flex items-center justify-center sm:justify-start gap-1.5">
+                        📅 ${isoCurr.split('-').reverse().join('/')}
                     </span>
-                    <span class="text-[10px] font-black bg-indigo-50 text-indigo-800 px-2.5 py-1 rounded-md border border-indigo-200 shadow-sm">TOTAL: ${kmDia} KM</span>
+                    <span class="text-[9px] font-black bg-indigo-50 text-indigo-800 px-2 py-0.5 rounded border border-indigo-200 self-center sm:self-start">
+                        TOTAL: ${kmDia} KM
+                    </span>
                 </div>
                 
-                <!-- Volúmenes en Micro-Badges conservando el texto -->
-                <div class="flex flex-wrap gap-2 mb-4">
-                    ${safeLiv > 0 ? `<div class="bg-sky-50 border border-sky-200 rounded-md px-2 py-1 text-center shadow-inner flex items-center gap-1.5"><span class="text-[9px] uppercase font-bold text-sky-600">Liviano</span><span class="text-[11px] font-black text-sky-900">${safeLiv}</span></div>` : ''}
-                    ${safeEuro > 0 ? `<div class="bg-emerald-50 border border-emerald-200 rounded-md px-2 py-1 text-center shadow-inner flex items-center gap-1.5"><span class="text-[9px] uppercase font-bold text-emerald-600">Euro</span><span class="text-[11px] font-black text-emerald-900">${safeEuro}</span></div>` : ''}
-                    ${safeCampo > 0 ? `<div class="bg-amber-50 border border-amber-200 rounded-md px-2 py-1 text-center shadow-inner flex items-center gap-1.5"><span class="text-[9px] uppercase font-bold text-amber-600">Campo</span><span class="text-[11px] font-black text-amber-900">${safeCampo}</span></div>` : ''}
-                    ${safeInf > 0 ? `<div class="bg-purple-50 border border-purple-200 rounded-md px-2 py-1 text-center shadow-inner flex items-center gap-1.5"><span class="text-[9px] uppercase font-bold text-purple-600">Inf. Diesel</span><span class="text-[11px] font-black text-purple-900">${safeInf}</span></div>` : ''}
-                    ${(safeLiv === 0 && safeEuro === 0 && safeCampo === 0 && safeInf === 0 && kmDia === 0) ? `<div class="text-[10px] text-gray-400 font-bold italic px-1">Sin volúmenes registrados</div>` : ''}
+                <div class="flex flex-col gap-1 w-full mb-3">
+                    ${safeLiv > 0 ? `<div class="bg-sky-50 border border-sky-200 rounded px-1.5 py-0.5 shadow-inner flex items-center justify-between w-full"><span class="text-[8px] uppercase font-bold text-sky-600">Liviano</span><span class="text-[10px] font-black text-sky-900">${safeLiv}</span></div>` : ''}
+                    ${safeEuro > 0 ? `<div class="bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5 shadow-inner flex items-center justify-between w-full"><span class="text-[8px] uppercase font-bold text-emerald-600">Euro</span><span class="text-[10px] font-black text-emerald-900">${safeEuro}</span></div>` : ''}
+                    ${safeCampo > 0 ? `<div class="bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 shadow-inner flex items-center justify-between w-full"><span class="text-[8px] uppercase font-bold text-amber-600">Campo</span><span class="text-[10px] font-black text-amber-900">${safeCampo}</span></div>` : ''}
+                    ${safeInf > 0 ? `<div class="bg-purple-50 border border-purple-200 rounded px-1.5 py-0.5 shadow-inner flex items-center justify-between w-full"><span class="text-[8px] uppercase font-bold text-purple-600">Inf. Diesel</span><span class="text-[10px] font-black text-purple-900">${safeInf}</span></div>` : ''}
+                    ${(safeLiv === 0 && safeEuro === 0 && safeCampo === 0 && safeInf === 0 && kmDia === 0) ? `<div class="text-[9px] text-gray-400 font-bold italic w-full text-center">Sin volúmenes</div>` : ''}
                 </div>
                 
-                <div class="flex flex-col gap-2 bg-indigo-50/30 p-3 rounded-lg border border-indigo-50">
-                    <span class="text-[10px] uppercase font-black text-indigo-400 tracking-wider flex items-center gap-1"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg> N° Hojas de Ruta Confirmadas</span>
+                <div class="flex flex-col gap-1 bg-indigo-50/30 p-2 rounded-lg border border-indigo-50 mt-auto w-full">
+                    <span class="text-[8px] uppercase font-black text-indigo-400 tracking-wider text-center w-full">
+                        Hojas de Ruta
+                    </span>
                     
-                    <div class="flex flex-wrap gap-2 items-center min-h-[28px]" id="hr-confirmed-${isoCurr}">
+                    <div class="flex flex-col gap-1 w-full" id="hr-confirmed-${isoCurr}">
                         ${hrMicroBadges}
                     </div>
 
-                    <div class="flex items-center gap-2 border-t border-indigo-100/60 pt-2 mt-1">
-                        <input type="text" id="hr-new-input-panel-${isoCurr}" maxlength="25" placeholder="Añadir N° (Ej: 384460/1)" class="w-full sm:w-48 text-center px-2 py-1.5 text-[11px] font-mono font-bold border border-indigo-200 rounded-md shadow-inner outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-300 transition-all text-indigo-900 bg-white" oninput="this.value = this.value.replace(/[^0-9\\/]/g, '');" onkeydown="if(event.key === 'Enter') { event.preventDefault(); agregarNuevaHojaRuta('${chofer._safeId}', '${isoCurr}', 'panel'); }">
-                        <button type="button" onclick="agregarNuevaHojaRuta('${chofer._safeId}', '${isoCurr}', 'panel')" class="px-4 py-1.5 text-[10px] font-black text-white bg-indigo-500 hover:bg-indigo-600 rounded-md transition-colors shadow-sm tracking-wider uppercase">Guardar</button>
+                    <div class="flex flex-col gap-1.5 border-t border-indigo-100/60 pt-1.5 mt-0.5 w-full">
+                        <input type="text" id="hr-new-input-panel-${isoCurr}" maxlength="25" placeholder="N° (Ej: 384460/1)" class="w-full text-center px-1.5 py-1 text-[10px] font-mono font-bold border border-indigo-200 rounded shadow-inner outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-300 transition-all text-indigo-900 bg-white" oninput="this.value = this.value.replace(/[^0-9\\/]/g, '');" onkeydown="if(event.key === 'Enter') { event.preventDefault(); agregarNuevaHojaRuta('${chofer._safeId}', '${isoCurr}', 'panel'); }">
+                        <button type="button" onclick="agregarNuevaHojaRuta('${chofer._safeId}', '${isoCurr}', 'panel')" class="w-full py-1 text-[9px] font-black text-white bg-indigo-500 hover:bg-indigo-600 rounded transition-colors shadow-sm tracking-wider uppercase">Guardar</button>
                     </div>
                 </div>
+
             </div>`;
         }
 
@@ -2064,15 +2068,15 @@ window.mostrarPanelAcciones = function(safeId, startIso, endIso) {
             <div class="mt-2 w-full animate-[fadeIn_0.3s_ease-out]">
                 <div class="bg-white/95 backdrop-blur-sm rounded-xl p-4 shadow-inner border border-indigo-200 text-gray-800">
                     
-                    <div class="flex justify-between items-center mb-3">
+                    <div class="flex flex-col sm:flex-row justify-between items-center mb-4 border-b border-gray-100 pb-3 gap-2">
                         <span class="font-black text-indigo-900 text-sm uppercase tracking-wider flex items-center gap-2">
                             <svg class="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0"></path></svg>
                             Log de Viajes
                         </span>
-                        <span class="text-[10px] font-black bg-indigo-100 text-indigo-800 px-2.5 py-1 rounded-md border border-indigo-200 shadow-sm">TOTAL: ${totalKmRango.toLocaleString('es-AR')} KM</span>
+                        <span class="text-[10px] font-black bg-indigo-100 text-indigo-800 px-2.5 py-1 rounded-md border border-indigo-200 shadow-sm w-full sm:w-auto text-center">TOTAL RANGO: ${totalKmRango.toLocaleString('es-AR')} KM</span>
                     </div>
 
-                    <div class="flex flex-col">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 w-full">
                         ${htmlDetalleViajes}
                     </div>
 
