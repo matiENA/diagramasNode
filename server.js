@@ -38,28 +38,29 @@ const doc = new GoogleSpreadsheet(ID_PLANILLA, serviceAccountAuth);
 
 let cacheDatosGlobales = { diagramas: null, tds: null, nombresMesActual: [], ultimaActualizacion: null };
 
+// 👉 Helper global: Lo sacamos afuera para que el Webhook también lo pueda usar
+const fetchSeguro = async (url, nombre) => {
+    try {
+        const r = await fetch(url);
+        const text = await r.text();
+        if (text.trim().startsWith('<')) {
+            console.error(`❌ Alerta en [${nombre}]: GAS devolvió HTML.`);
+            return null;
+        }
+        return JSON.parse(text);
+    } catch (err) {
+        console.error(`❌ Error parseando JSON en [${nombre}]:`, err.message);
+        return null;
+    }
+};
+
 // ==========================================
 // 2. EL WORKER DE NODE (MERGE HÍBRIDO)
 // ==========================================
 async function actualizarCacheDesdeGoogle() {
     try {
-        console.log("🔄 Sincronizando: Supabase (Flota) + GAS (Diagramas)...");
+        console.log("🔄 Sincronizando COMPLETO: Supabase (Flota) + GAS (Diagramas)...");
         
-        const fetchSeguro = async (url, nombre) => {
-            try {
-                const r = await fetch(url);
-                const text = await r.text();
-                if (text.trim().startsWith('<')) {
-                    console.error(`❌ Alerta en [${nombre}]: GAS devolvió HTML.`);
-                    return null;
-                }
-                return JSON.parse(text);
-            } catch (err) {
-                console.error(`❌ Error parseando JSON en [${nombre}]:`, err.message);
-                return null;
-            }
-        };
-
         // 1. Descargamos Todo desde GAS (Aquí viene el calendario de días)
         const [resDiagGAS, resNombresMes, resViajesDirecto, resTDs] = await Promise.all([
             fetchSeguro(`${GAS_URL}?action=obtenerDiagramasCacheados`, 'Diagramas Legacy'),
@@ -69,18 +70,16 @@ async function actualizarCacheDesdeGoogle() {
         ]);
 
         // 2. Consultamos Supabase (NUESTRA FUENTE DE VERDAD PARA FLOTA Y PERSONAL)
-        // Pedimos los choferes y hacemos JOIN automático con su unidad
         const { data: choferes, error: errSupabase } = await supabase
             .from('choferes')
             .select('nombre, c_servicio, units(n_ute, tractor, semi)');
 
         if (errSupabase) console.error("⚠️ Error leyendo Supabase:", errSupabase.message);
 
-        // 3. EL GRAN MERGE (Cruzamos Supabase con los calendarios de GAS)
+        // 3. EL GRAN MERGE
         let diagramasHibridos = [];
         
         if (choferes) {
-            // A) Armamos un diccionario con los diagramas de GAS para búsqueda instantánea
             const dictDiasGAS = {};
             if (resDiagGAS && resDiagGAS.diagramas) {
                 resDiagGAS.diagramas.forEach(d => {
@@ -88,10 +87,9 @@ async function actualizarCacheDesdeGoogle() {
                 });
             }
 
-            // B) Construimos la lista final basándonos en el Padrón de Supabase
             diagramasHibridos = choferes.map(chofer => {
                 const nomNorm = chofer.nombre.trim().toLowerCase();
-                const calendario = dictDiasGAS[nomNorm] || {}; // 🌟 El calendario inyectado desde Sheets!
+                const calendario = dictDiasGAS[nomNorm] || {}; 
 
                 return {
                     _safeId: "drv_" + nomNorm.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "_"),
@@ -102,7 +100,7 @@ async function actualizarCacheDesdeGoogle() {
                     n_ute: chofer.units ? (chofer.units.n_ute || '') : '',
                     td: '-', 
                     hex1: "", hex2: "", hex_1: "#ffffff", hex_2: "#ffffff",
-                    dias: calendario // Se va directo al HTML intacto
+                    dias: calendario 
                 };
             });
         }
@@ -110,7 +108,6 @@ async function actualizarCacheDesdeGoogle() {
         // 4. Empaquetar y enviar a la memoria RAM
         let resDiag = { diagramas: diagramasHibridos };
         
-        // Conservamos documentos y demás módulos si vienen de GAS
         if (resDiagGAS && resDiagGAS.documentos) resDiag.documentos = resDiagGAS.documentos;
         if (resDiagGAS && resDiagGAS.habilitaciones) resDiag.habilitaciones = resDiagGAS.habilitaciones;
         if (resDiagGAS && resDiagGAS.certificados) resDiag.certificados = resDiagGAS.certificados;
@@ -131,17 +128,49 @@ async function actualizarCacheDesdeGoogle() {
     }
 }
 
-// Arranca el ciclo del backend por primera vez
+// Arranca el ciclo del backend por primera vez al encender el servidor
 actualizarCacheDesdeGoogle();
 
-// Polling General cada 45 segundos
-const TIEMPO_POLLING = 45000; 
-setInterval(() => {
-    actualizarCacheDesdeGoogle();
-}, TIEMPO_POLLING); 
+// ==========================================
+// 🔔 3. RECEPTOR DE WEBHOOKS (Remplaza al Polling)
+// ==========================================
+app.post('/api/webhook/google', async (req, res) => {
+    // 1. Liberamos a Google de inmediato para que el usuario en el Excel no sienta "lag"
+    res.json({ success: true, message: "Recibido" }); 
+
+    const evento = req.body.evento || 'TODO';
+    console.log(`🔔 Webhook disparado por cambio en: ${evento}`);
+
+    try {
+        // 2. ACTUALIZACIÓN GRANULAR (Solo recargamos lo que cambió)
+        if (evento === 'KM') {
+            const nuevosHR = await fetchSeguro(`${GAS_URL}?action=obtenerViajesYHRDirecto`, 'Hojas de Ruta');
+            if (cacheDatosGlobales.diagramas) {
+                cacheDatosGlobales.diagramas.nuevaSeccionViajes = nuevosHR || {};
+            }
+            cacheDatosGlobales.ultimaActualizacion = new Date().toISOString();
+            io.emit('datos_actualizados', cacheDatosGlobales);
+            console.log(`✅ Socket emitido tras webhook de KM`);
+        } 
+        else if (evento === 'TD') {
+            const nuevosTDs = await fetchSeguro(`${GAS_URL}?action=obtenerTDs`, 'TDs');
+            cacheDatosGlobales.tds = nuevosTDs || cacheDatosGlobales.tds;
+            cacheDatosGlobales.ultimaActualizacion = new Date().toISOString();
+            io.emit('datos_actualizados', cacheDatosGlobales);
+            console.log(`✅ Socket emitido tras webhook de TD`);
+        } 
+        else {
+            // Si el evento es 'DIAGRAMA' o cualquier otro, requiere el Merge completo con Supabase
+            await actualizarCacheDesdeGoogle();
+        }
+
+    } catch (error) {
+        console.error("❌ Error procesando el webhook:", error);
+    }
+});
 
 // ==========================================
-// 3. RUTAS DE LA API
+// 4. RUTAS DE LA API
 // ==========================================
 app.get('/api/datos', (req, res) => {
     if (!cacheDatosGlobales.diagramas) return res.status(503).json({ error: "Cargando DB..." });
@@ -184,13 +213,12 @@ app.post('/api/proxy', async (req, res) => {
                 body: JSON.stringify(body)
             }).catch(e => console.error("Error Sheets:", e));
 
-            // Respuesta inmediata al front para no bloquear
+            // Actualización instantánea para el cliente que guardó
             return res.json({ success: true, message: "Documentos sincronizados." });
         }
 
         // =========================================================
         // FLUJO LEGACY NORMAL (Diagramas, Hojas de Ruta, etc.)
-        // Todo lo que sea 'actualizarEstado' viajará directamente a GAS
         // =========================================================
         const respuestaGoogle = await fetch(GAS_URL, {
             method: 'POST',
@@ -199,7 +227,7 @@ app.post('/api/proxy', async (req, res) => {
         }).then(r => r.json());
 
         if (body && body.action !== 'login') {
-            actualizarCacheDesdeGoogle(); // Refresca todo tras la edición
+            actualizarCacheDesdeGoogle(); // Refresca todo tras la edición desde la web
         }
         res.json(respuestaGoogle);
 
