@@ -39,7 +39,104 @@ const doc = new GoogleSpreadsheet(ID_PLANILLA, serviceAccountAuth);
 let cacheDatosGlobales = { diagramas: null, tds: null, nombresMesActual: [], ultimaActualizacion: null };
 
 // ==========================================
-// 2. EL WORKER DE NODE (Sincronización Híbrida - Fase 0)
+// 🌟 MÓDULO: GENERADOR DE JSON DESDE SUPABASE
+// ==========================================
+const mesesAbrev = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+
+async function generarJSONParaFrontEnd() {
+    try {
+        console.log("⚡ Generando diagrama directo desde Supabase (Lectura de Movimientos)...");
+
+        const { data: choferes, error: errC } = await supabase.from('choferes').select('*');
+        const { data: unidades, error: errU } = await supabase.from('units').select('*');
+        const { data: movimientos, error: errM } = await supabase
+            .from('movimientos')
+            .select('*')
+            .order('fecha_inicio', { ascending: true }); // VITAL: Orden cronológico
+
+        if (errC || errU || errM) {
+            console.error("❌ Error consultando Supabase:", errC || errU || errM);
+            return [];
+        }
+
+        const dictUnidades = {};
+        unidades.forEach(u => dictUnidades[u.id] = u);
+
+        const diagramasList = [];
+
+        for (const chofer of choferes) {
+            const movsChofer = movimientos.filter(m => m.id_chofer === chofer.id);
+            
+            let diasFormateados = {};
+            let unidadActual = null;
+            let contadorOperativo = 1;
+
+            for (const mov of movsChofer) {
+                if (mov.id_unidad) unidadActual = dictUnidades[mov.id_unidad];
+
+                const fInicio = new Date(mov.fecha_inicio);
+                let fFin = mov.fecha_fin ? new Date(mov.fecha_fin) : new Date(); 
+                if (!mov.fecha_fin) fFin.setDate(fFin.getDate() + 30); 
+
+                let current = new Date(fInicio);
+                let estadoBase = (mov.estado_diagrama || '').toUpperCase().trim();
+                
+                if (estadoBase !== 'OPERATIVO' && estadoBase !== 'ABIERTO') {
+                    contadorOperativo = 1;
+                }
+
+                while (current <= fFin) {
+                    const mesIdx = current.getMonth();
+                    const anioStr = String(current.getFullYear()).slice(2);
+                    const diaIdx = current.getDate() - 1; 
+                    const keyMes = `${mesesAbrev[mesIdx]}-${anioStr}`; 
+
+                    if (!diasFormateados[keyMes]) {
+                        diasFormateados[keyMes] = Array(31).fill('-');
+                    }
+
+                    let textoCelda = estadoBase;
+                    if (estadoBase === 'OPERATIVO' || estadoBase === 'ABIERTO') {
+                        textoCelda = String(contadorOperativo);
+                        contadorOperativo++;
+                    }
+
+                    diasFormateados[keyMes][diaIdx] = textoCelda;
+                    current.setDate(current.getDate() + 1);
+                }
+            }
+
+            for (const key in diasFormateados) {
+                diasFormateados[key] = diasFormateados[key].join(',');
+            }
+
+            diagramasList.push({
+                _safeId: "drv_" + chofer.nombre.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "_"),
+                nom: chofer.nombre,
+                tractor: unidadActual ? unidadActual.tractor : '',
+                semi: unidadActual ? unidadActual.semi : '',
+                srv: chofer.c_servicio || '', 
+                n_ute: unidadActual ? unidadActual.n_ute : '',
+                td: '-', 
+                hex1: "",
+                hex2: "",
+                hex_1: "#ffffff",
+                hex_2: "#ffffff",
+                dias: diasFormateados
+            });
+        }
+
+        console.log(`✅ Diagrama generado con éxito. ${diagramasList.length} choferes procesados.`);
+        return diagramasList;
+
+    } catch (error) {
+        console.error("❌ Error fatal generando JSON desde Supabase:", error);
+        return [];
+    }
+}
+
+// ==========================================
+// 2. EL WORKER DE NODE (Sincronización Híbrida)
 // ==========================================
 async function actualizarCacheDesdeGoogle() {
     try {
@@ -60,12 +157,16 @@ async function actualizarCacheDesdeGoogle() {
             }
         };
 
-        const [resDiag, resNombresMes, resViajesDirecto, resTDs] = await Promise.all([
-            fetchSeguro(`${GAS_URL}?action=obtenerDiagramasCacheados`, 'Diagramas'),
+        // 👉 AQUÍ ESTÁ EL CAMBIO MAESTRO: La estructura general viene de Supabase, el resto de GAS
+        const [diagramasDesdeSupabase, resNombresMes, resViajesDirecto, resTDs] = await Promise.all([
+            generarJSONParaFrontEnd(), // 🐘 Lectura desde Supabase PostgreSQL
             fetchSeguro(`${GAS_URL}?action=obtenerNombresMesActual`, 'Mes Actual'),
             fetchSeguro(`${GAS_URL}?action=obtenerViajesYHRDirecto`, 'Lectura HR'),
             fetchSeguro(`${GAS_URL}?action=obtenerTDs`, 'TDs Legacy')
         ]);
+
+        // Envolvemos el array en el objeto que el FrontEnd espera
+        let resDiag = { diagramas: diagramasDesdeSupabase || [] };
 
         if (resDiag) {
             if (resViajesDirecto) {
@@ -105,7 +206,7 @@ app.get('/api/datos', (req, res) => {
     res.json({ success: true, diagramas: cacheDatosGlobales.diagramas, tds: cacheDatosGlobales.tds, timestamp: cacheDatosGlobales.ultimaActualizacion });
 });
 
-// 👉 EL INTERCEPTOR: Aquí atrapamos las peticiones antes de que vayan a GAS
+// 👉 EL INTERCEPTOR
 app.post('/api/proxy', async (req, res) => {
     try {
         const body = req.body;
@@ -115,11 +216,10 @@ app.post('/api/proxy', async (req, res) => {
             console.log(`Interceptando guardado de documentos para: ${body.nombre}`);
             const { nombre, exVen, licVen, certVen } = body;
             
-            // 1. TRADUCCIÓN: Buscar ID del chofer en Supabase
             const { data: choferData, error: errChofer } = await supabase
                 .from('choferes')
                 .select('id')
-                .ilike('nombre', nombre) // ilike hace una búsqueda case-insensitive
+                .ilike('nombre', nombre)
                 .single();
 
             if (errChofer || !choferData) {
@@ -127,7 +227,6 @@ app.post('/api/proxy', async (req, res) => {
             } else {
                 const choferId = choferData.id;
 
-                // 2. ESCRITURA EN SUPABASE (Modo Relacional)
                 const { error: dbError } = await supabase
                     .from('documentos_choferes')
                     .upsert({ 
@@ -136,20 +235,18 @@ app.post('/api/proxy', async (req, res) => {
                         venc_licencia: licVen || null, 
                         venc_cert_mp: certVen || null,
                         actualizado_en: new Date()
-                    }, { onConflict: 'chofer_id' }); // IMPORTANTE: Define el conflicto para que actualice y no duplique
+                    }, { onConflict: 'chofer_id' });
                 
                 if (dbError) console.error("❌ Error escribiendo en Supabase:", dbError.message);
                 else console.log(`✅ Supabase actualizado para ID: ${choferId}`);
             }
 
-            // 3. MANDAR A GAS DE FONDO (Para que el Sheet se mantenga actualizado)
             fetch(GAS_URL, {
                 method: 'POST',
                 headers: { "Content-Type": "text/plain;charset=utf-8" },
                 body: JSON.stringify(body)
             }).then(r => r.json()).catch(e => console.error("Error Sheets:", e));
 
-            // 4. ACTUALIZAR LA RAM DE NODE.JS AL INSTANTE
             const nLimpio = String(nombre).trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
             
             if (cacheDatosGlobales.diagramas) {
@@ -161,16 +258,15 @@ app.post('/api/proxy', async (req, res) => {
                 cacheDatosGlobales.diagramas.habilitaciones[nLimpio] = { ven: licVen };
                 cacheDatosGlobales.diagramas.certificados[nLimpio] = { ven: certVen };
                 
-                // 5. AVISAR A TODAS LAS PANTALLAS (Cero latencia para el usuario)
                 io.emit('datos_actualizados', cacheDatosGlobales);
             }
 
-            // Respondemos rápido al usuario, sin esperar a que GAS termine
             return res.json({ success: true, message: "Sincronizado correctamente." });
         }
 
         // =========================================================
-        // FLUJO LEGACY NORMAL (Si no es 'guardarDocumentos', va a GAS normal)
+        // FLUJO LEGACY NORMAL (Ej: guardar estados UI, hojas de ruta)
+        // Todo lo demás sigue fluyendo hacia GAS sin problemas.
         // =========================================================
         const respuestaGoogle = await fetch(GAS_URL, {
             method: 'POST',
