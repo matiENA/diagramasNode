@@ -30,7 +30,7 @@ const serviceAccountAuth = new JWT({
 });
 
 // Reemplaza esto por el ID real de tu planilla (lo sacas de la URL de Sheets)
-const ID_PLANILLA = process.env.SPREADSHEET_ID || 'TU_ID_DE_PLANILLA_AQUI'; 
+const ID_PLANILLA = process.env.SPREADSHEET_ID || 'T1eQ9Y5diL5fwxYTxvseNgZJFbX-lSUQ13axbp3cLiqPc'; 
 const doc = new GoogleSpreadsheet(ID_PLANILLA, serviceAccountAuth);
 
 let cacheDatosGlobales = { diagramas: null, tds: null, nombresMesActual: [], ultimaActualizacion: null };
