@@ -1,9 +1,10 @@
-const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
 const { createClient } = require('@supabase/supabase-js');
 
+// 1. Inicializamos Base de Datos
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
+// 2. Inicializamos Credenciales Puras de Google
 const serviceAccountAuth = new JWT({
     email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
     key: process.env.GOOGLE_PRIVATE_KEY ? process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n') : '',
@@ -11,87 +12,66 @@ const serviceAccountAuth = new JWT({
 });
 
 const ID_PLANILLA = process.env.SPREADSHEET_ID || '1eQ9Y5diL5fwxYTxvseNgZJFbX-lSUQ13axbp3cLiqPc';
-const doc = new GoogleSpreadsheet(ID_PLANILLA, serviceAccountAuth);
-
 const normalizar = (n) => String(n || '').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
+
+// =========================================================
+// 🌟 FUNCIÓN LOW-MEMORY: Bypassea la librería pesada
+// Obtiene solo texto plano directo de la API de Google
+// =========================================================
+async function leerRangoLiviano(rango) {
+    try {
+        const tokenResponse = await serviceAccountAuth.getAccessToken();
+        const token = tokenResponse.token;
+        
+        const url = `https://sheets.googleapis.com/v4/spreadsheets/${ID_PLANILLA}/values/${rango}`;
+        const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+        const json = await res.json();
+        
+        if (json.error) throw new Error(json.error.message);
+        return json.values || []; // Retorna un array simple, sin metadata pesada
+    } catch (error) {
+        console.error(`Error de red al leer ${rango}:`, error.message);
+        return [];
+    }
+}
 
 async function sincronizarViajesASupabase() {
     try {
-        console.log("⏳ [Worker Viajes] Leyendo cachés de Google Sheets...");
-        await doc.loadInfo();
+        console.log("⏳ [Worker Viajes] Descargando histórico (Modo Low-Memory activado)...");
         
-        // 1. Obtener Choferes de Supabase para mapear nombres a UUIDs
+        // 1. Obtener Padrón de Choferes
         const { data: choferesDB, error: errC } = await supabase.from('choferes').select('id, nombre');
         if (errC) throw errC;
         
         const mapaChoferes = {};
-        choferesDB.forEach(c => {
-            mapaChoferes[normalizar(c.nombre)] = c.id;
-        });
+        choferesDB.forEach(c => { mapaChoferes[normalizar(c.nombre)] = c.id; });
 
-        // ==============================================================
-        // 2. Leer Hoja de Ruta Detallada (Fila 12 de API_CACHE_BASICO)
-        // ==============================================================
-        const cacheSheet = doc.sheetsByTitle['API_CACHE_BASICO'];
+        // 2. Extraer Hojas de Ruta Detalladas (Celdas crudas)
         let viajesDetalleObj = {};
-        if (cacheSheet) {
-            // Sintaxis Node.js: Cargamos desde la celda A12 hasta la ZZ12 por las dudas
-            await cacheSheet.loadCells('A12:ZZ12'); 
-            let maxCol = cacheSheet.columnCount; 
-            let fila12Raw = [];
-            
-            for (let c = 0; c < maxCol; c++) {
-                try {
-                    let val = cacheSheet.getCell(11, c).value; // Índice 11 equivale a la Fila 12 (empieza en 0)
-                    if (val) fila12Raw.push(String(val).replace(/^'/, ""));
-                } catch (e) {
-                    break; // Rompe si llega al final de las celdas cargadas
-                }
-            }
-            
-            let jsonHR = fila12Raw.join("");
-            if (jsonHR) {
-                try { viajesDetalleObj = JSON.parse(jsonHR); } catch(e) { console.error("Error parseando fila 12:", e.message); }
-            }
+        const fila12Data = await leerRangoLiviano('API_CACHE_BASICO!A12:ZZ12');
+        if (fila12Data.length > 0) {
+            const chunksFila12 = fila12Data[0].map(val => String(val).replace(/^'/, ""));
+            const jsonHR = chunksFila12.join("");
+            if (jsonHR) viajesDetalleObj = JSON.parse(jsonHR);
         }
 
-        // ==============================================================
-        // 3. Leer Kilómetros (Pestaña api_km vertical)
-        // ==============================================================
-        const kmSheet = doc.sheetsByTitle['api_km'];
+        // 3. Extraer KMs históricos (Celdas crudas)
         let mapaKms = {};
-        if (kmSheet) {
-            // Sintaxis Node.js: Cargamos la primera columna (A) de arriba a abajo.
-            // Usamos loadCells porque api_km NO tiene encabezados y getRows() se saltaría el primer chunk.
-            await kmSheet.loadCells('A1:A500');
-            let maxRow = kmSheet.rowCount;
-            let filaKmRaw = [];
-            
-            for (let r = 0; r < maxRow; r++) {
-                try {
-                    let val = kmSheet.getCell(r, 0).value; // Columna 0 = Columna A
-                    if (val) filaKmRaw.push(String(val).replace(/^'/, ""));
-                } catch(e) {
-                    break; 
-                }
-            }
-            
-            let kmStr = filaKmRaw.join("");
-            if (kmStr) {
-                try { mapaKms = JSON.parse(kmStr); } catch(e) { console.error("Error parseando api_km:", e.message); }
-            }
+        const kmData = await leerRangoLiviano('api_km!A:A');
+        if (kmData.length > 0) {
+            // Filtramos las celdas vacías y armamos el string
+            const chunksKm = kmData.map(row => String(row[0] || '').replace(/^'/, ""));
+            const kmStr = chunksKm.join("");
+            if (kmStr) mapaKms = JSON.parse(kmStr);
         }
 
-        // ==============================================================
-        // 4. UNIFICAR ESTRUCTURAS EN UN DICCIONARIO INTERMEDIO
-        // ==============================================================
+        // 4. Merge en Memoria RAM Estricta
         const dbRows = {};
 
-        // A) Procesar primero los viajes detallados (Fila 12)
+        // A) Procesar Detalles
         for (let choferNorm in viajesDetalleObj) {
             const choferId = mapaChoferes[normalizar(choferNorm)];
             if (!choferId) continue;
-
             if (!dbRows[choferId]) dbRows[choferId] = {};
 
             for (let fechaIso in viajesDetalleObj[choferNorm]) {
@@ -110,18 +90,16 @@ async function sincronizarViajesASupabase() {
             }
         }
 
-        // B) Inyectar los Kilómetros de la pestaña api_km
+        // B) Inyectar Kilómetros
         for (let choferRaw in mapaKms) {
             const choferId = mapaChoferes[normalizar(choferRaw)];
             if (!choferId) continue;
-
             if (!dbRows[choferId]) dbRows[choferId] = {};
 
             mapaKms[choferRaw].forEach(reg => {
                 let partes = reg.fechaCorta.split('/');
                 if (partes.length === 3) {
                     let fechaIso = `20${partes[2]}-${partes[1].padStart(2, '0')}-${partes[0].padStart(2, '0')}`;
-                    
                     if (!dbRows[choferId][fechaIso]) {
                         dbRows[choferId][fechaIso] = {
                             chofer_id: choferId,
@@ -137,9 +115,7 @@ async function sincronizarViajesASupabase() {
             });
         }
 
-        // ==============================================================
-        // 5. VOLCAR TODO A SUPABASE (UPSERT MASIVO)
-        // ==============================================================
+        // 5. Preparar Arrays y Forzar limpieza de RAM (Garbage Collection)
         const rowsParaInsertar = [];
         for (let chId in dbRows) {
             for (let fIso in dbRows[chId]) {
@@ -147,23 +123,33 @@ async function sincronizarViajesASupabase() {
             }
         }
 
+        // 👉 MAGIA DE RAM: Vaciamos las variables gigantes para que Node respire antes de subir los datos
+        viajesDetalleObj = null;
+        mapaKms = null;
+
         if (rowsParaInsertar.length === 0) return console.log("⏳ [Worker Viajes] No hay datos válidos para insertar.");
 
-        console.log(`⏳ Volcando ${rowsParaInsertar.length} registros diarios a Supabase...`);
+        console.log(`🚀 Volcando ${rowsParaInsertar.length} registros a Supabase (En bloques rápidos de 150)...`);
         
-        for (let i = 0; i < rowsParaInsertar.length; i += 200) {
-            const chunk = rowsParaInsertar.slice(i, i + 200);
+        // 6. Volcado a Supabase (En fragmentos de 150 para no estresar la base de datos)
+        let insertadosOk = 0;
+        for (let i = 0; i < rowsParaInsertar.length; i += 150) {
+            const chunk = rowsParaInsertar.slice(i, i + 150);
             const { error: errUpsert } = await supabase
                 .from('registros_viajes_km')
                 .upsert(chunk, { onConflict: 'chofer_id,fecha' });
 
-            if (errUpsert) console.error("❌ Error en Upsert parcial de Viajes:", errUpsert.message);
+            if (errUpsert) {
+                console.error("❌ Error en Upsert parcial:", errUpsert.message);
+            } else {
+                insertadosOk += chunk.length;
+            }
         }
 
-        console.log("✅ [Worker Viajes] Sincronización e Inyección SQL completada.");
+        console.log(`✅ [Worker Viajes] Migración Completa: ${insertadosOk} registros históricos sincronizados al 100%.`);
 
     } catch (error) {
-        console.error("❌ Error en sincronizador de Viajes:", error.message);
+        console.error("❌ Error CRÍTICO en sincronizador de Viajes:", error.message);
     }
 }
 
