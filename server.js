@@ -60,6 +60,27 @@ const fetchSeguro = async (url, nombre) => {
 // 2. EL WORKER DE NODE (MERGE HÍBRIDO)
 // ==========================================
 async function actualizarCacheDesdeGoogle() {
+
+    // ... (Tus imports actuales en server.js) ...
+const { sincronizarTractoresContinuo } = require('./sincronizadorFlota'); // 👉 Importamos el nuevo worker
+
+// ... (Resto de tu código server.js) ...
+
+// ==========================================
+// 🚀 WORKER PERMANENTE DE FLOTA (Cada 5 minutos)
+// ==========================================
+const TIEMPO_SYNC_FLOTA = 5 * 60 * 1000; // 5 minutos en milisegundos
+
+// Ejecutar la primera vez al arrancar el servidor
+setTimeout(() => {
+    sincronizarTractoresContinuo();
+}, 10000); // Le damos 10 segundos de gracia al servidor antes de hacer la primera lectura
+
+// Dejarlo en bucle por tiempo indeterminado
+setInterval(() => {
+    sincronizarTractoresContinuo();
+}, TIEMPO_SYNC_FLOTA);
+
     try {
         console.log("🔄 Sincronizando COMPLETO: Supabase (Flota) + GAS (Diagramas)...");
         
