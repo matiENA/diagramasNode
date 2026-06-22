@@ -261,7 +261,7 @@ app.post('/api/webhook/supabase', async (req, res) => {
     // 1. Validar seguridad (Opcional pero recomendado)
     // Para asegurarnos de que el mensaje viene realmente de tu Supabase
     const authHeader = req.headers['authorization'];
-    if (authHeader !== `Bearer ${process.env.SUPABASE_WEBHOOK_SECRET || 'MiClaveSecreta123'}`) {
+    if (authHeader !== `Bearer ${process.env.SUPABASE_WEBHOOK_SECRET || 'Mayo2026'}`) {
         return res.status(403).json({ error: "No autorizado" });
     }
 
