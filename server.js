@@ -253,3 +253,39 @@ app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.ht
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Servidor Híbrido corriendo en puerto ${PORT}`));
+
+// ==========================================
+// 🐘 4. RECEPTOR DE WEBHOOKS (Desde Supabase)
+// ==========================================
+app.post('/api/webhook/supabase', async (req, res) => {
+    // 1. Validar seguridad (Opcional pero recomendado)
+    // Para asegurarnos de que el mensaje viene realmente de tu Supabase
+    const authHeader = req.headers['authorization'];
+    if (authHeader !== `Bearer ${process.env.SUPABASE_WEBHOOK_SECRET || 'MiClaveSecreta123'}`) {
+        return res.status(403).json({ error: "No autorizado" });
+    }
+
+    // 2. Liberamos a Supabase de inmediato
+    res.json({ success: true, message: "Recibido por Node" }); 
+
+    const payload = req.body;
+    /* Payload típico de Supabase:
+       { type: 'UPDATE', table: 'choferes', record: {...}, old_record: {...} }
+    */
+    console.log(`🐘 Webhook Supabase: Cambio en tabla [${payload.table}] | Acción: ${payload.type}`);
+
+    try {
+        // 3. Dependiendo de qué tabla cambió, decidimos qué actualizar
+        const tablasMonitoreadas = ['choferes', 'units', 'documentos_choferes', 'movimientos', 'estados_diarios'];
+        
+        if (tablasMonitoreadas.includes(payload.table)) {
+            // Si cambia la estructura de la flota o sus documentos, 
+            // disparamos el Gran Merge Híbrido para refrescar todo.
+            console.log("🔄 Recargando datos desde Supabase...");
+            await actualizarCacheDesdeGoogle();
+        }
+
+    } catch (error) {
+        console.error("❌ Error procesando webhook de Supabase:", error);
+    }
+});
