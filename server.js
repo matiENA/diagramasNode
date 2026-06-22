@@ -9,6 +9,10 @@ const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
 const { createClient } = require('@supabase/supabase-js');
 
+// 👉 Importamos los dos workers (Flota y Viajes)
+const { sincronizarTractoresContinuo } = require('./sincronizadorFlota'); 
+const { sincronizarViajesASupabase } = require('./sincronizadorViajes'); 
+
 const app = express();
 const server = http.createServer(app); 
 const io = new Server(server, { cors: { origin: "*" } });
@@ -18,17 +22,14 @@ app.use(express.json({ type: ['application/json', 'text/plain'] }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ==========================================
-// 1. CONFIGURACIÓN DE CONEXIONES (Vía Variables de Entorno)
+// 1. CONFIGURACIÓN DE CONEXIONES 
 // ==========================================
-// 🔗 Google Apps Script
 const GAS_URL = process.env.GAS_URL;
 
-// 🐘 Supabase
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// 📊 Google Sheets Directo
 const serviceAccountAuth = new JWT({
     email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
     key: process.env.GOOGLE_PRIVATE_KEY ? process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n') : '',
@@ -37,16 +38,14 @@ const serviceAccountAuth = new JWT({
 const ID_PLANILLA = process.env.SPREADSHEET_ID; 
 const doc = new GoogleSpreadsheet(ID_PLANILLA, serviceAccountAuth);
 
-// 💾 Memoria RAM del Servidor
 let cacheDatosGlobales = { diagramas: null, tds: null, nombresMesActual: [], ultimaActualizacion: null };
 
-// 👉 Helper Global Seguro
 const fetchSeguro = async (url, nombre) => {
     try {
         const r = await fetch(url);
         const text = await r.text();
         if (text.trim().startsWith('<')) {
-            console.error(`❌ Alerta en [${nombre}]: GAS devolvió HTML (Posible timeout o error en Google).`);
+            console.error(`❌ Alerta en [${nombre}]: GAS devolvió HTML.`);
             return null;
         }
         return JSON.parse(text);
@@ -57,49 +56,77 @@ const fetchSeguro = async (url, nombre) => {
 };
 
 // ==========================================
-// 2. EL WORKER DE NODE (MERGE HÍBRIDO)
+// 🚀 WORKERS PERMANENTES (Cada 5 minutos)
 // ==========================================
-async function actualizarCacheDesdeGoogle() {
-
-    // ... (Tus imports actuales en server.js) ...
-const { sincronizarTractoresContinuo } = require('./sincronizadorFlota'); // 👉 Importamos el nuevo worker
-
-// ... (Resto de tu código server.js) ...
-
-// ==========================================
-// 🚀 WORKER PERMANENTE DE FLOTA (Cada 5 minutos)
-// ==========================================
-const TIEMPO_SYNC_FLOTA = 5 * 60 * 1000; // 5 minutos en milisegundos
+const TIEMPO_SYNC = 5 * 60 * 1000; 
 
 // Ejecutar la primera vez al arrancar el servidor
 setTimeout(() => {
     sincronizarTractoresContinuo();
-}, 10000); // Le damos 10 segundos de gracia al servidor antes de hacer la primera lectura
+    sincronizarViajesASupabase();
+}, 10000); 
 
 // Dejarlo en bucle por tiempo indeterminado
 setInterval(() => {
     sincronizarTractoresContinuo();
-}, TIEMPO_SYNC_FLOTA);
+    sincronizarViajesASupabase();
+}, TIEMPO_SYNC);
 
+
+// ==========================================
+// 2. EL WORKER DE NODE (MERGE HÍBRIDO + SQL)
+// ==========================================
+async function actualizarCacheDesdeGoogle() {
     try {
-        console.log("🔄 Sincronizando COMPLETO: Supabase (Flota) + GAS (Diagramas)...");
+        console.log("🔄 Sincronizando COMPLETO: Supabase (Flota + Viajes) + GAS (Diagramas)...");
         
-        // 1. Descargamos Todo desde GAS (Legacy)
-        const [resDiagGAS, resNombresMes, resViajesDirecto, resTDs] = await Promise.all([
+        // 1. Descargamos de GAS solo lo que sigue allí (Diagramas, Mes y TDs)
+        const [resDiagGAS, resNombresMes, resTDs] = await Promise.all([
             fetchSeguro(`${GAS_URL}?action=obtenerDiagramasCacheados`, 'Diagramas Legacy'),
             fetchSeguro(`${GAS_URL}?action=obtenerNombresMesActual`, 'Mes Actual'),
-            fetchSeguro(`${GAS_URL}?action=obtenerViajesYHRDirecto`, 'Lectura HR'),
             fetchSeguro(`${GAS_URL}?action=obtenerTDs`, 'TDs Legacy')
         ]);
 
-        // 2. Consultamos Supabase (NUESTRA FUENTE DE VERDAD)
+        // 2. Consultamos Supabase (Padrón de Choferes)
         const { data: choferes, error: errSupabase } = await supabase
             .from('choferes')
             .select('nombre, c_servicio, units(n_ute, tractor, semi)');
 
         if (errSupabase) console.error("⚠️ Error leyendo Supabase:", errSupabase.message);
 
-        // 3. EL GRAN MERGE
+        // 🌟 3. LEER LOS VIAJES DIRECTAMENTE DESDE SUPABASE SQL
+        const fechaLimite = new Date();
+        fechaLimite.setDate(fechaLimite.getDate() - 60); // Traemos los últimos 60 días
+        const fechaLimiteStr = fechaLimite.toISOString().split('T')[0];
+
+        const { data: registrosViajesSQL, error: errV } = await supabase
+            .from('registros_viajes_km')
+            .select('*, choferes(nombre)')
+            .gte('fecha', fechaLimiteStr);
+
+        let nuevaSeccionViajes = {};
+        const normalizar = (n) => String(n || '').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
+
+        if (!errV && registrosViajesSQL) {
+            registrosViajesSQL.forEach(row => {
+                if (!row.choferes) return;
+                const choferNorm = normalizar(row.choferes.nombre);
+                
+                if (!nuevaSeccionViajes[choferNorm]) nuevaSeccionViajes[choferNorm] = {};
+                
+                // Armamos el objeto exacto que el Frontend ya sabe leer
+                nuevaSeccionViajes[choferNorm][row.fecha] = {
+                    dominio: row.dominio || '',
+                    liviano: Number(row.liviano || 0),
+                    euro: Number(row.euro || 0),
+                    campo: Number(row.campo || 0),
+                    infiniaD: Number(row.infinia_d || 0),
+                    hoja_ruta: row.hoja_ruta || []
+                };
+            });
+        }
+
+        // 4. EL GRAN MERGE
         let diagramasHibridos = [];
         
         if (choferes) {
@@ -128,15 +155,15 @@ setInterval(() => {
             });
         }
 
-        // 4. Empaquetar y enviar a la memoria RAM
+        // 5. Empaquetar y enviar a la memoria RAM
         let resDiag = { diagramas: diagramasHibridos };
         
         if (resDiagGAS && resDiagGAS.documentos) resDiag.documentos = resDiagGAS.documentos;
         if (resDiagGAS && resDiagGAS.habilitaciones) resDiag.habilitaciones = resDiagGAS.habilitaciones;
         if (resDiagGAS && resDiagGAS.certificados) resDiag.certificados = resDiagGAS.certificados;
         
-        if (resViajesDirecto) resDiag.nuevaSeccionViajes = resViajesDirecto; 
-        else resDiag.nuevaSeccionViajes = {}; 
+        // 🌟 Inyectamos los viajes extraídos de SQL
+        resDiag.nuevaSeccionViajes = nuevaSeccionViajes; 
 
         cacheDatosGlobales.diagramas = resDiag;
         cacheDatosGlobales.tds = resTDs || { campo: {}, infinia: {}, liviano: {}, euro: {}, estados: {}, codigosExtra: {} };
@@ -151,29 +178,27 @@ setInterval(() => {
     }
 }
 
-// Arranca el ciclo del backend por primera vez al encender el servidor
+// Arranca el ciclo del backend
 actualizarCacheDesdeGoogle();
 
 // ==========================================
-// 🔔 3. RECEPTOR DE WEBHOOKS (Actualización por Eventos)
+// 🔔 3. RECEPTOR DE WEBHOOKS
 // ==========================================
 app.post('/api/webhook/google', async (req, res) => {
-    // 1. Liberamos a Google de inmediato para evitar lag en el Excel
+    // Liberamos a Google de inmediato
     res.json({ success: true, message: "Recibido" }); 
 
     const evento = req.body.evento || 'TODO';
     console.log(`🔔 Webhook disparado por cambio en: ${evento}`);
 
     try {
-        // 2. ACTUALIZACIÓN GRANULAR (Ahorra memoria y procesador)
         if (evento === 'KM') {
-            const nuevosHR = await fetchSeguro(`${GAS_URL}?action=obtenerViajesYHRDirecto`, 'Hojas de Ruta');
-            if (cacheDatosGlobales.diagramas) {
-                cacheDatosGlobales.diagramas.nuevaSeccionViajes = nuevosHR || {};
-            }
-            cacheDatosGlobales.ultimaActualizacion = new Date().toISOString();
-            io.emit('datos_actualizados', cacheDatosGlobales);
-            console.log(`✅ Socket emitido tras webhook de KM`);
+            console.log("🚚 Nuevo KM detectado. Procesando hacia Supabase SQL...");
+            // Extraemos de la Planilla y lo metemos a SQL primero
+            await sincronizarViajesASupabase();
+            // Luego actualizamos el servidor completo (que ahora lee de SQL)
+            await actualizarCacheDesdeGoogle(); 
+            console.log(`✅ Socket emitido tras webhook de KM (Vía Supabase)`);
         } 
         else if (evento === 'TD') {
             const nuevosTDs = await fetchSeguro(`${GAS_URL}?action=obtenerTDs`, 'TDs');
@@ -183,17 +208,45 @@ app.post('/api/webhook/google', async (req, res) => {
             console.log(`✅ Socket emitido tras webhook de TD`);
         } 
         else {
-            // Eventos mayores (DIAGRAMA) disparan el Merge Completo
+            // Eventos mayores (DIAGRAMA)
             await actualizarCacheDesdeGoogle();
         }
-
     } catch (error) {
         console.error("❌ Error procesando el webhook:", error);
     }
 });
 
 // ==========================================
-// 4. RUTAS DE LA API (Endpoints del Front-End)
+// 🐘 4. RECEPTOR DE WEBHOOKS (Desde Supabase)
+// ==========================================
+app.post('/api/webhook/supabase', async (req, res) => {
+    const authHeader = req.headers['authorization'];
+    if (authHeader !== `Bearer ${process.env.SUPABASE_WEBHOOK_SECRET || 'Mayo2026'}`) {
+        return res.status(403).json({ error: "No autorizado" });
+    }
+
+    res.json({ success: true, message: "Recibido por Node" }); 
+
+    const payload = req.body;
+    console.log(`🐘 Webhook Supabase: Cambio en tabla [${payload.table}] | Acción: ${payload.type}`);
+
+    try {
+        // 👉 AÑADIDA la tabla 'registros_viajes_km'
+        const tablasMonitoreadas = ['choferes', 'units', 'documentos_choferes', 'movimientos', 'estados_diarios', 'registros_viajes_km'];
+        
+        if (tablasMonitoreadas.includes(payload.table)) {
+            console.log("🔄 Recargando datos desde Supabase...");
+            await actualizarCacheDesdeGoogle();
+        }
+
+    } catch (error) {
+        console.error("❌ Error procesando webhook de Supabase:", error);
+    }
+});
+
+
+// ==========================================
+// 5. RUTAS DE LA API (Endpoints del Front-End)
 // ==========================================
 app.get('/api/datos', (req, res) => {
     if (!cacheDatosGlobales.diagramas) return res.status(503).json({ error: "Cargando DB..." });
@@ -205,9 +258,7 @@ app.post('/api/proxy', async (req, res) => {
     try {
         const body = req.body;
 
-        // 🌟 MÓDULO MIGRADO: DOCUMENTOS
         if (body && body.action === 'guardarDocumentos') {
-            console.log(`Interceptando guardado de documentos para: ${body.nombre}`);
             const { nombre, exVen, licVen, certVen } = body;
             
             const { data: choferData, error: errChofer } = await supabase
@@ -229,7 +280,6 @@ app.post('/api/proxy', async (req, res) => {
                     }, { onConflict: 'chofer_id' });
             }
 
-            // Enviamos a GAS de fondo como Legacy
             fetch(GAS_URL, {
                 method: 'POST',
                 headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -239,16 +289,12 @@ app.post('/api/proxy', async (req, res) => {
             return res.json({ success: true, message: "Documentos sincronizados." });
         }
 
-        // =========================================================
-        // FLUJO LEGACY NORMAL (Hojas de Ruta, Estados, Login)
-        // =========================================================
         const respuestaGoogle = await fetch(GAS_URL, {
             method: 'POST',
             headers: { "Content-Type": "text/plain;charset=utf-8" },
             body: JSON.stringify(body)
         }).then(r => r.json());
 
-        // Si se modificó algo, recargamos (Refresco post-interacción)
         if (body && body.action !== 'login') {
             actualizarCacheDesdeGoogle(); 
         }
@@ -260,7 +306,7 @@ app.post('/api/proxy', async (req, res) => {
     }
 });
 
-// Maestro Legacy (Por si se usa como debug)
+// Maestro Legacy 
 app.get('/api/maestro-choferes', (req, res) => {
     if (!cacheDatosGlobales.diagramas || !cacheDatosGlobales.diagramas.diagramas) {
         return res.status(503).send("Cargando DB...");
@@ -273,40 +319,4 @@ app.get('/api/maestro-choferes', (req, res) => {
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Servidor Híbrido corriendo en puerto ${PORT}`));
-
-// ==========================================
-// 🐘 4. RECEPTOR DE WEBHOOKS (Desde Supabase)
-// ==========================================
-app.post('/api/webhook/supabase', async (req, res) => {
-    // 1. Validar seguridad (Opcional pero recomendado)
-    // Para asegurarnos de que el mensaje viene realmente de tu Supabase
-    const authHeader = req.headers['authorization'];
-    if (authHeader !== `Bearer ${process.env.SUPABASE_WEBHOOK_SECRET || 'Mayo2026'}`) {
-        return res.status(403).json({ error: "No autorizado" });
-    }
-
-    // 2. Liberamos a Supabase de inmediato
-    res.json({ success: true, message: "Recibido por Node" }); 
-
-    const payload = req.body;
-    /* Payload típico de Supabase:
-       { type: 'UPDATE', table: 'choferes', record: {...}, old_record: {...} }
-    */
-    console.log(`🐘 Webhook Supabase: Cambio en tabla [${payload.table}] | Acción: ${payload.type}`);
-
-    try {
-        // 3. Dependiendo de qué tabla cambió, decidimos qué actualizar
-        const tablasMonitoreadas = ['choferes', 'units', 'documentos_choferes', 'movimientos', 'estados_diarios'];
-        
-        if (tablasMonitoreadas.includes(payload.table)) {
-            // Si cambia la estructura de la flota o sus documentos, 
-            // disparamos el Gran Merge Híbrido para refrescar todo.
-            console.log("🔄 Recargando datos desde Supabase...");
-            await actualizarCacheDesdeGoogle();
-        }
-
-    } catch (error) {
-        console.error("❌ Error procesando webhook de Supabase:", error);
-    }
-});
+server.listen(PORT, () => console.log(`Servidor Híbrido (Fast Webhooks) corriendo en puerto ${PORT}`));
