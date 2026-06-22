@@ -588,25 +588,28 @@ window.mapearVencimientos = function(patente, jsonVencimientos) {
     };
 
     window.obtenerKmDia = function(nomChofer, isoDate) {
-        let nLimpio = String(nomChofer || "").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
-        
-        // Ruta 1 (Segura): Lee de api_km.csv
-        let h = kmsGlobales[nLimpio] || [];
-        let kmTotal = 0;
-        if (Array.isArray(h) && h.length > 0) {
-            let d = new Date(isoDate + "T12:00:00");
-            let datePart = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getFullYear()).slice(-2)}`; 
-            h.forEach(k => { if (k.fechaCorta === datePart) kmTotal += parseFloat(k.km) || 0; });
-        }
+    let nLimpio = String(nomChofer || "").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
+    let kmTotal = 0;
 
-        // Ruta 2 (Fallback): Si no encontró nada en api_km, usa la nueva extracción
-        if (kmTotal === 0) {
-            let det = window.obtenerDetalleViajeDia(nomChofer, isoDate);
-            if (det) kmTotal = (parseFloat(det.campo) + parseFloat(det.liviano) + parseFloat(det.euro) + parseFloat(det.infiniaD));
-        }
+    // Ahora TODO (histórico y detallado) viene unificado en el mismo objeto
+    let det = window.obtenerDetalleViajeDia(nomChofer, isoDate);
 
-        return parseFloat(kmTotal.toFixed(2));
-    };
+    if (det) {
+        // 1. Calculamos la suma de los volúmenes (Viajes Nuevos)
+        let kmVolumenes = (parseFloat(det.campo) || 0) + 
+                          (parseFloat(det.liviano) || 0) + 
+                          (parseFloat(det.euro) || 0) + 
+                          (parseFloat(det.infiniaD) || 0);
+
+        // 2. Extraemos el KM histórico puro (Viajes Viejos)
+        let kmHistorico = parseFloat(det.km) || 0;
+
+        // 3. Tomamos el valor real (Los registros viejos solo tienen 'kmHistorico', los nuevos 'kmVolumenes')
+        kmTotal = kmVolumenes > 0 ? kmVolumenes : kmHistorico;
+    }
+
+    return parseFloat(kmTotal.toFixed(2));
+};
 
 
     function getSrvTheme(srvName) {
@@ -2103,27 +2106,19 @@ window.agregarNuevaHojaRuta = function(safeId, isoStr, contexto) {
 
     let nLimpio = String(chofer.nom).trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
     
-    // 1. Inyectamos en memoria local (Caché del navegador)
+    // Inyectamos en memoria local (Agregando km:0 por defecto)
     if (!viajesDetalleGlobal[nLimpio]) viajesDetalleGlobal[nLimpio] = {};
-    if (!viajesDetalleGlobal[nLimpio][isoStr]) viajesDetalleGlobal[nLimpio][isoStr] = { campo:0, liviano:0, euro:0, infiniaD:0, hoja_ruta: [] };
+    if (!viajesDetalleGlobal[nLimpio][isoStr]) viajesDetalleGlobal[nLimpio][isoStr] = { km:0, campo:0, liviano:0, euro:0, infiniaD:0, hoja_ruta: [] };
     
     let hrActuales = viajesDetalleGlobal[nLimpio][isoStr].hoja_ruta || [];
     if (!Array.isArray(hrActuales)) hrActuales = [];
 
-    // Limpiamos los vacíos y agregamos el nuevo
     hrActuales = hrActuales.filter(h => String(h).trim() !== "");
-    if (!hrActuales.includes(nuevoVal)) {
-        hrActuales.push(nuevoVal);
-    }
+    if (!hrActuales.includes(nuevoVal)) hrActuales.push(nuevoVal);
+    
     viajesDetalleGlobal[nLimpio][isoStr].hoja_ruta = hrActuales;
-
-    // 2. Limpieza de UI instantánea
     inputEl.value = '';
-
-    // 3. Renderizamos el panel activo para que el Badge aparezca sin parpadear
     ejecutarRenderLocalHR(safeId);
-
-    // 4. Disparamos a la Nube (Background)
     enviarHRBackend(chofer, isoStr, hrActuales);
 };
 
