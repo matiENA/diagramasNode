@@ -4,6 +4,8 @@ supabase> actualizar choferes con uuid tractor
 
 
 sb movimientos
-id
-km
-docs sb
+id 1Wr-_P4mDvldif_cAx08sp7yT8uTUrajI2HQAJF6tnGM 
+datos: km 
+tab  api_km json array vertical
+hoja de ruta
+tab  API_CACHE_BASICO row 12

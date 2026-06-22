@@ -29,36 +29,62 @@ async function sincronizarViajesASupabase() {
             mapaChoferes[normalizar(c.nombre)] = c.id;
         });
 
+        // ==============================================================
         // 2. Leer Hoja de Ruta Detallada (Fila 12 de API_CACHE_BASICO)
+        // ==============================================================
         const cacheSheet = doc.sheetsByTitle['API_CACHE_BASICO'];
         let viajesDetalleObj = {};
         if (cacheSheet) {
-            await cacheSheet.loadCells('A12:Z12');
-            let maxCol = cacheSheet.getLastColumn() || 1;
+            // Sintaxis Node.js: Cargamos desde la celda A12 hasta la ZZ12 por las dudas
+            await cacheSheet.loadCells('A12:ZZ12'); 
+            let maxCol = cacheSheet.columnCount; 
             let fila12Raw = [];
+            
             for (let c = 0; c < maxCol; c++) {
-                let val = cacheSheet.getCell(11, c).value;
-                if (val) fila12Raw.push(String(val).replace(/^'/, ""));
+                try {
+                    let val = cacheSheet.getCell(11, c).value; // Índice 11 equivale a la Fila 12 (empieza en 0)
+                    if (val) fila12Raw.push(String(val).replace(/^'/, ""));
+                } catch (e) {
+                    break; // Rompe si llega al final de las celdas cargadas
+                }
             }
+            
             let jsonHR = fila12Raw.join("");
             if (jsonHR) {
-                try { viajesDetalleObj = JSON.parse(jsonHR); } catch(e) { console.error("Error parseando fila 12"); }
+                try { viajesDetalleObj = JSON.parse(jsonHR); } catch(e) { console.error("Error parseando fila 12:", e.message); }
             }
         }
 
+        // ==============================================================
         // 3. Leer Kilómetros (Pestaña api_km vertical)
+        // ==============================================================
         const kmSheet = doc.sheetsByTitle['api_km'];
         let mapaKms = {};
         if (kmSheet) {
-            const filasKm = await kmSheet.getRows();
-            let kmStr = filasKm.map(r => r.toObject().api_km || r.get('api_km') || '').join("");
+            // Sintaxis Node.js: Cargamos la primera columna (A) de arriba a abajo.
+            // Usamos loadCells porque api_km NO tiene encabezados y getRows() se saltaría el primer chunk.
+            await kmSheet.loadCells('A1:A500');
+            let maxRow = kmSheet.rowCount;
+            let filaKmRaw = [];
+            
+            for (let r = 0; r < maxRow; r++) {
+                try {
+                    let val = kmSheet.getCell(r, 0).value; // Columna 0 = Columna A
+                    if (val) filaKmRaw.push(String(val).replace(/^'/, ""));
+                } catch(e) {
+                    break; 
+                }
+            }
+            
+            let kmStr = filaKmRaw.join("");
             if (kmStr) {
-                try { mapaKms = JSON.parse(kmStr.replace(/^'/, "")); } catch(e) { console.error("Error parseando api_km"); }
+                try { mapaKms = JSON.parse(kmStr); } catch(e) { console.error("Error parseando api_km:", e.message); }
             }
         }
 
+        // ==============================================================
         // 4. UNIFICAR ESTRUCTURAS EN UN DICCIONARIO INTERMEDIO
-        // Estructura destino: choferId -> fechaIso -> campos
+        // ==============================================================
         const dbRows = {};
 
         // A) Procesar primero los viajes detallados (Fila 12)
@@ -92,7 +118,6 @@ async function sincronizarViajesASupabase() {
             if (!dbRows[choferId]) dbRows[choferId] = {};
 
             mapaKms[choferRaw].forEach(reg => {
-                // Convertir "DD/MM/YY" a "20YY-MM-DD"
                 let partes = reg.fechaCorta.split('/');
                 if (partes.length === 3) {
                     let fechaIso = `20${partes[2]}-${partes[1].padStart(2, '0')}-${partes[0].padStart(2, '0')}`;
@@ -112,7 +137,9 @@ async function sincronizarViajesASupabase() {
             });
         }
 
+        // ==============================================================
         // 5. VOLCAR TODO A SUPABASE (UPSERT MASIVO)
+        // ==============================================================
         const rowsParaInsertar = [];
         for (let chId in dbRows) {
             for (let fIso in dbRows[chId]) {
@@ -120,11 +147,10 @@ async function sincronizarViajesASupabase() {
             }
         }
 
-        if (rowsParaInsertar.length === 0) return;
+        if (rowsParaInsertar.length === 0) return console.log("⏳ [Worker Viajes] No hay datos válidos para insertar.");
 
         console.log(`⏳ Volcando ${rowsParaInsertar.length} registros diarios a Supabase...`);
         
-        // Hacemos chunks de 200 filas para no saturar Postgres de un solo golpe
         for (let i = 0; i < rowsParaInsertar.length; i += 200) {
             const chunk = rowsParaInsertar.slice(i, i + 200);
             const { error: errUpsert } = await supabase
