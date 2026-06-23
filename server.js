@@ -107,18 +107,21 @@ async function actualizarCacheDesdeGoogle() {
         const mapaNombresId = {};
         
         // --- 🛡️ SISTEMA DE RESPALDO (FALLBACK A GOOGLE SHEETS) ---
-        // Si no existen en SQL, usamos lo de Google Sheets para que no haya huecos visuales.
         let docsMap = (resDiagGAS && resDiagGAS.documentos) ? { ...resDiagGAS.documentos } : {};
         let habsMap = (resDiagGAS && resDiagGAS.habilitaciones) ? { ...resDiagGAS.habilitaciones } : {};
         let certsMap = (resDiagGAS && resDiagGAS.certificados) ? { ...resDiagGAS.certificados } : {};
         let dnisMap = (resDiagGAS && resDiagGAS.dnis) ? { ...resDiagGAS.dnis } : {};
         let telefonosMap = (resDiagGAS && resDiagGAS.telefonos) ? { ...resDiagGAS.telefonos } : {};
 
-        // Rescatar TDs y Colores del viejo caché para mantener la estética
+        // 🌟 NUEVO: Rescatar TDs, Colores y DIAS VIEJOS del caché para mantener la estética y el historial
         let visualesLegacyMap = {};
+        let diasLegacyMap = {}; 
+        
         if (resDiagGAS && resDiagGAS.diagramas) {
             resDiagGAS.diagramas.forEach(d => {
-                visualesLegacyMap[normalizar(d.nom)] = { td: d.td, hex_1: d.hex_1, hex_2: d.hex_2, hex1: d.hex1, hex2: d.hex2 };
+                let nombreNorm = normalizar(d.nom);
+                visualesLegacyMap[nombreNorm] = { td: d.td, hex_1: d.hex_1, hex_2: d.hex_2, hex1: d.hex1, hex2: d.hex2 };
+                diasLegacyMap[nombreNorm] = d.dias || {}; // Guardamos el historial de días de Google
             });
         }
 
@@ -175,10 +178,12 @@ async function actualizarCacheDesdeGoogle() {
         let masDiag = true;
         let pagD = 0;
         while (masDiag) {
-            const { data: chunkD } = await supabase.from('diagramas_diarios').select('*').gte('fecha', fechaLimiteStr).range(pagD * 1000, (pagD + 1) * 1000 - 1);
+            const { data: chunkD, error: errDiag } = await supabase.from('diagramas_diarios').select('*').gte('fecha', fechaLimiteStr).range(pagD * 1000, (pagD + 1) * 1000 - 1);
+            if (errDiag) console.error("⚠️ Error SQL Diagramas:", errDiag.message);
             if (chunkD && chunkD.length > 0) { diagramasSQL.push(...chunkD); pagD++; if (chunkD.length < 1000) masDiag = false; } 
             else { masDiag = false; }
         }
+        console.log(`📥 Celdas de diagrama leídas de SQL: ${diagramasSQL.length}`);
 
         const dictDiasSQL = {};
         if (diagramasSQL.length > 0) {
@@ -225,6 +230,10 @@ async function actualizarCacheDesdeGoogle() {
                 // Inyectamos las visuales legacy para no perder colores ni TDs
                 let vL = visualesLegacyMap[nomNorm] || {};
 
+                // 🚀 LA FUSIÓN: Combinamos el historial de Google con los datos frescos de SQL.
+                // Si ambos tienen el mismo día, SQL manda (sobreescribe a Google).
+                let diasCombinados = { ...(diasLegacyMap[nomNorm] || {}), ...(dictDiasSQL[nomNorm] || {}) };
+
                 diagramasHibridos.push({
                     _safeId: "drv_" + nomNorm.replace(/[^a-z0-9]/g, "_"), 
                     nom: nombreReal, 
@@ -234,7 +243,7 @@ async function actualizarCacheDesdeGoogle() {
                     n_ute: unUte, 
                     td: vL.td || '-', 
                     hex1: vL.hex1 || "", hex2: vL.hex2 || "", hex_1: vL.hex_1 || "#ffffff", hex_2: vL.hex_2 || "#ffffff", 
-                    dias: dictDiasSQL[nomNorm] || {} 
+                    dias: diasCombinados // 🌟 Se inyecta la mezcla perfecta
                 });
             });
         }
