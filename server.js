@@ -73,7 +73,7 @@ async function flujoEncoladoKM() {
         ejecutandoKM = false;
         if (pendienteKM) {
             pendienteKM = false;
-            flujoEncoladoKM(); // Se ejecuta el que estaba esperando
+            flujoEncoladoKM(); 
         }
     }
 }
@@ -105,7 +105,7 @@ const TIEMPO_SYNC = 5 * 60 * 1000;
 
 setTimeout(() => {
     sincronizarTractoresContinuo();
-    flujoEncoladoKM(); // La primera carga lanza todo ordenado
+    flujoEncoladoKM(); 
 }, 5000); 
 
 setInterval(() => {
@@ -127,17 +127,11 @@ async function actualizarCacheDesdeGoogle() {
             fetchSeguro(`${GAS_URL}?action=obtenerTDs`, 'TDs Legacy')
         ]);
 
-// =========================================================
-        // 2. Consultamos Supabase (Padrón de Choferes)
-        // Agregamos explícitamente el campo 'id' para hacer el cruce manual
-        // =========================================================
+        // 👉 1. TRAER CHOFERES CON SU 'ID'
         const { data: choferes, error: errSupabase } = await supabase
             .from('choferes')
             .select('id, nombre, c_servicio, units(n_ute, tractor, semi)');
 
-        if (errSupabase) console.error("⚠️ Error leyendo Supabase:", errSupabase.message);
-
-        // 👉 DICCIONARIO ANTI-FALLOS: Vinculamos ID con Nombre Normalizado
         const normalizar = (n) => String(n || '').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
         const mapaNombresId = {};
         
@@ -147,46 +141,40 @@ async function actualizarCacheDesdeGoogle() {
             });
         }
 
-        // =========================================================
-        // 🌟 3. LEER LOS VIAJES DIRECTAMENTE DESDE SUPABASE SQL
-        // =========================================================
+        // 👉 2. TRAER VIAJES PUROS (Sin Joins peligrosos, 365 días)
         const fechaLimite = new Date();
-        fechaLimite.setDate(fechaLimite.getDate() - 365); // Traemos 1 AÑO de historia para asegurar todo
+        fechaLimite.setDate(fechaLimite.getDate() - 365); 
         const fechaLimiteStr = fechaLimite.toISOString().split('T')[0];
 
-        // Ya NO hacemos el Join '.select('*, choferes(nombre)')'. 
-        // Traemos la tabla de viajes 100% pura y veloz.
-        const { data: registrosViajesSQL, error: errV } = await supabase
+        const { data: registrosViajesSQL } = await supabase
             .from('registros_viajes_km')
             .select('*')
             .gte('fecha', fechaLimiteStr);
 
-        if (errV) console.error("⚠️ Error leyendo Viajes de Supabase:", errV.message);
-
         let nuevaSeccionViajes = {};
 
+        // 👉 3. CRUCE INTELIGENTE EN MEMORIA RAM
         if (registrosViajesSQL) {
             registrosViajesSQL.forEach(row => {
-                // Cruzamos el ID del viaje con nuestro diccionario para obtener el nombre exacto
                 const choferNorm = mapaNombresId[row.chofer_id];
-                if (!choferNorm) return; // Si el viaje es de un chofer eliminado, lo ignoramos
+                if (!choferNorm) return; // Si el ID no existe en el padrón, se ignora
                 
                 if (!nuevaSeccionViajes[choferNorm]) nuevaSeccionViajes[choferNorm] = {};
                 
-                // Formateamos seguro la fecha para quitarle cualquier "T00:00:00" que traiga SQL
                 const fechaLimpia = String(row.fecha).split('T')[0];
 
                 nuevaSeccionViajes[choferNorm][fechaLimpia] = {
-                    dominio: row.dominio || '',
-                    km: Number(row.km || 0),
-                    liviano: Number(row.liviano || 0),
+                    dominio: row.dominio || '', 
+                    km: Number(row.km || 0), 
+                    liviano: Number(row.liviano || 0), 
                     euro: Number(row.euro || 0),
-                    campo: Number(row.campo || 0),
-                    infiniaD: Number(row.infinia_d || 0),
+                    campo: Number(row.campo || 0), 
+                    infiniaD: Number(row.infinia_d || 0), 
                     hoja_ruta: row.hoja_ruta || []
                 };
             });
         }
+
         let diagramasHibridos = [];
         if (choferes) {
             const dictDiasGAS = {};
@@ -211,6 +199,7 @@ async function actualizarCacheDesdeGoogle() {
         if (resDiagGAS && resDiagGAS.habilitaciones) resDiag.habilitaciones = resDiagGAS.habilitaciones;
         if (resDiagGAS && resDiagGAS.certificados) resDiag.certificados = resDiagGAS.certificados;
         
+        // Asignamos la sección ya cruzada e infalible
         resDiag.nuevaSeccionViajes = nuevaSeccionViajes; 
 
         cacheDatosGlobales.diagramas = resDiag;
@@ -234,7 +223,7 @@ app.post('/api/webhook/google', async (req, res) => {
     const evento = req.body.evento || 'TODO';
     try {
         if (evento === 'KM') {
-            flujoEncoladoKM(); // 🌟 Enviado a la cola blindada
+            flujoEncoladoKM(); 
         } 
         else if (evento === 'TD') {
             const nuevosTDs = await fetchSeguro(`${GAS_URL}?action=obtenerTDs`, 'TDs');
@@ -244,7 +233,7 @@ app.post('/api/webhook/google', async (req, res) => {
             console.log(`✅ Socket emitido tras webhook de TD`);
         } 
         else {
-            flujoEncoladoGlobal(); // 🌟 Enviado a la cola blindada
+            flujoEncoladoGlobal(); 
         }
     } catch (error) {
         console.error("❌ Error procesando el webhook:", error);
@@ -263,7 +252,7 @@ app.post('/api/webhook/supabase', async (req, res) => {
     try {
         const tablasMonitoreadas = ['choferes', 'units', 'documentos_choferes', 'movimientos', 'estados_diarios', 'registros_viajes_km'];
         if (tablasMonitoreadas.includes(payload.table)) {
-            flujoEncoladoGlobal(); // 🌟 Enviado a la cola blindada
+            flujoEncoladoGlobal(); 
         }
     } catch (error) {
         console.error("❌ Error procesando webhook de Supabase:", error);
@@ -297,7 +286,7 @@ app.post('/api/proxy', async (req, res) => {
         const respuestaGoogle = await fetch(GAS_URL, { method: 'POST', body: JSON.stringify(body) }).then(r => r.json());
 
         if (body && body.action !== 'login') {
-            flujoEncoladoGlobal(); // 🌟 Refresco seguro
+            flujoEncoladoGlobal(); 
         }
         res.json(respuestaGoogle);
 
