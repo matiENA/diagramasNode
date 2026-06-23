@@ -250,22 +250,58 @@ app.post('/api/proxy', async (req, res) => {
             }
         }
 
-        // C. 🌟 DIAGRAMAS (Letras F, V, L)
-        if (body && (body.action === 'editarCelda' || body.estado !== undefined)) {
-            const nomChofer = body.nombre || body.nom || body.chofer;
-            const fechaDia = body.fecha || body.isoDate;
-            const estadoDia = body.estado || body.valor;
+   // C. 🌟 DIAGRAMAS (Maneja Rangos, Arrays y Días Individuales)
+        if (body && body.action === 'actualizarEstado') {
+            const nomChofer = body.nombre;
+            const startIso = body.startIso;
+            const endIso = body.endIso;
+            const estPayload = body.est; // Puede ser un string ('F') o un Array (['1', '2', '3'])
 
-            if (nomChofer && fechaDia) {
+            if (nomChofer && startIso && endIso) {
                 const { data: choferData } = await supabase.from('choferes').select('id').ilike('nombre', nomChofer).single();
+                
                 if (choferData) {
-                    if (estadoDia === '' || estadoDia === null || estadoDia === '-') {
-                        await supabase.from('diagramas_diarios').delete().match({ chofer_id: choferData.id, fecha: fechaDia });
-                    } else {
-                        await supabase.from('diagramas_diarios').upsert({
-                            chofer_id: choferData.id, fecha: fechaDia, estado: String(estadoDia).toUpperCase().trim(), actualizado_en: new Date()
-                        }, { onConflict: 'chofer_id,fecha' });
+                    let dStart = new Date(startIso + "T12:00:00");
+                    let dEnd = new Date(endIso + "T12:00:00");
+                    let current = new Date(dStart);
+                    let dayIndex = 0;
+
+                    let arrayParaUpsert = [];
+
+                    // Recorremos el rango de fechas seleccionado
+                    while (current <= dEnd) {
+                        let fechaDia = current.toISOString().split('T')[0];
+                        let estadoDia;
+
+                        // Si el front manda una secuencia de números (ej: OPERATIVO), sacamos el valor del Array
+                        if (Array.isArray(estPayload)) {
+                            estadoDia = estPayload[dayIndex] || '';
+                        } else {
+                            estadoDia = estPayload; // Si es 'F', 'V', aplica a todos los días
+                        }
+
+                        if (estadoDia === 'BORRAR' || estadoDia === '' || estadoDia === null || estadoDia === '-') {
+                            // Borramos ese día específico
+                            await supabase.from('diagramas_diarios').delete().match({ chofer_id: choferData.id, fecha: fechaDia });
+                        } else {
+                            // Preparamos para inyectar en lote
+                            arrayParaUpsert.push({
+                                chofer_id: choferData.id, 
+                                fecha: fechaDia, 
+                                estado: String(estadoDia).toUpperCase().trim(), 
+                                actualizado_en: new Date()
+                            });
+                        }
+
+                        current.setDate(current.getDate() + 1);
+                        dayIndex++;
                     }
+
+                    // Inyectamos todo el lote de golpe en Supabase (Ultra rápido)
+                    if (arrayParaUpsert.length > 0) {
+                        await supabase.from('diagramas_diarios').upsert(arrayParaUpsert, { onConflict: 'chofer_id,fecha' });
+                    }
+                    
                     huboCambios = true;
                 }
             }
