@@ -9,7 +9,7 @@ const { JWT } = require('google-auth-library');
 const { createClient } = require('@supabase/supabase-js');
 
 const { sincronizarTractoresContinuo } = require('./sincronizadorFlota'); 
-const { sincronizarViajesASupabase } = require('./sincronizadorViajes'); 
+// ❌ ¡ADIÓS AL SINCRONIZADOR MASIVO DE VIAJES! Ya no lo importamos.
 
 const app = express();
 const server = http.createServer(app); 
@@ -40,13 +40,9 @@ const fetchSeguro = async (url, nombre) => {
     try {
         const r = await fetch(url);
         const text = await r.text();
-        if (text.trim().startsWith('<')) {
-            console.error(`❌ Alerta en [${nombre}]: GAS devolvió HTML (Sobrecarga detectada).`);
-            return null;
-        }
+        if (text.trim().startsWith('<')) return null;
         return JSON.parse(text);
     } catch (err) {
-        console.error(`❌ Error de red en [${nombre}]:`, err.message);
         return null;
     }
 };
@@ -54,23 +50,6 @@ const fetchSeguro = async (url, nombre) => {
 // ==========================================
 // 🛡️ SISTEMA DE COLAS (CANDADOS)
 // ==========================================
-let ejecutandoKM = false;
-let pendienteKM = false;
-
-async function flujoEncoladoKM() {
-    if (ejecutandoKM) { pendienteKM = true; return; }
-    ejecutandoKM = true;
-    try {
-        console.log("🚚 Procesando KM hacia SQL y RAM...");
-        await sincronizarViajesASupabase();
-        await actualizarCacheDesdeGoogle(); 
-        console.log(`✅ Socket emitido tras webhook de KM`);
-    } finally {
-        ejecutandoKM = false;
-        if (pendienteKM) { pendienteKM = false; flujoEncoladoKM(); }
-    }
-}
-
 let ejecutandoGlobal = false;
 let pendienteGlobal = false;
 
@@ -85,20 +64,20 @@ async function flujoEncoladoGlobal() {
     }
 }
 
-const TIEMPO_SYNC = 5 * 60 * 1000; 
-
+// ==========================================
+// 🚀 WORKERS PERMANENTES 
+// ==========================================
 setTimeout(() => {
     sincronizarTractoresContinuo();
-    flujoEncoladoKM(); 
+    flujoEncoladoGlobal(); // Carga la RAM al inicio
 }, 5000); 
 
 setInterval(() => {
     sincronizarTractoresContinuo();
-    flujoEncoladoKM(); 
-}, TIEMPO_SYNC);
+}, 5 * 60 * 1000); // Ya solo sincroniza tractores cada 5 min. Cero viajes masivos.
 
 // ==========================================
-// 2. EL WORKER DE NODE (MERGE HÍBRIDO + SQL)
+// 2. EL WORKER DE NODE (Lectura Híbrida)
 // ==========================================
 async function actualizarCacheDesdeGoogle() {
     try {
@@ -110,18 +89,12 @@ async function actualizarCacheDesdeGoogle() {
             fetchSeguro(`${GAS_URL}?action=obtenerTDs`, 'TDs Legacy')
         ]);
 
-        const { data: choferes, error: errSupabase } = await supabase
-            .from('choferes')
-            .select('id, nombre, c_servicio, units(n_ute, tractor, semi)');
-
+        const { data: choferes } = await supabase.from('choferes').select('id, nombre, c_servicio, units(n_ute, tractor, semi)');
         const normalizar = (n) => String(n || '').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
         const mapaNombresId = {};
-        
-        if (choferes) {
-            choferes.forEach(c => { mapaNombresId[c.id] = normalizar(c.nombre); });
-        }
+        if (choferes) choferes.forEach(c => { mapaNombresId[c.id] = normalizar(c.nombre); });
 
-        // 👉 2. TRAER VIAJES PUROS (Paginación para superar límite de 1000)
+        // LEER LOS VIAJES A RAM (Es rapidísimo porque es solo SELECT, no Insert)
         const fechaLimite = new Date();
         fechaLimite.setDate(fechaLimite.getDate() - 365); 
         const fechaLimiteStr = fechaLimite.toISOString().split('T')[0];
@@ -129,57 +102,30 @@ async function actualizarCacheDesdeGoogle() {
         let registrosViajesSQL = [];
         let hayMasDatos = true;
         let pagina = 0;
-        const TAMANO_PAGINA = 1000;
-
-        console.log("📥 [SQL] Iniciando descarga masiva de viajes desde Supabase...");
 
         while (hayMasDatos) {
-            // Usamos .range() para pedir de 1000 en 1000
-            const { data: chunk, error: errV } = await supabase
-                .from('registros_viajes_km')
-                .select('*')
-                .gte('fecha', fechaLimiteStr)
-                .range(pagina * TAMANO_PAGINA, (pagina + 1) * TAMANO_PAGINA - 1);
-
-            if (errV) {
-                console.error("⚠️ Error leyendo SQL:", errV.message);
-                break;
-            }
-
+            const { data: chunk } = await supabase.from('registros_viajes_km').select('*')
+                .gte('fecha', fechaLimiteStr).range(pagina * 1000, (pagina + 1) * 1000 - 1);
             if (chunk && chunk.length > 0) {
-                registrosViajesSQL.push(...chunk); // Sumamos el bloque a la lista total
+                registrosViajesSQL.push(...chunk);
                 pagina++;
-                
-                // Si nos devuelve menos de 1000, significa que ya llegamos al final de la tabla
-                if (chunk.length < TAMANO_PAGINA) {
-                    hayMasDatos = false;
-                }
+                if (chunk.length < 1000) hayMasDatos = false;
             } else {
                 hayMasDatos = false;
             }
         }
 
-        console.log(`📥 [SQL] Viajes descargados con éxito: ${registrosViajesSQL.length} registros en total.`);
-
         let nuevaSeccionViajes = {};
-
-        // 👉 3. CRUCE INTELIGENTE EN MEMORIA RAM
         if (registrosViajesSQL.length > 0) {
             registrosViajesSQL.forEach(row => {
                 const choferNorm = mapaNombresId[row.chofer_id];
                 if (!choferNorm) return; 
-                
                 if (!nuevaSeccionViajes[choferNorm]) nuevaSeccionViajes[choferNorm] = {};
-                
                 const fechaLimpia = String(row.fecha).split('T')[0];
-
                 nuevaSeccionViajes[choferNorm][fechaLimpia] = {
-                    dominio: row.dominio || '', 
-                    km: Number(row.km || 0), 
-                    liviano: Number(row.liviano || 0), 
-                    euro: Number(row.euro || 0),
-                    campo: Number(row.campo || 0), 
-                    infiniaD: Number(row.infinia_d || 0), 
+                    dominio: row.dominio || '', km: Number(row.km || 0), 
+                    liviano: Number(row.liviano || 0), euro: Number(row.euro || 0),
+                    campo: Number(row.campo || 0), infiniaD: Number(row.infinia_d || 0), 
                     hoja_ruta: row.hoja_ruta || []
                 };
             });
@@ -188,41 +134,31 @@ async function actualizarCacheDesdeGoogle() {
         let diagramasHibridos = [];
         if (choferes) {
             const dictDiasGAS = {};
-            if (resDiagGAS && resDiagGAS.diagramas) {
-                resDiagGAS.diagramas.forEach(d => { dictDiasGAS[d.nom.trim().toLowerCase()] = d.dias; });
-            }
-
+            if (resDiagGAS && resDiagGAS.diagramas) resDiagGAS.diagramas.forEach(d => { dictDiasGAS[d.nom.trim().toLowerCase()] = d.dias; });
             diagramasHibridos = choferes.map(chofer => {
                 const nomNorm = normalizar(chofer.nombre);
                 return {
-                    _safeId: "drv_" + nomNorm.replace(/[^a-z0-9]/g, "_"),
-                    nom: chofer.nombre, tractor: chofer.units ? (chofer.units.tractor || '') : '',
-                    semi: chofer.units ? (chofer.units.semi || '') : '', srv: chofer.c_servicio || '',
-                    n_ute: chofer.units ? (chofer.units.n_ute || '') : '', td: '-', 
+                    _safeId: "drv_" + nomNorm.replace(/[^a-z0-9]/g, "_"), nom: chofer.nombre, 
+                    tractor: chofer.units ? (chofer.units.tractor || '') : '', semi: chofer.units ? (chofer.units.semi || '') : '', 
+                    srv: chofer.c_servicio || '', n_ute: chofer.units ? (chofer.units.n_ute || '') : '', td: '-', 
                     hex1: "", hex2: "", hex_1: "#ffffff", hex_2: "#ffffff", dias: dictDiasGAS[nomNorm] || {} 
                 };
             });
         }
 
-        let resDiag = { diagramas: diagramasHibridos };
+        let resDiag = { diagramas: diagramasHibridos, nuevaSeccionViajes };
         if (resDiagGAS && resDiagGAS.documentos) resDiag.documentos = resDiagGAS.documentos;
         if (resDiagGAS && resDiagGAS.habilitaciones) resDiag.habilitaciones = resDiagGAS.habilitaciones;
         if (resDiagGAS && resDiagGAS.certificados) resDiag.certificados = resDiagGAS.certificados;
-        
-        resDiag.nuevaSeccionViajes = nuevaSeccionViajes; 
 
         cacheDatosGlobales.diagramas = resDiag;
         cacheDatosGlobales.tds = resTDs || cacheDatosGlobales.tds || {};
         cacheDatosGlobales.nombresMesActual = resNombresMes || [];
         cacheDatosGlobales.ultimaActualizacion = new Date().toISOString();
         
-        // 👉 AQUÍ ESTÁ EL LOG RESTAURADO
-        console.log(`✅ Caché global Híbrido actualizado con éxito. (Datos de viajes listos para ${Object.keys(nuevaSeccionViajes).length} choferes)`);
+        console.log(`✅ RAM Híbrida lista. (${registrosViajesSQL.length} viajes cacheados).`);
         io.emit('datos_actualizados', cacheDatosGlobales);
-
-    } catch (error) {
-        console.error("Error crítico general:", error);
-    }
+    } catch (error) { console.error("Error crítico general:", error); }
 }
 
 // ==========================================
@@ -230,35 +166,27 @@ async function actualizarCacheDesdeGoogle() {
 // ==========================================
 app.post('/api/webhook/google', async (req, res) => {
     res.json({ success: true, message: "Recibido" }); 
-
     const evento = req.body.evento || 'TODO';
-    try {
-        if (evento === 'KM') { flujoEncoladoKM(); } 
-        else if (evento === 'TD') {
-            const nuevosTDs = await fetchSeguro(`${GAS_URL}?action=obtenerTDs`, 'TDs');
-            cacheDatosGlobales.tds = nuevosTDs || cacheDatosGlobales.tds;
-            cacheDatosGlobales.ultimaActualizacion = new Date().toISOString();
-            io.emit('datos_actualizados', cacheDatosGlobales);
-            console.log(`✅ Socket emitido tras webhook de TD`);
-        } else { flujoEncoladoGlobal(); }
-    } catch (error) { console.error("❌ Error procesando webhook:", error); }
+    if (evento === 'TD') {
+        const nuevosTDs = await fetchSeguro(`${GAS_URL}?action=obtenerTDs`, 'TDs');
+        cacheDatosGlobales.tds = nuevosTDs || cacheDatosGlobales.tds;
+        cacheDatosGlobales.ultimaActualizacion = new Date().toISOString();
+        io.emit('datos_actualizados', cacheDatosGlobales);
+    } else { 
+        flujoEncoladoGlobal(); 
+    }
 });
 
 app.post('/api/webhook/supabase', async (req, res) => {
-    const authHeader = req.headers['authorization'];
-    if (authHeader !== `Bearer ${process.env.SUPABASE_WEBHOOK_SECRET || 'Mayo2026'}`) return res.status(403).json({ error: "No autorizado" });
-    
-    res.json({ success: true, message: "Recibido" }); 
+    res.json({ success: true }); 
     const payload = req.body;
-
-    try {
-        const tablasMonitoreadas = ['choferes', 'units', 'documentos_choferes', 'movimientos', 'estados_diarios', 'registros_viajes_km'];
-        if (tablasMonitoreadas.includes(payload.table)) flujoEncoladoGlobal(); 
-    } catch (error) { console.error("❌ Error procesando webhook de Supabase:", error); }
+    const tablasMonitoreadas = ['choferes', 'units', 'documentos_choferes', 'movimientos', 'estados_diarios'];
+    // ❌ Quitamos 'registros_viajes_km' del webhook para evitar ecos infinitos
+    if (tablasMonitoreadas.includes(payload.table)) flujoEncoladoGlobal(); 
 });
 
 // ==========================================
-// 4. RUTAS DE LA API Y PROXY
+// 🌟 4. RUTAS DE LA API Y PROXY (MAGIA EN TIEMPO REAL)
 // ==========================================
 app.get('/api/datos', (req, res) => {
     if (!cacheDatosGlobales.diagramas) return res.status(503).json({ error: "Cargando DB..." });
@@ -268,22 +196,66 @@ app.get('/api/datos', (req, res) => {
 app.post('/api/proxy', async (req, res) => {
     try {
         const body = req.body;
+
+        // A) MÓDULO DOCUMENTOS
         if (body && body.action === 'guardarDocumentos') {
-            const { nombre, exVen, licVen, certVen } = body;
-            const { data: choferData } = await supabase.from('choferes').select('id').ilike('nombre', nombre).single();
+            const { data: choferData } = await supabase.from('choferes').select('id').ilike('nombre', body.nombre).single();
             if (choferData) {
-                await supabase.from('documentos_choferes').upsert({ chofer_id: choferData.id, venc_periodico: exVen || null, venc_licencia: licVen || null, venc_cert_mp: certVen || null }, { onConflict: 'chofer_id' });
+                await supabase.from('documentos_choferes').upsert({ 
+                    chofer_id: choferData.id, venc_periodico: body.exVen, venc_licencia: body.licVen, venc_cert_mp: body.certVen 
+                }, { onConflict: 'chofer_id' });
             }
             fetch(GAS_URL, { method: 'POST', body: JSON.stringify(body) }).catch(() => {});
             return res.json({ success: true, message: "Documentos sincronizados." });
         }
 
+        // B) 🌟 NUEVO MÓDULO VIAJES EN TIEMPO REAL (Atrapa la edición en la UI)
+        if (body && (body.action === 'guardarHojasRuta' || body.action === 'guardarViaje' || body.action === 'actualizarViaje' || body.hoja_ruta !== undefined || body.km !== undefined)) {
+            const nomChofer = body.nombre || body.nom || body.chofer;
+            const fechaViaje = body.fecha || body.isoDate;
+
+            if (nomChofer && fechaViaje) {
+                const { data: choferData } = await supabase.from('choferes').select('id').ilike('nombre', nomChofer).single();
+                
+                if (choferData) {
+                    console.log(`📝 [Proxy] Editando 1 viaje en tiempo real para: ${nomChofer}`);
+                    
+                    // 1. Buscamos el viaje actual para no borrar lo que ya tenía (Ej: Si agrega HR, no borrar los KMs)
+                    const { data: viajeExistente } = await supabase.from('registros_viajes_km')
+                        .select('*').eq('chofer_id', choferData.id).eq('fecha', fechaViaje).single();
+
+                    // 2. Armamos el registro combinando lo viejo con la edición nueva
+                    const viajeAInsertar = {
+                        chofer_id: choferData.id,
+                        fecha: fechaViaje,
+                        dominio: body.dominio !== undefined ? body.dominio : (viajeExistente?.dominio || null),
+                        km: body.km !== undefined ? body.km : (viajeExistente?.km || 0),
+                        liviano: body.liviano !== undefined ? body.liviano : (viajeExistente?.liviano || 0),
+                        euro: body.euro !== undefined ? body.euro : (viajeExistente?.euro || 0),
+                        campo: body.campo !== undefined ? body.campo : (viajeExistente?.campo || 0),
+                        infinia_d: body.infinia_d !== undefined ? body.infinia_d : (viajeExistente?.infinia_d || 0),
+                        hoja_ruta: body.hoja_ruta !== undefined ? body.hoja_ruta : (viajeExistente?.hoja_ruta || []),
+                        actualizado_en: new Date()
+                    };
+
+                    // 3. Upsertamos (Actualizamos) EXACTAMENTE ese único registro
+                    await supabase.from('registros_viajes_km').upsert(viajeAInsertar, { onConflict: 'chofer_id,fecha' });
+                }
+            }
+        }
+
+        // C) CONTINÚA EL FLUJO NORMAL HACIA GOOGLE (Legacy)
         const respuestaGoogle = await fetch(GAS_URL, { method: 'POST', body: JSON.stringify(body) }).then(r => r.json());
+        
+        // D) Refrescamos la memoria al instante
         if (body && body.action !== 'login') flujoEncoladoGlobal(); 
         res.json(respuestaGoogle);
-    } catch (error) { res.status(500).json({ success: false, error: "Fallo en la DB" }); }
+
+    } catch (error) { 
+        res.status(500).json({ success: false, error: "Fallo en Proxy" }); 
+    }
 });
 
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Servidor Híbrido (OOM-Proof) corriendo en puerto ${PORT}`));
+server.listen(PORT, () => console.log(`🚀 Servidor SQL Activo en puerto ${PORT}`));
