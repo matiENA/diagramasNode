@@ -88,9 +88,6 @@ setInterval(() => {
 // ==========================================
 // 🧠 2. EL CEREBRO: ENSAMBLADOR EN RAM (SQL -> JSON)
 // ==========================================
-// ==========================================
-// 🧠 2. EL CEREBRO: ENSAMBLADOR EN RAM (SQL -> JSON)
-// ==========================================
 async function actualizarCacheDesdeGoogle() {
     try {
         console.log("🔄 Reconstruyendo Memoria RAM (SQL + Google)...");
@@ -101,7 +98,7 @@ async function actualizarCacheDesdeGoogle() {
             fetchSeguro(`${GAS_URL}?action=obtenerTDs`)
         ]);
 
-        // 👉 1. TRAEMOS CHOFERES CON SUS DATOS PERSONALES (DNI, Tel, Legajo)
+        // 👉 1. TRAEMOS CHOFERES CON SUS DATOS PERSONALES (DNI, Tel, Legajo, Unidades)
         const { data: choferes } = await supabase.from('choferes')
             .select('id, nombre, c_servicio, dni, legajo, telefono, email, units(n_ute, tractor, semi)');
         
@@ -113,16 +110,20 @@ async function actualizarCacheDesdeGoogle() {
 
         if (choferes) {
             choferes.forEach(c => { 
-                const nomNorm = normalizar(c.nombre);
+                const nombreReal = String(c.nombre || '').trim();
+                const nomNorm = normalizar(nombreReal);
                 mapaNombresId[c.id] = nomNorm; 
                 
-                // Formateamos DNI y Teléfonos EXACTAMENTE como el Front-End los espera
                 if (c.dni) dnisMap[nomNorm] = { dni: c.dni };
-                telefonosMap[nomNorm] = { 
+                
+                // 🛡️ Doble Mapeo de Contactos para que el Front-End lo encuentre sí o sí
+                let datosContacto = { 
                     telefono: c.telefono || '', 
                     legajo: c.legajo || '', 
                     email: c.email || '' 
                 };
+                telefonosMap[nomNorm] = datosContacto;
+                if (c.dni) telefonosMap[c.dni] = datosContacto;
             });
         }
 
@@ -187,7 +188,6 @@ async function actualizarCacheDesdeGoogle() {
             documentosSQL.forEach(doc => {
                 const choferNorm = mapaNombresId[doc.chofer_id];
                 if (choferNorm) {
-                    // Mapeamos a la estructura { ven: "YYYY-MM-DD", estado: "OK" }
                     if (doc.venc_periodico) docsMap[choferNorm] = { ven: String(doc.venc_periodico).split('T')[0], estado: 'OK' };
                     if (doc.venc_licencia) habsMap[choferNorm] = { ven: String(doc.venc_licencia).split('T')[0], estado: 'OK' };
                     if (doc.venc_cert_mp) certsMap[choferNorm] = { ven: String(doc.venc_cert_mp).split('T')[0], estado: 'OK' };
@@ -195,18 +195,41 @@ async function actualizarCacheDesdeGoogle() {
             });
         }
 
-        // --- ENSAMBLADO FINAL ---
+        // --- ENSAMBLADO FINAL (Con Fix Visual de Unidades y Duplicados) ---
         let diagramasHibridos = [];
+        let choferesProcesados = new Set(); // 🛡️ Evita choferes duplicados si hay un error en SQL
+
         if (choferes) {
-            diagramasHibridos = choferes.map(chofer => {
-                const nomNorm = normalizar(chofer.nombre);
-                return {
-                    _safeId: "drv_" + nomNorm.replace(/[^a-z0-9]/g, "_"), nom: chofer.nombre, 
-                    tractor: chofer.units ? (chofer.units.tractor || '') : '', semi: chofer.units ? (chofer.units.semi || '') : '', 
-                    srv: chofer.c_servicio || '', n_ute: chofer.units ? (chofer.units.n_ute || '') : '', td: '-', 
+            choferes.forEach(chofer => {
+                const nombreReal = String(chofer.nombre || '').trim();
+                const nomNorm = normalizar(nombreReal);
+                
+                // Filtramos choferes en blanco o duplicados
+                if (!nombreReal || choferesProcesados.has(nomNorm)) return;
+                choferesProcesados.add(nomNorm);
+
+                // 🛡️ Manejo seguro de Unidades: Supabase puede devolver un Array o un Objeto directo
+                let unTractor = '', unSemi = '', unUte = '';
+                if (chofer.units) {
+                    let u = Array.isArray(chofer.units) ? chofer.units[0] : chofer.units;
+                    if (u) {
+                        unTractor = u.tractor || '';
+                        unSemi = u.semi || '';
+                        unUte = u.n_ute || '';
+                    }
+                }
+
+                diagramasHibridos.push({
+                    _safeId: "drv_" + nomNorm.replace(/[^a-z0-9]/g, "_"), 
+                    nom: nombreReal, 
+                    tractor: unTractor, 
+                    semi: unSemi, 
+                    srv: chofer.c_servicio || '', 
+                    n_ute: unUte, 
+                    td: '-', 
                     hex1: "", hex2: "", hex_1: "#ffffff", hex_2: "#ffffff", 
                     dias: dictDiasSQL[nomNorm] || {} 
-                };
+                });
             });
         }
 
@@ -214,11 +237,11 @@ async function actualizarCacheDesdeGoogle() {
         let resDiag = { 
             diagramas: diagramasHibridos, 
             nuevaSeccionViajes,
-            documentos: docsMap,       // Viene de SQL
-            habilitaciones: habsMap,   // Viene de SQL
-            certificados: certsMap,    // Viene de SQL
-            dnis: dnisMap,             // Viene de SQL
-            telefonos: telefonosMap    // Viene de SQL
+            documentos: docsMap,
+            habilitaciones: habsMap,
+            certificados: certsMap,
+            dnis: dnisMap,
+            telefonos: telefonosMap
         };
 
         // 🚧 Mantenemos el Historial de Observaciones, Aptos Médicos y Vencimiento Unidades
@@ -304,7 +327,7 @@ app.post('/api/proxy', async (req, res) => {
             }
         }
 
-   // C. 🌟 DIAGRAMAS (Maneja Rangos, Arrays y Días Individuales)
+        // C. 🌟 DIAGRAMAS (Maneja Rangos, Arrays y Días Individuales)
         if (body && body.action === 'actualizarEstado') {
             const nomChofer = body.nombre;
             const startIso = body.startIso;
