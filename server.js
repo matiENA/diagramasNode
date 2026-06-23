@@ -88,6 +88,9 @@ setInterval(() => {
 // ==========================================
 // 🧠 2. EL CEREBRO: ENSAMBLADOR EN RAM (SQL -> JSON)
 // ==========================================
+// ==========================================
+// 🧠 2. EL CEREBRO: ENSAMBLADOR EN RAM (SQL -> JSON)
+// ==========================================
 async function actualizarCacheDesdeGoogle() {
     try {
         console.log("🔄 Reconstruyendo Memoria RAM (SQL + Google)...");
@@ -98,10 +101,30 @@ async function actualizarCacheDesdeGoogle() {
             fetchSeguro(`${GAS_URL}?action=obtenerTDs`)
         ]);
 
-        const { data: choferes } = await supabase.from('choferes').select('id, nombre, c_servicio, units(n_ute, tractor, semi)');
+        // 👉 1. TRAEMOS CHOFERES CON SUS DATOS PERSONALES (DNI, Tel, Legajo)
+        const { data: choferes } = await supabase.from('choferes')
+            .select('id, nombre, c_servicio, dni, legajo, telefono, email, units(n_ute, tractor, semi)');
+        
         const normalizar = (n) => String(n || '').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
+        
         const mapaNombresId = {};
-        if (choferes) choferes.forEach(c => { mapaNombresId[c.id] = normalizar(c.nombre); });
+        let dnisMap = {};
+        let telefonosMap = {};
+
+        if (choferes) {
+            choferes.forEach(c => { 
+                const nomNorm = normalizar(c.nombre);
+                mapaNombresId[c.id] = nomNorm; 
+                
+                // Formateamos DNI y Teléfonos EXACTAMENTE como el Front-End los espera
+                if (c.dni) dnisMap[nomNorm] = { dni: c.dni };
+                telefonosMap[nomNorm] = { 
+                    telefono: c.telefono || '', 
+                    legajo: c.legajo || '', 
+                    email: c.email || '' 
+                };
+            });
+        }
 
         const fechaLimite = new Date();
         fechaLimite.setDate(fechaLimite.getDate() - 365); 
@@ -154,6 +177,24 @@ async function actualizarCacheDesdeGoogle() {
             });
         }
 
+        // 👉 LECTURA C: DOCUMENTOS Y VENCIMIENTOS DESDE SQL ---
+        const { data: documentosSQL } = await supabase.from('documentos_choferes').select('*');
+        let docsMap = {};
+        let habsMap = {};
+        let certsMap = {};
+
+        if (documentosSQL) {
+            documentosSQL.forEach(doc => {
+                const choferNorm = mapaNombresId[doc.chofer_id];
+                if (choferNorm) {
+                    // Mapeamos a la estructura { ven: "YYYY-MM-DD", estado: "OK" }
+                    if (doc.venc_periodico) docsMap[choferNorm] = { ven: String(doc.venc_periodico).split('T')[0], estado: 'OK' };
+                    if (doc.venc_licencia) habsMap[choferNorm] = { ven: String(doc.venc_licencia).split('T')[0], estado: 'OK' };
+                    if (doc.venc_cert_mp) certsMap[choferNorm] = { ven: String(doc.venc_cert_mp).split('T')[0], estado: 'OK' };
+                }
+            });
+        }
+
         // --- ENSAMBLADO FINAL ---
         let diagramasHibridos = [];
         if (choferes) {
@@ -164,15 +205,28 @@ async function actualizarCacheDesdeGoogle() {
                     tractor: chofer.units ? (chofer.units.tractor || '') : '', semi: chofer.units ? (chofer.units.semi || '') : '', 
                     srv: chofer.c_servicio || '', n_ute: chofer.units ? (chofer.units.n_ute || '') : '', td: '-', 
                     hex1: "", hex2: "", hex_1: "#ffffff", hex_2: "#ffffff", 
-                    dias: dictDiasSQL[nomNorm] || {} // 🌟 INYECTAMOS DIRECTO DESDE SQL
+                    dias: dictDiasSQL[nomNorm] || {} 
                 };
             });
         }
 
-        let resDiag = { diagramas: diagramasHibridos, nuevaSeccionViajes };
-        if (resDiagGAS && resDiagGAS.documentos) resDiag.documentos = resDiagGAS.documentos;
-        if (resDiagGAS && resDiagGAS.habilitaciones) resDiag.habilitaciones = resDiagGAS.habilitaciones;
-        if (resDiagGAS && resDiagGAS.certificados) resDiag.certificados = resDiagGAS.certificados;
+        // 🚀 EL OBJETO MÁGICO: Aquí inyectamos SQL fingiendo que es el JSON viejo
+        let resDiag = { 
+            diagramas: diagramasHibridos, 
+            nuevaSeccionViajes,
+            documentos: docsMap,       // Viene de SQL
+            habilitaciones: habsMap,   // Viene de SQL
+            certificados: certsMap,    // Viene de SQL
+            dnis: dnisMap,             // Viene de SQL
+            telefonos: telefonosMap    // Viene de SQL
+        };
+
+        // 🚧 Mantenemos el Historial de Observaciones, Aptos Médicos y Vencimiento Unidades
+        // desde Google Sheets HASTA que decidas migrar esas tablas a SQL.
+        if (resDiagGAS && resDiagGAS.observaciones) resDiag.observaciones = resDiagGAS.observaciones;
+        if (resDiagGAS && resDiagGAS.aptosMedicos) resDiag.aptosMedicos = resDiagGAS.aptosMedicos;
+        if (resDiagGAS && resDiagGAS.vencimientosObj) resDiag.vencimientosObj = resDiagGAS.vencimientosObj;
+        if (resDiagGAS && resDiagGAS.fotosImgur) resDiag.fotosImgur = resDiagGAS.fotosImgur;
 
         cacheDatosGlobales.diagramas = resDiag;
         cacheDatosGlobales.tds = resTDs || cacheDatosGlobales.tds || {};
