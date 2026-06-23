@@ -127,10 +127,10 @@ async function actualizarCacheDesdeGoogle() {
             fetchSeguro(`${GAS_URL}?action=obtenerTDs`, 'TDs Legacy')
         ]);
 
-       // =========================================================================
-        // 2. Consultamos Supabase (Padrón de Choferes) 
-        // IMPORTANTE: Agregamos explícitamente el campo 'id'
-        // =========================================================================
+// =========================================================
+        // 2. Consultamos Supabase (Padrón de Choferes)
+        // Agregamos explícitamente el campo 'id' para hacer el cruce manual
+        // =========================================================
         const { data: choferes, error: errSupabase } = await supabase
             .from('choferes')
             .select('id, nombre, c_servicio, units(n_ute, tractor, semi)');
@@ -138,40 +138,42 @@ async function actualizarCacheDesdeGoogle() {
         if (errSupabase) console.error("⚠️ Error leyendo Supabase:", errSupabase.message);
 
         // 👉 DICCIONARIO ANTI-FALLOS: Vinculamos ID con Nombre Normalizado
-        const mapaNombresId = {};
         const normalizar = (n) => String(n || '').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
-
+        const mapaNombresId = {};
+        
         if (choferes) {
             choferes.forEach(c => {
                 mapaNombresId[c.id] = normalizar(c.nombre);
             });
         }
 
-        // =========================================================================
+        // =========================================================
         // 🌟 3. LEER LOS VIAJES DIRECTAMENTE DESDE SUPABASE SQL
-        // =========================================================================
+        // =========================================================
         const fechaLimite = new Date();
-        fechaLimite.setDate(fechaLimite.getDate() - 365); // Traemos 1 AÑO de historia, no solo 60 días
+        fechaLimite.setDate(fechaLimite.getDate() - 365); // Traemos 1 AÑO de historia para asegurar todo
         const fechaLimiteStr = fechaLimite.toISOString().split('T')[0];
 
-        // Ya no hacemos el Join '.select('*, choferes(nombre)')' que suele fallar en Supabase.
-        // Ahora traemos la tabla pura de viajes.
+        // Ya NO hacemos el Join '.select('*, choferes(nombre)')'. 
+        // Traemos la tabla de viajes 100% pura y veloz.
         const { data: registrosViajesSQL, error: errV } = await supabase
             .from('registros_viajes_km')
             .select('*')
             .gte('fecha', fechaLimiteStr);
 
+        if (errV) console.error("⚠️ Error leyendo Viajes de Supabase:", errV.message);
+
         let nuevaSeccionViajes = {};
 
-        if (!errV && registrosViajesSQL) {
+        if (registrosViajesSQL) {
             registrosViajesSQL.forEach(row => {
-                // Obtenemos el nombre exacto del chofer usando su ID desde nuestro diccionario
+                // Cruzamos el ID del viaje con nuestro diccionario para obtener el nombre exacto
                 const choferNorm = mapaNombresId[row.chofer_id];
-                if (!choferNorm) return; 
+                if (!choferNorm) return; // Si el viaje es de un chofer eliminado, lo ignoramos
                 
                 if (!nuevaSeccionViajes[choferNorm]) nuevaSeccionViajes[choferNorm] = {};
                 
-                // Formateamos seguro la fecha para que coincida con el Frontend
+                // Formateamos seguro la fecha para quitarle cualquier "T00:00:00" que traiga SQL
                 const fechaLimpia = String(row.fecha).split('T')[0];
 
                 nuevaSeccionViajes[choferNorm][fechaLimpia] = {
