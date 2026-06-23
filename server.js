@@ -9,7 +9,8 @@ const { JWT } = require('google-auth-library');
 const { createClient } = require('@supabase/supabase-js');
 
 const { sincronizarTractoresContinuo } = require('./sincronizadorFlota'); 
-// ❌ ¡ADIÓS AL SINCRONIZADOR MASIVO DE VIAJES! Ya no lo importamos.
+// 👉 VOLVEMOS A IMPORTAR LA FUNCIÓN (Pero ahora solo leerá 2 días)
+const { sincronizarViajesASupabase } = require('./sincronizadorViajes'); 
 
 const app = express();
 const server = http.createServer(app); 
@@ -36,15 +37,13 @@ const ID_PLANILLA = process.env.SPREADSHEET_ID;
 
 let cacheDatosGlobales = { diagramas: null, tds: null, nombresMesActual: [], ultimaActualizacion: null };
 
-const fetchSeguro = async (url, nombre) => {
+const fetchSeguro = async (url) => {
     try {
         const r = await fetch(url);
         const text = await r.text();
         if (text.trim().startsWith('<')) return null;
         return JSON.parse(text);
-    } catch (err) {
-        return null;
-    }
+    } catch (err) { return null; }
 };
 
 // ==========================================
@@ -56,11 +55,29 @@ let pendienteGlobal = false;
 async function flujoEncoladoGlobal() {
     if (ejecutandoGlobal) { pendienteGlobal = true; return; }
     ejecutandoGlobal = true;
-    try {
-        await actualizarCacheDesdeGoogle();
-    } finally {
+    try { await actualizarCacheDesdeGoogle(); } 
+    finally {
         ejecutandoGlobal = false;
         if (pendienteGlobal) { pendienteGlobal = false; flujoEncoladoGlobal(); }
+    }
+}
+
+// 👉 NUEVA COLA: Solo se activa con el Webhook de Google
+let ejecutandoKM = false;
+let pendienteKM = false;
+
+async function flujoEncoladoKM() {
+    if (ejecutandoKM) { pendienteKM = true; return; }
+    ejecutandoKM = true;
+    try {
+        // Le pasamos '2' para que solo lea 48hs hacia atrás de la planilla de Google
+        await sincronizarViajesASupabase(2);
+        // Luego recarga la RAM desde Supabase para el Frontend
+        await actualizarCacheDesdeGoogle();
+        console.log(`✅ Front-End actualizado con la edición desde Excel.`);
+    } finally {
+        ejecutandoKM = false;
+        if (pendienteKM) { pendienteKM = false; flujoEncoladoKM(); }
     }
 }
 
@@ -69,12 +86,12 @@ async function flujoEncoladoGlobal() {
 // ==========================================
 setTimeout(() => {
     sincronizarTractoresContinuo();
-    flujoEncoladoGlobal(); // Carga la RAM al inicio
+    flujoEncoladoGlobal(); 
 }, 5000); 
 
 setInterval(() => {
     sincronizarTractoresContinuo();
-}, 5 * 60 * 1000); // Ya solo sincroniza tractores cada 5 min. Cero viajes masivos.
+}, 5 * 60 * 1000); // ❌ El worker de viajes masivos YA NO está aquí. Todo funciona por Webhooks.
 
 // ==========================================
 // 2. EL WORKER DE NODE (Lectura Híbrida)
@@ -84,9 +101,9 @@ async function actualizarCacheDesdeGoogle() {
         console.log("🔄 Sincronizando Memoria RAM (Supabase + Google)...");
         
         const [resDiagGAS, resNombresMes, resTDs] = await Promise.all([
-            fetchSeguro(`${GAS_URL}?action=obtenerDiagramasCacheados`, 'Diagramas Legacy'),
-            fetchSeguro(`${GAS_URL}?action=obtenerNombresMesActual`, 'Mes Actual'),
-            fetchSeguro(`${GAS_URL}?action=obtenerTDs`, 'TDs Legacy')
+            fetchSeguro(`${GAS_URL}?action=obtenerDiagramasCacheados`),
+            fetchSeguro(`${GAS_URL}?action=obtenerNombresMesActual`),
+            fetchSeguro(`${GAS_URL}?action=obtenerTDs`)
         ]);
 
         const { data: choferes } = await supabase.from('choferes').select('id, nombre, c_servicio, units(n_ute, tractor, semi)');
@@ -94,7 +111,6 @@ async function actualizarCacheDesdeGoogle() {
         const mapaNombresId = {};
         if (choferes) choferes.forEach(c => { mapaNombresId[c.id] = normalizar(c.nombre); });
 
-        // LEER LOS VIAJES A RAM (Es rapidísimo porque es solo SELECT, no Insert)
         const fechaLimite = new Date();
         fechaLimite.setDate(fechaLimite.getDate() - 365); 
         const fechaLimiteStr = fechaLimite.toISOString().split('T')[0];
@@ -110,9 +126,7 @@ async function actualizarCacheDesdeGoogle() {
                 registrosViajesSQL.push(...chunk);
                 pagina++;
                 if (chunk.length < 1000) hayMasDatos = false;
-            } else {
-                hayMasDatos = false;
-            }
+            } else { hayMasDatos = false; }
         }
 
         let nuevaSeccionViajes = {};
@@ -156,7 +170,6 @@ async function actualizarCacheDesdeGoogle() {
         cacheDatosGlobales.nombresMesActual = resNombresMes || [];
         cacheDatosGlobales.ultimaActualizacion = new Date().toISOString();
         
-        console.log(`✅ RAM Híbrida lista. (${registrosViajesSQL.length} viajes cacheados).`);
         io.emit('datos_actualizados', cacheDatosGlobales);
     } catch (error) { console.error("Error crítico general:", error); }
 }
@@ -167,8 +180,12 @@ async function actualizarCacheDesdeGoogle() {
 app.post('/api/webhook/google', async (req, res) => {
     res.json({ success: true, message: "Recibido" }); 
     const evento = req.body.evento || 'TODO';
-    if (evento === 'TD') {
-        const nuevosTDs = await fetchSeguro(`${GAS_URL}?action=obtenerTDs`, 'TDs');
+    
+    if (evento === 'KM') {
+        // 👉 SI ALGUIEN TOCA EL EXCEL DE KMs, DISPARA LA MICRO-SINCRONIZACIÓN
+        flujoEncoladoKM();
+    } else if (evento === 'TD') {
+        const nuevosTDs = await fetchSeguro(`${GAS_URL}?action=obtenerTDs`);
         cacheDatosGlobales.tds = nuevosTDs || cacheDatosGlobales.tds;
         cacheDatosGlobales.ultimaActualizacion = new Date().toISOString();
         io.emit('datos_actualizados', cacheDatosGlobales);
@@ -181,12 +198,11 @@ app.post('/api/webhook/supabase', async (req, res) => {
     res.json({ success: true }); 
     const payload = req.body;
     const tablasMonitoreadas = ['choferes', 'units', 'documentos_choferes', 'movimientos', 'estados_diarios'];
-    // ❌ Quitamos 'registros_viajes_km' del webhook para evitar ecos infinitos
     if (tablasMonitoreadas.includes(payload.table)) flujoEncoladoGlobal(); 
 });
 
 // ==========================================
-// 🌟 4. RUTAS DE LA API Y PROXY (MAGIA EN TIEMPO REAL)
+// 🌟 4. RUTAS DE LA API Y PROXY
 // ==========================================
 app.get('/api/datos', (req, res) => {
     if (!cacheDatosGlobales.diagramas) return res.status(503).json({ error: "Cargando DB..." });
@@ -197,7 +213,6 @@ app.post('/api/proxy', async (req, res) => {
     try {
         const body = req.body;
 
-        // A) MÓDULO DOCUMENTOS
         if (body && body.action === 'guardarDocumentos') {
             const { data: choferData } = await supabase.from('choferes').select('id').ilike('nombre', body.nombre).single();
             if (choferData) {
@@ -209,25 +224,17 @@ app.post('/api/proxy', async (req, res) => {
             return res.json({ success: true, message: "Documentos sincronizados." });
         }
 
-        // B) 🌟 NUEVO MÓDULO VIAJES EN TIEMPO REAL (Atrapa la edición en la UI)
         if (body && (body.action === 'guardarHojasRuta' || body.action === 'guardarViaje' || body.action === 'actualizarViaje' || body.hoja_ruta !== undefined || body.km !== undefined)) {
             const nomChofer = body.nombre || body.nom || body.chofer;
             const fechaViaje = body.fecha || body.isoDate;
 
             if (nomChofer && fechaViaje) {
                 const { data: choferData } = await supabase.from('choferes').select('id').ilike('nombre', nomChofer).single();
-                
                 if (choferData) {
-                    console.log(`📝 [Proxy] Editando 1 viaje en tiempo real para: ${nomChofer}`);
-                    
-                    // 1. Buscamos el viaje actual para no borrar lo que ya tenía (Ej: Si agrega HR, no borrar los KMs)
-                    const { data: viajeExistente } = await supabase.from('registros_viajes_km')
-                        .select('*').eq('chofer_id', choferData.id).eq('fecha', fechaViaje).single();
+                    const { data: viajeExistente } = await supabase.from('registros_viajes_km').select('*').eq('chofer_id', choferData.id).eq('fecha', fechaViaje).single();
 
-                    // 2. Armamos el registro combinando lo viejo con la edición nueva
                     const viajeAInsertar = {
-                        chofer_id: choferData.id,
-                        fecha: fechaViaje,
+                        chofer_id: choferData.id, fecha: fechaViaje,
                         dominio: body.dominio !== undefined ? body.dominio : (viajeExistente?.dominio || null),
                         km: body.km !== undefined ? body.km : (viajeExistente?.km || 0),
                         liviano: body.liviano !== undefined ? body.liviano : (viajeExistente?.liviano || 0),
@@ -237,23 +244,16 @@ app.post('/api/proxy', async (req, res) => {
                         hoja_ruta: body.hoja_ruta !== undefined ? body.hoja_ruta : (viajeExistente?.hoja_ruta || []),
                         actualizado_en: new Date()
                     };
-
-                    // 3. Upsertamos (Actualizamos) EXACTAMENTE ese único registro
                     await supabase.from('registros_viajes_km').upsert(viajeAInsertar, { onConflict: 'chofer_id,fecha' });
                 }
             }
         }
 
-        // C) CONTINÚA EL FLUJO NORMAL HACIA GOOGLE (Legacy)
         const respuestaGoogle = await fetch(GAS_URL, { method: 'POST', body: JSON.stringify(body) }).then(r => r.json());
-        
-        // D) Refrescamos la memoria al instante
         if (body && body.action !== 'login') flujoEncoladoGlobal(); 
         res.json(respuestaGoogle);
 
-    } catch (error) { 
-        res.status(500).json({ success: false, error: "Fallo en Proxy" }); 
-    }
+    } catch (error) { res.status(500).json({ success: false, error: "Fallo en Proxy" }); }
 });
 
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
