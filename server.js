@@ -9,7 +9,6 @@ const { JWT } = require('google-auth-library');
 const { createClient } = require('@supabase/supabase-js');
 
 const { sincronizarTractoresContinuo } = require('./sincronizadorFlota'); 
-// 👉 VOLVEMOS A IMPORTAR LA FUNCIÓN (Pero ahora solo leerá 2 días)
 const { sincronizarViajesASupabase } = require('./sincronizadorViajes'); 
 
 const app = express();
@@ -27,6 +26,25 @@ const GAS_URL = process.env.GAS_URL;
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
+
+// =========================================================
+// 📡 NUEVO: ESCUCHADOR EN TIEMPO REAL (REEMPLAZA WEBHOOKS)
+// =========================================================
+const tablasMonitoreadas = ['choferes', 'units', 'documentos_choferes', 'movimientos', 'estados_diarios'];
+
+tablasMonitoreadas.forEach(tabla => {
+    supabase.channel(`escuchar-${tabla}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: tabla }, payload => {
+            console.log(`🔔 [Realtime] Cambio detectado en tabla: ${tabla}`);
+            flujoEncoladoGlobal(); // Dispara la actualización de RAM igual que antes
+        })
+        .subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+                console.log(`📡 Render suscrito exitosamente a la tabla: ${tabla}`);
+            }
+        });
+});
+// =========================================================
 
 const serviceAccountAuth = new JWT({
     email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
@@ -91,7 +109,7 @@ setTimeout(() => {
 
 setInterval(() => {
     sincronizarTractoresContinuo();
-}, 5 * 60 * 1000); // ❌ El worker de viajes masivos YA NO está aquí. Todo funciona por Webhooks.
+}, 5 * 60 * 1000); // ❌ El worker de viajes masivos YA NO está aquí. Todo funciona por Realtime/Eventos.
 
 // ==========================================
 // 2. EL WORKER DE NODE (Lectura Híbrida)
@@ -192,13 +210,6 @@ app.post('/api/webhook/google', async (req, res) => {
     } else { 
         flujoEncoladoGlobal(); 
     }
-});
-
-app.post('/api/webhook/supabase', async (req, res) => {
-    res.json({ success: true }); 
-    const payload = req.body;
-    const tablasMonitoreadas = ['choferes', 'units', 'documentos_choferes', 'movimientos', 'estados_diarios'];
-    if (tablasMonitoreadas.includes(payload.table)) flujoEncoladoGlobal(); 
 });
 
 // ==========================================
