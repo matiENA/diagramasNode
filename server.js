@@ -121,22 +121,50 @@ async function actualizarCacheDesdeGoogle() {
             choferes.forEach(c => { mapaNombresId[c.id] = normalizar(c.nombre); });
         }
 
+        // 👉 2. TRAER VIAJES PUROS (Paginación para superar límite de 1000)
         const fechaLimite = new Date();
         fechaLimite.setDate(fechaLimite.getDate() - 365); 
         const fechaLimiteStr = fechaLimite.toISOString().split('T')[0];
 
-        const { data: registrosViajesSQL, error: errV } = await supabase
-            .from('registros_viajes_km')
-            .select('*')
+        let registrosViajesSQL = [];
+        let hayMasDatos = true;
+        let pagina = 0;
+        const TAMANO_PAGINA = 1000;
 
-            .gte('fecha', fechaLimiteStr);
+        console.log("📥 [SQL] Iniciando descarga masiva de viajes desde Supabase...");
 
-        if (errV) console.error("⚠️ Error leyendo SQL:", errV);
-        console.log(`📥 [SQL] Viajes descargados de Supabase: ${registrosViajesSQL ? registrosViajesSQL.length : 0} registros.`);
+        while (hayMasDatos) {
+            // Usamos .range() para pedir de 1000 en 1000
+            const { data: chunk, error: errV } = await supabase
+                .from('registros_viajes_km')
+                .select('*')
+                .gte('fecha', fechaLimiteStr)
+                .range(pagina * TAMANO_PAGINA, (pagina + 1) * TAMANO_PAGINA - 1);
+
+            if (errV) {
+                console.error("⚠️ Error leyendo SQL:", errV.message);
+                break;
+            }
+
+            if (chunk && chunk.length > 0) {
+                registrosViajesSQL.push(...chunk); // Sumamos el bloque a la lista total
+                pagina++;
+                
+                // Si nos devuelve menos de 1000, significa que ya llegamos al final de la tabla
+                if (chunk.length < TAMANO_PAGINA) {
+                    hayMasDatos = false;
+                }
+            } else {
+                hayMasDatos = false;
+            }
+        }
+
+        console.log(`📥 [SQL] Viajes descargados con éxito: ${registrosViajesSQL.length} registros en total.`);
 
         let nuevaSeccionViajes = {};
 
-        if (registrosViajesSQL) {
+        // 👉 3. CRUCE INTELIGENTE EN MEMORIA RAM
+        if (registrosViajesSQL.length > 0) {
             registrosViajesSQL.forEach(row => {
                 const choferNorm = mapaNombresId[row.chofer_id];
                 if (!choferNorm) return; 
