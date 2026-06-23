@@ -251,7 +251,6 @@ app.post('/api/proxy', async (req, res) => {
         }
 
         // C. 🌟 DIAGRAMAS (Letras F, V, L)
-        // NOTA: Reemplaza 'editarCelda' por el nombre de la acción que mande tu Index.html si se llama diferente.
         if (body && (body.action === 'editarCelda' || body.estado !== undefined)) {
             const nomChofer = body.nombre || body.nom || body.chofer;
             const fechaDia = body.fecha || body.isoDate;
@@ -272,19 +271,41 @@ app.post('/api/proxy', async (req, res) => {
             }
         }
 
-        // D. Replicar en el Excel (Backup Legacy)
-        const respuestaGoogle = await fetch(GAS_URL, { method: 'POST', body: JSON.stringify(body) }).then(r => r.json());
+        // =========================================================
+        // 🚧 MÓDULO AISLADO: RÉPLICA EN GOOGLE SHEETS (LEGACY)
+        // =========================================================
         
-        // 🚀 E. AVISAR A LAS PANTALLAS SI ALGO SE GUARDÓ
-        if (body && body.action !== 'login' && huboCambios) {
-            flujoEncoladoGlobal(); 
+        // 🚩 Cambiar a 'true' si algún día necesitas que la web vuelva a escribir en Excel
+        const REPLICAR_EN_GOOGLE = false; 
+
+        // Respuesta simulada inmediata para que la Web no se quede esperando
+        let respuestaFrontend = { success: true, message: "Guardado rápido en SQL" };
+
+        if (REPLICAR_EN_GOOGLE) {
+            try {
+                // Esta línea bloqueaba el sistema por 3 segundos. Ahora está en cuarentena.
+                respuestaFrontend = await fetch(GAS_URL, { method: 'POST', body: JSON.stringify(body) }).then(r => r.json());
+            } catch (err) {
+                console.error("⚠️ Fallo en la réplica de Google Sheets:", err.message);
+            }
         }
 
-        res.json(respuestaGoogle);
+        // =========================================================
+        // 🚀 EMITIR CAMBIOS Y RESPONDER A LA WEB AL INSTANTE
+        // =========================================================
+        
+        if (body && body.action !== 'login' && huboCambios) {
+            flujoEncoladoGlobal(); // Dispara la recarga en RAM de Render y emite a los demás usuarios
+        }
 
-    } catch (error) { res.status(500).json({ success: false, error: "Fallo en Proxy" }); }
+        // Devolvemos la respuesta al usuario en < 0.1 segundos
+        res.json(respuestaFrontend);
+
+    } catch (error) { 
+        res.status(500).json({ success: false, error: "Fallo general en Proxy SQL" }); 
+    }
 });
 
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`🚀 Servidor Central SQL (Render Pro) Activo en puerto ${PORT}`));
+server.listen(PORT, () => console.log(`🚀 Servidor Central SQL Activo en puerto ${PORT}`));
