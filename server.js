@@ -122,7 +122,7 @@ async function actualizarCacheDesdeGoogle() {
         };
         let resTDs = extraerJsonDeFila(sheetTDs, 0) || {};
 
-        // 🧹 MAGIA ANTI-CRASH: Destruimos las celdas cacheadas del master para liberar RAM
+        // 🧹 Limpieza estática segura
         try {
             if (sheetCacheBasico) sheetCacheBasico.resetLocalCache();
             if (sheetNombres) sheetNombres.resetLocalCache();
@@ -169,6 +169,13 @@ async function actualizarCacheDesdeGoogle() {
         let offsetsMeses = [-1, 0, 1, 2, 3]; 
         let hojasInfo = [];
 
+        // 🛡️ SOLUCIÓN AL CRASH: Armamos un diccionario estático de las hojas 
+        // ANTES de empezar a vaciarlas de la memoria RAM.
+        const mapaHojasDiag = {};
+        docDiag.sheetsByIndex.forEach(sheet => {
+            try { mapaHojasDiag[sheet.title] = sheet; } catch(e) {}
+        });
+
         for (let i of offsetsMeses) {
             let d = new Date(hoy.getFullYear(), hoy.getMonth() + i, 1);
             let anio = d.getFullYear();
@@ -177,7 +184,8 @@ async function actualizarCacheDesdeGoogle() {
             
             hojasInfo.push({ nombre: nombreHoja, anio, mesStr });
             
-            let sheetDiag = docDiag.sheetsByTitle[nombreHoja];
+            // 🌟 Buscamos en nuestro diccionario estático (Bypass seguro del Getter)
+            let sheetDiag = mapaHojasDiag[nombreHoja]; 
             if (!sheetDiag) continue;
             
             await sheetDiag.loadCells('B6:AI150'); 
@@ -203,7 +211,7 @@ async function actualizarCacheDesdeGoogle() {
                 } catch (e) { break; } 
             }
             
-            // 🧹 MAGIA ANTI-CRASH: Limpiamos las celdas de este mes de la RAM antes de cargar el siguiente
+            // 🧹 RAM FREE: Ahora podemos vaciar la hoja tranquilos
             try { sheetDiag.resetLocalCache(); } catch(e) {}
         }
 
