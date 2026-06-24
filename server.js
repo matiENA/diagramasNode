@@ -176,7 +176,7 @@ async function actualizarCacheDesdeGoogle() {
             try { mapaHojasDiag[sheet.title] = sheet; } catch(e) {}
         });
 
-        for (let i of offsetsMeses) {
+       for (let i of offsetsMeses) {
             let d = new Date(hoy.getFullYear(), hoy.getMonth() + i, 1);
             let anio = d.getFullYear();
             let mesStr = String(d.getMonth() + 1).padStart(2, '0');
@@ -184,34 +184,51 @@ async function actualizarCacheDesdeGoogle() {
             
             hojasInfo.push({ nombre: nombreHoja, anio, mesStr });
             
-            // 🌟 Buscamos en nuestro diccionario estático (Bypass seguro del Getter)
             let sheetDiag = mapaHojasDiag[nombreHoja]; 
             if (!sheetDiag) continue;
             
-            await sheetDiag.loadCells('B6:AI254'); 
+            // 🛡️ LECTOR ELÁSTICO: Intentamos cargar hasta la fila 255. 
+            // Si el mes tiene menos filas y Google lanza error de límites, cargamos solo las dimensiones reales de la hoja.
+            try {
+                await sheetDiag.loadCells('A1:AL255'); 
+            } catch (boundsError) {
+                try { await sheetDiag.loadCells(); } catch(e) { continue; }
+            }
             
-            for (let r = 5; r < 149; r++) {
+            // 🚀 BARRIDO: Desde la Fila 6 (index 5) hasta la 254 (index 253)
+            for (let r = 5; r < 254; r++) { 
                 try {
-                    let cellNombre = sheetDiag.getCell(r, 1).value;
+                    let cellNombre;
+                    
+                    // Si la fila no existe o está vacía, saltamos a la siguiente silenciosamente
+                    try { cellNombre = sheetDiag.getCell(r, 1).value; } catch(err) { continue; } 
+                    
                     if (!cellNombre || cellNombre === "APELLIDO Y NOMBRE" || cellNombre === "Personal Activo") continue;
                     
                     let nomNorm = normalizar(cellNombre);
                     if (!diasLegacyIso[nomNorm]) diasLegacyIso[nomNorm] = {};
                     
-                    let srv = sheetDiag.getCell(r, 2).value;
-                    if (srv) srvLegacy[nomNorm] = String(srv).trim();
+                    try {
+                        let srv = sheetDiag.getCell(r, 2).value;
+                        if (srv) srvLegacy[nomNorm] = String(srv).trim();
+                    } catch(err) {}
                     
+                    // Escaneamos los 31 días protegiendo cada celda individualmente
                     for (let dia = 1; dia <= 31; dia++) {
-                        let estado = sheetDiag.getCell(r, dia + 3).value;
-                        if (estado && estado !== '-') {
-                            let isoDate = `${anio}-${mesStr}-${String(dia).padStart(2, '0')}`;
-                            diasLegacyIso[nomNorm][isoDate] = String(estado).toUpperCase().trim();
-                        }
+                        try {
+                            let estado = sheetDiag.getCell(r, dia + 3).value;
+                            if (estado && estado !== '-') {
+                                let isoDate = `${anio}-${mesStr}-${String(dia).padStart(2, '0')}`;
+                                diasLegacyIso[nomNorm][isoDate] = String(estado).toUpperCase().trim();
+                            }
+                        } catch(err) {} // Si el día no existe (ej: 31 de Junio), se ignora.
                     }
-                } catch (e) { break; } 
+                } catch (e) { 
+                    continue; // Nunca abandonamos el bucle, pasamos al siguiente chofer
+                } 
             }
             
-            // 🧹 RAM FREE: Ahora podemos vaciar la hoja tranquilos
+            // 🧹 RAM FREE
             try { sheetDiag.resetLocalCache(); } catch(e) {}
         }
 
