@@ -91,11 +91,26 @@ async function actualizarCacheDesdeGoogle() {
     try {
         console.log("🔄 Reconstruyendo Memoria RAM (SQL + Google)...");
         
-        const [resDiagGAS, resNombresMes, resTDs] = await Promise.all([
-            fetchSeguro(`${GAS_URL}?action=obtenerDiagramasCacheados`),
-            fetchSeguro(`${GAS_URL}?action=obtenerNombresMesActual`),
-            fetchSeguro(`${GAS_URL}?action=obtenerTDs`)
+        // 🚀 CONEXIÓN DIRECTA A GOOGLE SHEETS API (Bypass GAS)
+        const doc = new GoogleSpreadsheet(process.env.SPREADSHEET_ID, serviceAccountAuth);
+        await doc.loadInfo(); // Abre el documento en milisegundos
+
+        // Buscamos las pestañas por su nombre exacto en tu Excel
+        const sheetCacheBasico = doc.sheetsByTitle['API_CACHE_BASICO']; 
+        const sheetNombres = doc.sheetsByTitle['API_CACHE_NOMBRES']; // Ajusta el nombre si es distinto
+        const sheetTDs = doc.sheetsByTitle['API_CACHE_TDS']; // Ajusta el nombre si es distinto
+
+        // Cargamos solo la celda A1 de esas pestañas para no gastar memoria
+        await Promise.all([
+            sheetCacheBasico ? sheetCacheBasico.loadCells('A1') : Promise.resolve(),
+            sheetNombres ? sheetNombres.loadCells('A1') : Promise.resolve(),
+            sheetTDs ? sheetTDs.loadCells('A1') : Promise.resolve()
         ]);
+
+        // Parseamos los JSON directamente desde la celda
+        let resDiagGAS = sheetCacheBasico ? JSON.parse(sheetCacheBasico.getCellByA1('A1').value || '{}') : null;
+        let resNombresMes = sheetNombres ? JSON.parse(sheetNombres.getCellByA1('A1').value || '[]') : [];
+        let resTDs = sheetTDs ? JSON.parse(sheetTDs.getCellByA1('A1').value || '{}') : {};
 
         const { data: choferes, error: errChoferes } = await supabase.from('choferes')
             .select('*, units(n_ute, tractor, semi)');
