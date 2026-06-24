@@ -97,7 +97,6 @@ async function actualizarCacheDesdeGoogle() {
             fetchSeguro(`${GAS_URL}?action=obtenerTDs`)
         ]);
 
-        // 👉 1. TRAEMOS CHOFERES (USANDO * PARA EVITAR CRASHEOS SI FALTAN COLUMNAS)
         const { data: choferes, error: errChoferes } = await supabase.from('choferes')
             .select('*, units(n_ute, tractor, semi)');
             
@@ -106,14 +105,12 @@ async function actualizarCacheDesdeGoogle() {
         const normalizar = (n) => String(n || '').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
         const mapaNombresId = {};
         
-        // --- 🛡️ SISTEMA DE RESPALDO (FALLBACK A GOOGLE SHEETS) ---
         let docsMap = (resDiagGAS && resDiagGAS.documentos) ? { ...resDiagGAS.documentos } : {};
         let habsMap = (resDiagGAS && resDiagGAS.habilitaciones) ? { ...resDiagGAS.habilitaciones } : {};
         let certsMap = (resDiagGAS && resDiagGAS.certificados) ? { ...resDiagGAS.certificados } : {};
         let dnisMap = (resDiagGAS && resDiagGAS.dnis) ? { ...resDiagGAS.dnis } : {};
         let telefonosMap = (resDiagGAS && resDiagGAS.telefonos) ? { ...resDiagGAS.telefonos } : {};
 
-        // 🌟 NUEVO: Rescatar TDs, Colores y DIAS VIEJOS del caché para mantener la estética y el historial
         let visualesLegacyMap = {};
         let diasLegacyMap = {}; 
         
@@ -121,7 +118,7 @@ async function actualizarCacheDesdeGoogle() {
             resDiagGAS.diagramas.forEach(d => {
                 let nombreNorm = normalizar(d.nom);
                 visualesLegacyMap[nombreNorm] = { td: d.td, hex_1: d.hex_1, hex_2: d.hex_2, hex1: d.hex1, hex2: d.hex2 };
-                diasLegacyMap[nombreNorm] = d.dias || {}; // Guardamos el historial de días de Google
+                diasLegacyMap[nombreNorm] = d.dias || {}; 
             });
         }
 
@@ -131,7 +128,6 @@ async function actualizarCacheDesdeGoogle() {
                 const nomNorm = normalizar(nombreReal);
                 mapaNombresId[c.id] = nomNorm; 
                 
-                // Si SQL tiene DNI o Contacto, sobrescribe el de Google
                 if (c.dni) dnisMap[nomNorm] = { dni: c.dni };
                 
                 let datosContacto = telefonosMap[nomNorm] || {};
@@ -183,7 +179,6 @@ async function actualizarCacheDesdeGoogle() {
             if (chunkD && chunkD.length > 0) { diagramasSQL.push(...chunkD); pagD++; if (chunkD.length < 1000) masDiag = false; } 
             else { masDiag = false; }
         }
-        console.log(`📥 Celdas de diagrama leídas de SQL: ${diagramasSQL.length}`);
 
         const dictDiasSQL = {};
         if (diagramasSQL.length > 0) {
@@ -196,7 +191,7 @@ async function actualizarCacheDesdeGoogle() {
             });
         }
 
-        // 👉 LECTURA C: DOCUMENTOS DESDE SQL (Sobrescribe a Google si existe) ---
+        // 👉 LECTURA C: DOCUMENTOS DESDE SQL
         const { data: documentosSQL, error: errDocs } = await supabase.from('documentos_choferes').select('*');
         if (documentosSQL) {
             documentosSQL.forEach(doc => {
@@ -227,11 +222,7 @@ async function actualizarCacheDesdeGoogle() {
                     if (u) { unTractor = u.tractor || ''; unSemi = u.semi || ''; unUte = u.n_ute || ''; }
                 }
 
-                // Inyectamos las visuales legacy para no perder colores ni TDs
                 let vL = visualesLegacyMap[nomNorm] || {};
-
-                // 🚀 LA FUSIÓN: Combinamos el historial de Google con los datos frescos de SQL.
-                // Si ambos tienen el mismo día, SQL manda (sobreescribe a Google).
                 let diasCombinados = { ...(diasLegacyMap[nomNorm] || {}), ...(dictDiasSQL[nomNorm] || {}) };
 
                 diagramasHibridos.push({
@@ -243,7 +234,7 @@ async function actualizarCacheDesdeGoogle() {
                     n_ute: unUte, 
                     td: vL.td || '-', 
                     hex1: vL.hex1 || "", hex2: vL.hex2 || "", hex_1: vL.hex_1 || "#ffffff", hex_2: vL.hex_2 || "#ffffff", 
-                    dias: diasCombinados // 🌟 Se inyecta la mezcla perfecta
+                    dias: diasCombinados 
                 });
             });
         }
@@ -286,7 +277,7 @@ app.post('/api/webhook/google', async (req, res) => {
 });
 
 // ==========================================
-// 🌟 4. RUTAS API Y PROXY (ESCRITURA DIRECTA)
+// 🌟 4. RUTAS API Y PROXY (MUTACIÓN INTELIGENTE EN RAM)
 // ==========================================
 app.get('/api/datos', (req, res) => {
     if (!cacheDatosGlobales.diagramas) return res.status(503).json({ error: "Cargando DB..." });
@@ -297,17 +288,28 @@ app.post('/api/proxy', async (req, res) => {
     try {
         const body = req.body;
         let huboCambios = false;
+        const normalizar = (n) => String(n || '').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
 
-        // A. DOCUMENTOS
+        // A. DOCUMENTOS (Guarda en SQL + Muta la RAM)
         if (body && body.action === 'guardarDocumentos') {
             const { data: choferData } = await supabase.from('choferes').select('id').ilike('nombre', body.nombre).single();
             if (choferData) {
                 await supabase.from('documentos_choferes').upsert({ chofer_id: choferData.id, venc_periodico: body.exVen, venc_licencia: body.licVen, venc_cert_mp: body.certVen }, { onConflict: 'chofer_id' });
+                
+                let choferNorm = normalizar(body.nombre);
+                if (!cacheDatosGlobales.diagramas.documentos) cacheDatosGlobales.diagramas.documentos = {};
+                if (!cacheDatosGlobales.diagramas.habilitaciones) cacheDatosGlobales.diagramas.habilitaciones = {};
+                if (!cacheDatosGlobales.diagramas.certificados) cacheDatosGlobales.diagramas.certificados = {};
+                
+                if (body.exVen) cacheDatosGlobales.diagramas.documentos[choferNorm] = { ven: body.exVen, estado: 'OK' };
+                if (body.licVen) cacheDatosGlobales.diagramas.habilitaciones[choferNorm] = { ven: body.licVen, estado: 'OK' };
+                if (body.certVen) cacheDatosGlobales.diagramas.certificados[choferNorm] = { ven: body.certVen, estado: 'OK' };
+                
                 huboCambios = true;
             }
         }
 
-        // B. VIAJES Y KMs
+        // B. VIAJES Y KMs (Guarda en SQL + Muta la RAM)
         if (body && (body.action === 'guardarHojasRuta' || body.action === 'guardarViaje' || body.action === 'actualizarViaje' || body.hoja_ruta !== undefined || body.km !== undefined)) {
             const nomChofer = body.nombre || body.nom || body.chofer;
             const fechaViaje = body.fecha || body.isoDate;
@@ -327,12 +329,27 @@ app.post('/api/proxy', async (req, res) => {
                         hoja_ruta: body.hoja_ruta !== undefined ? body.hoja_ruta : (viajeExistente?.hoja_ruta || []),
                         actualizado_en: new Date()
                     }, { onConflict: 'chofer_id,fecha' });
+
+                    let choferNorm = normalizar(nomChofer);
+                    if (!cacheDatosGlobales.diagramas.nuevaSeccionViajes) cacheDatosGlobales.diagramas.nuevaSeccionViajes = {};
+                    if (!cacheDatosGlobales.diagramas.nuevaSeccionViajes[choferNorm]) cacheDatosGlobales.diagramas.nuevaSeccionViajes[choferNorm] = {};
+                    
+                    let vEx = cacheDatosGlobales.diagramas.nuevaSeccionViajes[choferNorm][fechaViaje] || {};
+                    cacheDatosGlobales.diagramas.nuevaSeccionViajes[choferNorm][fechaViaje] = {
+                        dominio: body.dominio !== undefined ? body.dominio : (vEx.dominio || ''),
+                        km: body.km !== undefined ? Number(body.km) : (vEx.km || 0),
+                        liviano: body.liviano !== undefined ? Number(body.liviano) : (vEx.liviano || 0),
+                        euro: body.euro !== undefined ? Number(body.euro) : (vEx.euro || 0),
+                        campo: body.campo !== undefined ? Number(body.campo) : (vEx.campo || 0),
+                        infiniaD: body.infinia_d !== undefined ? Number(body.infinia_d) : (vEx.infiniaD || 0),
+                        hoja_ruta: body.hoja_ruta !== undefined ? body.hoja_ruta : (vEx.hoja_ruta || [])
+                    };
                     huboCambios = true;
                 }
             }
         }
 
-        // C. DIAGRAMAS
+        // C. DIAGRAMAS (Guarda en SQL + Muta la RAM)
         if (body && body.action === 'actualizarEstado') {
             const nomChofer = body.nombre; const startIso = body.startIso; const endIso = body.endIso; const estPayload = body.est;
 
@@ -343,14 +360,24 @@ app.post('/api/proxy', async (req, res) => {
                     let dStart = new Date(startIso + "T12:00:00"); let dEnd = new Date(endIso + "T12:00:00");
                     let current = new Date(dStart); let dayIndex = 0; let arrayParaUpsert = [];
 
+                    let choferNorm = normalizar(nomChofer);
+                    let idxChoferRAM = cacheDatosGlobales.diagramas.diagramas ? cacheDatosGlobales.diagramas.diagramas.findIndex(d => normalizar(d.nom) === choferNorm) : -1;
+
                     while (current <= dEnd) {
                         let fechaDia = current.toISOString().split('T')[0];
                         let estadoDia = Array.isArray(estPayload) ? (estPayload[dayIndex] || '') : estPayload;
 
                         if (estadoDia === 'BORRAR' || estadoDia === '' || estadoDia === null || estadoDia === '-') {
                             await supabase.from('diagramas_diarios').delete().match({ chofer_id: choferData.id, fecha: fechaDia });
+                            if (idxChoferRAM !== -1 && cacheDatosGlobales.diagramas.diagramas[idxChoferRAM].dias) {
+                                delete cacheDatosGlobales.diagramas.diagramas[idxChoferRAM].dias[fechaDia];
+                            }
                         } else {
                             arrayParaUpsert.push({ chofer_id: choferData.id, fecha: fechaDia, estado: String(estadoDia).toUpperCase().trim(), actualizado_en: new Date() });
+                            if (idxChoferRAM !== -1) {
+                                if (!cacheDatosGlobales.diagramas.diagramas[idxChoferRAM].dias) cacheDatosGlobales.diagramas.diagramas[idxChoferRAM].dias = {};
+                                cacheDatosGlobales.diagramas.diagramas[idxChoferRAM].dias[fechaDia] = String(estadoDia).toUpperCase().trim();
+                            }
                         }
                         current.setDate(current.getDate() + 1); dayIndex++;
                     }
@@ -368,10 +395,15 @@ app.post('/api/proxy', async (req, res) => {
             catch (err) { console.error("⚠️ Fallo en la réplica:", err.message); }
         }
 
-        if (body && body.action !== 'login' && huboCambios) flujoEncoladoGlobal(); 
+        // 🚀 CERO EGRESS DE SUPABASE: Solo emitimos la RAM mutada
+        if (body && body.action !== 'login' && huboCambios) {
+            cacheDatosGlobales.ultimaActualizacion = new Date().toISOString();
+            io.emit('datos_actualizados', cacheDatosGlobales); 
+        }
+
         res.json(respuestaFrontend);
 
-    } catch (error) { res.status(500).json({ success: false, error: "Fallo general en Proxy" }); }
+    } catch (error) { console.error(error); res.status(500).json({ success: false, error: "Fallo general en Proxy" }); }
 });
 
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
