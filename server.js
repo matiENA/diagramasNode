@@ -91,26 +91,61 @@ async function actualizarCacheDesdeGoogle() {
     try {
         console.log("🔄 Reconstruyendo Memoria RAM (SQL + Google)...");
         
-        // 🚀 CONEXIÓN DIRECTA A GOOGLE SHEETS API (Bypass GAS)
+       // ========================================================
+        // 🚀 CONEXIÓN DIRECTA Y ENSAMBLADO DE CHUNKS (Bypass GAS)
+        // ========================================================
         const doc = new GoogleSpreadsheet(process.env.SPREADSHEET_ID, serviceAccountAuth);
-        await doc.loadInfo(); // Abre el documento en milisegundos
+        await doc.loadInfo(); 
 
-        // Buscamos las pestañas por su nombre exacto en tu Excel
         const sheetCacheBasico = doc.sheetsByTitle['API_CACHE_BASICO']; 
-        const sheetNombres = doc.sheetsByTitle['API_CACHE_NOMBRES']; // Ajusta el nombre si es distinto
-        const sheetTDs = doc.sheetsByTitle['API_CACHE_TDS']; // Ajusta el nombre si es distinto
+        const sheetNombres = doc.sheetsByTitle['API_CACHE_NOMBRES']; 
+        const sheetTDs = doc.sheetsByTitle['API_CACHE_TDS']; 
+        const sheetObservaciones = doc.sheetsByTitle['OBSERVACIONES']; 
 
-        // Cargamos solo la celda A1 de esas pestañas para no gastar memoria
+        // 🌟 CLAVE: Cargamos un rango amplio (hasta la columna Z) para atrapar todos los chunks
         await Promise.all([
-            sheetCacheBasico ? sheetCacheBasico.loadCells('A1') : Promise.resolve(),
-            sheetNombres ? sheetNombres.loadCells('A1') : Promise.resolve(),
-            sheetTDs ? sheetTDs.loadCells('A1') : Promise.resolve()
+            sheetCacheBasico ? sheetCacheBasico.loadCells('A1:Z15') : Promise.resolve(),
+            sheetNombres ? sheetNombres.loadCells('A1:Z5') : Promise.resolve(),
+            sheetTDs ? sheetTDs.loadCells('A1:Z15') : Promise.resolve(),
+            sheetObservaciones ? sheetObservaciones.loadCells('A1:Z5') : Promise.resolve()
         ]);
 
-        // Parseamos los JSON directamente desde la celda
-        let resDiagGAS = sheetCacheBasico ? JSON.parse(sheetCacheBasico.getCellByA1('A1').value || '{}') : null;
-        let resNombresMes = sheetNombres ? JSON.parse(sheetNombres.getCellByA1('A1').value || '[]') : [];
-        let resTDs = sheetTDs ? JSON.parse(sheetTDs.getCellByA1('A1').value || '{}') : {};
+        // Helper: Recorre las columnas de una fila uniéndolas antes de parsear
+        const extraerJsonDeFila = (sheet, filaIndex) => {
+            if (!sheet) return null;
+            let strCompleto = '';
+            
+            // Recorremos hasta 26 columnas (A-Z) para juntar todos los fragmentos
+            for (let col = 0; col < 26; col++) {
+                let cell = sheet.getCell(filaIndex, col); // En Node, las filas y cols empiezan en 0
+                if (cell && cell.value) {
+                    strCompleto += String(cell.value).replace(/^'/, ""); // Quitamos la comilla inicial si existe
+                } else {
+                    break; // Si la celda está vacía, ya terminaron los chunks
+                }
+            }
+            if (!strCompleto) return null;
+            try { return JSON.parse(strCompleto); } catch (e) { return null; }
+        };
+
+        // Reconstruimos el objeto leyendo fila por fila como en Apps Script
+        let resDiagGAS = {
+            diagramas: extraerJsonDeFila(sheetCacheBasico, 0),        // Fila 1
+            documentos: extraerJsonDeFila(sheetCacheBasico, 1),       // Fila 2
+            habilitaciones: extraerJsonDeFila(sheetCacheBasico, 2),   // Fila 3
+            dnis: extraerJsonDeFila(sheetCacheBasico, 3),             // Fila 4
+            certificados: extraerJsonDeFila(sheetCacheBasico, 4),     // Fila 5
+            telefonos: extraerJsonDeFila(sheetCacheBasico, 5),        // Fila 6
+            vencimientosObj: extraerJsonDeFila(sheetCacheBasico, 10), // Fila 11
+            
+            // 💡 Incluimos Observaciones y Aptos Médicos leyéndolos directo de su hoja original
+            observaciones: extraerJsonDeFila(sheetObservaciones, 0),  // Fila 1 de hoja Observaciones
+            aptosMedicos: extraerJsonDeFila(sheetObservaciones, 1)    // Fila 2 de hoja Observaciones
+        };
+
+        let resNombresMes = extraerJsonDeFila(sheetNombres, 0) || [];
+        let resTDs = extraerJsonDeFila(sheetTDs, 0) || {};
+        // ========================================================
 
         const { data: choferes, error: errChoferes } = await supabase.from('choferes')
             .select('*, units(n_ute, tractor, semi)');
