@@ -3025,8 +3025,7 @@ async function enviarCambioEstado(chofer, fIni, fFin, estado) {
 
 <script src="/socket.io/socket.io.js"></script>
   
-  <script>
-    // 2. Nos conectamos al servidor en tiempo real
+<script>
     // 2. Nos conectamos al servidor en tiempo real
     const socket = io();
     
@@ -3084,10 +3083,10 @@ async function enviarCambioEstado(chofer, fIni, fFin, estado) {
                 viajesDetalleGlobal = {};
             }
 
-           // --- PASO 2: RENDERIZADO INTELIGENTE (Agrupado por Debounce) ---
+            // --- PASO 2: RENDERIZADO INTELIGENTE (Agrupado por Debounce) ---
             clearTimeout(debounceSocketTimer); // Cancelamos dibujos atrasados
             
-            // Aumentamos el filtro a 150ms: agrupa cualquier ráfaga de datos
+            // Subimos a 150ms y quitamos el requestAnimationFrame para evitar el warning [Violation]
             debounceSocketTimer = setTimeout(() => {
                 
                 const isInputFocused = document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName);
@@ -3096,7 +3095,7 @@ async function enviarCambioEstado(chofer, fIni, fFin, estado) {
 
                 if (!isInputFocused && !isModalOpen) {
                     if (!isRangeSelected) {
-                        filtrarTabla(); // Reconstruye la UI (toma ~70ms, imperceptible)
+                        filtrarTabla(); // Se ejecuta UNA sola vez de forma fluida
                     } else if (typeof conductorSeleccionadoId !== 'undefined' && conductorSeleccionadoId) {
                         if (typeof ejecutarRenderLocalHR === 'function') ejecutarRenderLocalHR(conductorSeleccionadoId);
                     }
@@ -3113,8 +3112,12 @@ async function enviarCambioEstado(chofer, fIni, fFin, estado) {
                     }, 500);
                 }
                 
-            }, 150);
-  </script>
+            }, 150); 
 
+        } catch (e) { 
+            console.warn("Error procesando sockets:", e);
+        }
+    });
+  </script>
 </body>
 </html>
