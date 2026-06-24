@@ -110,7 +110,6 @@ async function actualizarCacheDesdeGoogle() {
             try { return JSON.parse(strCompleto); } catch (e) { return null; }
         };
 
-        // Rescatamos los objetos estáticos legados
         let resDiagGAS = {
             documentos: extraerJsonDeFila(sheetCacheBasico, 1) || {},
             habilitaciones: extraerJsonDeFila(sheetCacheBasico, 2) || {},
@@ -122,6 +121,14 @@ async function actualizarCacheDesdeGoogle() {
             aptosMedicos: extraerJsonDeFila(sheetObservaciones, 1) || {}
         };
         let resTDs = extraerJsonDeFila(sheetTDs, 0) || {};
+
+        // 🧹 MAGIA ANTI-CRASH: Destruimos las celdas cacheadas del master para liberar RAM
+        try {
+            if (sheetCacheBasico) sheetCacheBasico.resetLocalCache();
+            if (sheetNombres) sheetNombres.resetLocalCache();
+            if (sheetTDs) sheetTDs.resetLocalCache();
+            if (sheetObservaciones) sheetObservaciones.resetLocalCache();
+        } catch (e) {}
 
         // 👉 1. TRAEMOS CHOFERES DE SUPABASE
         const { data: choferes } = await supabase.from('choferes').select('*, units(n_ute, tractor, semi)');
@@ -156,10 +163,10 @@ async function actualizarCacheDesdeGoogle() {
         // 👉 2. LECTURA DIRECTA DE DIAGRAMAS (CALENDARIOS DE GOOGLE SHEETS)
         let diasLegacyIso = {}; 
         let srvLegacy = {};
-        let visualesLegacyMap = {}; // Guardaremos TDs y colores si los hubiera
+        let visualesLegacyMap = {}; 
 
         let hoy = new Date();
-        let offsetsMeses = [-1, 0, 1, 2, 3]; // Ventana de 5 meses
+        let offsetsMeses = [-1, 0, 1, 2, 3]; 
         let hojasInfo = [];
 
         for (let i of offsetsMeses) {
@@ -173,7 +180,7 @@ async function actualizarCacheDesdeGoogle() {
             let sheetDiag = docDiag.sheetsByTitle[nombreHoja];
             if (!sheetDiag) continue;
             
-            await sheetDiag.loadCells('B6:AI150'); // Filas 6 a 150, Cols B(1) a AI(34)
+            await sheetDiag.loadCells('B6:AI150'); 
             
             for (let r = 5; r < 149; r++) {
                 try {
@@ -186,7 +193,6 @@ async function actualizarCacheDesdeGoogle() {
                     let srv = sheetDiag.getCell(r, 2).value;
                     if (srv) srvLegacy[nomNorm] = String(srv).trim();
                     
-                    // Extraemos los días (Día 1 = Columna E = Index 4)
                     for (let dia = 1; dia <= 31; dia++) {
                         let estado = sheetDiag.getCell(r, dia + 3).value;
                         if (estado && estado !== '-') {
@@ -194,8 +200,11 @@ async function actualizarCacheDesdeGoogle() {
                             diasLegacyIso[nomNorm][isoDate] = String(estado).toUpperCase().trim();
                         }
                     }
-                } catch (e) { break; } // Fin de la cuadrícula
+                } catch (e) { break; } 
             }
+            
+            // 🧹 MAGIA ANTI-CRASH: Limpiamos las celdas de este mes de la RAM antes de cargar el siguiente
+            try { sheetDiag.resetLocalCache(); } catch(e) {}
         }
 
         // 👉 3. LECTURA DE SUPABASE (Sobrescribe a Google)
@@ -251,7 +260,6 @@ async function actualizarCacheDesdeGoogle() {
         let diagramasHibridos = [];
         let choferesProcesados = new Set(); 
 
-        // Recuperar TDs originales del archivo caché de GAS para asignarlos 
         const arrayTDsOriginal = extraerJsonDeFila(sheetCacheBasico, 0) || []; 
         arrayTDsOriginal.forEach(d => {
             let n = normalizar(d.nom);
@@ -272,11 +280,9 @@ async function actualizarCacheDesdeGoogle() {
                     if (u) { unTractor = u.tractor || ''; unSemi = u.semi || ''; unUte = u.n_ute || ''; }
                 }
 
-                // Mezclamos la prioridad: SQL pisotea al Legacy Sheet
                 let mergeIso = { ...(diasLegacyIso[nomNorm] || {}), ...(dictDiasSQL[nomNorm] || {}) };
                 let vL = visualesLegacyMap[nomNorm] || {};
 
-                // Construimos las famosas comas "F,-,L..." para que la UI no se quede ciega
                 let diasFront = {};
                 hojasInfo.forEach(info => {
                     let tira = [];
@@ -296,8 +302,8 @@ async function actualizarCacheDesdeGoogle() {
                     n_ute: unUte, 
                     td: vL.td || '-', 
                     hex1: vL.hex1 || "", hex2: vL.hex2 || "", hex_1: vL.hex_1 || "#ffffff", hex_2: vL.hex_2 || "#ffffff", 
-                    dias: diasFront,       // FORMATO FRONTEND
-                    _diasIso: mergeIso     // FORMATO BACKEND (Se guarda en RAM para editar rápido)
+                    dias: diasFront,       
+                    _diasIso: mergeIso     
                 });
             });
         }
@@ -314,11 +320,10 @@ async function actualizarCacheDesdeGoogle() {
         cacheDatosGlobales.ultimaActualizacion = new Date().toISOString();
         
         io.emit('datos_actualizados', cacheDatosGlobales);
-        console.log(`✅ Traductor de RAM listo. Sockets emitidos.`);
+        console.log(`✅ Traductor de RAM listo y limpio. Sockets emitidos.`);
     } catch (error) { console.error("❌ Error en ensamblador directo:", error); }
 }
 
-// Helper para convertir fecha a Mes-Anio
 function obtenerInfoHojaDesdeIso(isoDate) {
     let d = new Date(isoDate + "T12:00:00");
     let anio = d.getFullYear();
@@ -351,7 +356,6 @@ app.post('/api/proxy', async (req, res) => {
         let huboCambios = false;
         const normalizar = (n) => String(n || '').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
 
-        // A. DOCUMENTOS (Guarda en SQL + Muta la RAM)
         if (body && body.action === 'guardarDocumentos') {
             const { data: choferData } = await supabase.from('choferes').select('id').ilike('nombre', body.nombre).single();
             if (choferData) {
@@ -369,7 +373,6 @@ app.post('/api/proxy', async (req, res) => {
             }
         }
 
-        // B. VIAJES Y KMs (Guarda en SQL + Muta la RAM)
         if (body && (body.action === 'guardarHojasRuta' || body.action === 'guardarViaje' || body.action === 'actualizarViaje' || body.hoja_ruta !== undefined || body.km !== undefined)) {
             const nomChofer = body.nombre || body.nom || body.chofer;
             const fechaViaje = body.fecha || body.isoDate;
@@ -406,7 +409,6 @@ app.post('/api/proxy', async (req, res) => {
             }
         }
 
-        // C. DIAGRAMAS (Mutación de ISO a Tira de Comas en tiempo real)
         if (body && body.action === 'actualizarEstado') {
             const nomChofer = body.nombre; const startIso = body.startIso; const endIso = body.endIso; const estPayload = body.est;
 
@@ -446,7 +448,6 @@ app.post('/api/proxy', async (req, res) => {
 
                     if (arrayParaUpsert.length > 0) await supabase.from('diagramas_diarios').upsert(arrayParaUpsert, { onConflict: 'chofer_id,fecha' });
 
-                    // 🚀 MAGIA: Reconstruimos la tira de comas para el mes afectado al vuelo
                     if (idxChoferRAM !== -1) {
                         mesesAfectados.forEach(info => {
                             let tira = [];
@@ -462,9 +463,14 @@ app.post('/api/proxy', async (req, res) => {
             }
         }
 
-        // =========================================================
-        // EMISIÓN INTELIGENTE CERO-EGRESS
-        // =========================================================
+        const REPLICAR_EN_GOOGLE = false; 
+        let respuestaFrontend = { success: true, message: "Guardado rápido en SQL" };
+
+        if (REPLICAR_EN_GOOGLE) {
+            try { respuestaFrontend = await fetch(GAS_URL, { method: 'POST', body: JSON.stringify(body) }).then(r => r.json()); } 
+            catch (err) { console.error("⚠️ Fallo en la réplica:", err.message); }
+        }
+
         if (body && body.action !== 'login' && huboCambios) {
             cacheDatosGlobales.ultimaActualizacion = new Date().toISOString();
             io.emit('datos_actualizados', cacheDatosGlobales); 
@@ -477,4 +483,4 @@ app.post('/api/proxy', async (req, res) => {
 
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`🚀 Servidor Central Node (Bypass Total) Activo en puerto ${PORT}`));
+server.listen(PORT, () => console.log(`🚀 Servidor Central Node Activo en puerto ${PORT}`));
