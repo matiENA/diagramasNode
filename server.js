@@ -188,7 +188,7 @@ async function actualizarCacheDesdeGoogle() {
             let sheetDiag = mapaHojasDiag[nombreHoja]; 
             if (!sheetDiag) continue;
             
-            await sheetDiag.loadCells('B6:AI150'); 
+            await sheetDiag.loadCells('B6:AI254'); 
             
             for (let r = 5; r < 149; r++) {
                 try {
