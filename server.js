@@ -20,9 +20,8 @@ app.use(express.json({ type: ['application/json', 'text/plain'] }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ==========================================
-// 1. CONFIGURACIÓN 
+// 1. CONFIGURACIÓN E INSTANCIAS
 // ==========================================
-const GAS_URL = process.env.GAS_URL;
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
@@ -33,16 +32,11 @@ const serviceAccountAuth = new JWT({
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
 });
 
-let cacheDatosGlobales = { diagramas: null, tds: null, nombresMesActual: [], ultimaActualizacion: null };
+const ID_SPREADSHEET_MASTER = process.env.SPREADSHEET_ID;
+const ID_SPREADSHEET_DIAGRAMAS = '1mhfXpFCF6upMlnRnZjDdBVS_wqTx5q8v0qQArNCnNAU';
+const mesesAbrev = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
-const fetchSeguro = async (url) => {
-    try {
-        const r = await fetch(url);
-        const text = await r.text();
-        if (text.trim().startsWith('<')) return null;
-        return JSON.parse(text);
-    } catch (err) { return null; }
-};
+let cacheDatosGlobales = { diagramas: null, tds: null, nombresMesActual: [], ultimaActualizacion: null };
 
 // ==========================================
 // 🛡️ SISTEMA DE COLAS Y WORKERS
@@ -75,34 +69,26 @@ async function flujoEncoladoKM() {
     }
 }
 
-setTimeout(() => {
-    sincronizarTractoresContinuo();
-    flujoEncoladoGlobal(); 
-}, 5000); 
-
-setInterval(() => {
-    sincronizarTractoresContinuo();
-}, 5 * 60 * 1000); 
+setTimeout(() => { sincronizarTractoresContinuo(); flujoEncoladoGlobal(); }, 5000); 
+setInterval(() => { sincronizarTractoresContinuo(); }, 5 * 60 * 1000); 
 
 // ==========================================
-// 🧠 2. EL CEREBRO: ENSAMBLADOR A PRUEBA DE BALAS
+// 🧠 2. EL CEREBRO: LECTURA DIRECTA (BYPASS GAS)
 // ==========================================
 async function actualizarCacheDesdeGoogle() {
     try {
-        console.log("🔄 Reconstruyendo Memoria RAM (SQL + Google)...");
+        console.log("🔄 Conectando directamente a Google Sheets y Supabase...");
         
-       // ========================================================
-        // 🚀 CONEXIÓN DIRECTA Y ENSAMBLADO DE CHUNKS (Bypass GAS)
-        // ========================================================
-        const doc = new GoogleSpreadsheet(process.env.SPREADSHEET_ID, serviceAccountAuth);
-        await doc.loadInfo(); 
+        const docMaster = new GoogleSpreadsheet(ID_SPREADSHEET_MASTER, serviceAccountAuth);
+        const docDiag = new GoogleSpreadsheet(ID_SPREADSHEET_DIAGRAMAS, serviceAccountAuth);
+        
+        await Promise.all([docMaster.loadInfo(), docDiag.loadInfo()]);
 
-        const sheetCacheBasico = doc.sheetsByTitle['API_CACHE_BASICO']; 
-        const sheetNombres = doc.sheetsByTitle['API_CACHE_NOMBRES']; 
-        const sheetTDs = doc.sheetsByTitle['API_CACHE_TDS']; 
-        const sheetObservaciones = doc.sheetsByTitle['OBSERVACIONES']; 
+        const sheetCacheBasico = docMaster.sheetsByTitle['API_CACHE_BASICO']; 
+        const sheetNombres = docMaster.sheetsByTitle['API_CACHE_NOMBRES']; 
+        const sheetTDs = docMaster.sheetsByTitle['API_CACHE_TDS']; 
+        const sheetObservaciones = docMaster.sheetsByTitle['OBSERVACIONES']; 
 
-        // 🌟 CLAVE: Cargamos un rango amplio (hasta la columna Z) para atrapar todos los chunks
         await Promise.all([
             sheetCacheBasico ? sheetCacheBasico.loadCells('A1:Z15') : Promise.resolve(),
             sheetNombres ? sheetNombres.loadCells('A1:Z5') : Promise.resolve(),
@@ -110,81 +96,54 @@ async function actualizarCacheDesdeGoogle() {
             sheetObservaciones ? sheetObservaciones.loadCells('A1:Z5') : Promise.resolve()
         ]);
 
-        // Helper: Recorre las columnas de una fila uniéndolas antes de parsear
         const extraerJsonDeFila = (sheet, filaIndex) => {
             if (!sheet) return null;
             let strCompleto = '';
-            
-            // Recorremos hasta 26 columnas (A-Z) para juntar todos los fragmentos
             for (let col = 0; col < 26; col++) {
-                let cell = sheet.getCell(filaIndex, col); // En Node, las filas y cols empiezan en 0
-                if (cell && cell.value) {
-                    strCompleto += String(cell.value).replace(/^'/, ""); // Quitamos la comilla inicial si existe
-                } else {
-                    break; // Si la celda está vacía, ya terminaron los chunks
-                }
+                try {
+                    let cell = sheet.getCell(filaIndex, col);
+                    if (cell && cell.value) strCompleto += String(cell.value).replace(/^'/, "");
+                    else break;
+                } catch(e) { break; }
             }
             if (!strCompleto) return null;
             try { return JSON.parse(strCompleto); } catch (e) { return null; }
         };
 
-        // Reconstruimos el objeto leyendo fila por fila como en Apps Script
+        // Rescatamos los objetos estáticos legados
         let resDiagGAS = {
-            diagramas: extraerJsonDeFila(sheetCacheBasico, 0),        // Fila 1
-            documentos: extraerJsonDeFila(sheetCacheBasico, 1),       // Fila 2
-            habilitaciones: extraerJsonDeFila(sheetCacheBasico, 2),   // Fila 3
-            dnis: extraerJsonDeFila(sheetCacheBasico, 3),             // Fila 4
-            certificados: extraerJsonDeFila(sheetCacheBasico, 4),     // Fila 5
-            telefonos: extraerJsonDeFila(sheetCacheBasico, 5),        // Fila 6
-            vencimientosObj: extraerJsonDeFila(sheetCacheBasico, 10), // Fila 11
-            
-            // 💡 Incluimos Observaciones y Aptos Médicos leyéndolos directo de su hoja original
-            observaciones: extraerJsonDeFila(sheetObservaciones, 0),  // Fila 1 de hoja Observaciones
-            aptosMedicos: extraerJsonDeFila(sheetObservaciones, 1)    // Fila 2 de hoja Observaciones
+            documentos: extraerJsonDeFila(sheetCacheBasico, 1) || {},
+            habilitaciones: extraerJsonDeFila(sheetCacheBasico, 2) || {},
+            dnis: extraerJsonDeFila(sheetCacheBasico, 3) || {},
+            certificados: extraerJsonDeFila(sheetCacheBasico, 4) || {},
+            telefonos: extraerJsonDeFila(sheetCacheBasico, 5) || {},
+            vencimientosObj: extraerJsonDeFila(sheetCacheBasico, 10) || {},
+            observaciones: extraerJsonDeFila(sheetObservaciones, 0) || {},
+            aptosMedicos: extraerJsonDeFila(sheetObservaciones, 1) || {}
         };
-
-        let resNombresMes = extraerJsonDeFila(sheetNombres, 0) || [];
         let resTDs = extraerJsonDeFila(sheetTDs, 0) || {};
-        // ========================================================
 
-        const { data: choferes, error: errChoferes } = await supabase.from('choferes')
-            .select('*, units(n_ute, tractor, semi)');
-            
-        if (errChoferes) console.error("⚠️ Error SQL leyendo choferes:", errChoferes.message);
-        
+        // 👉 1. TRAEMOS CHOFERES DE SUPABASE
+        const { data: choferes } = await supabase.from('choferes').select('*, units(n_ute, tractor, semi)');
         const normalizar = (n) => String(n || '').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
         const mapaNombresId = {};
         
-        let docsMap = (resDiagGAS && resDiagGAS.documentos) ? { ...resDiagGAS.documentos } : {};
-        let habsMap = (resDiagGAS && resDiagGAS.habilitaciones) ? { ...resDiagGAS.habilitaciones } : {};
-        let certsMap = (resDiagGAS && resDiagGAS.certificados) ? { ...resDiagGAS.certificados } : {};
-        let dnisMap = (resDiagGAS && resDiagGAS.dnis) ? { ...resDiagGAS.dnis } : {};
-        let telefonosMap = (resDiagGAS && resDiagGAS.telefonos) ? { ...resDiagGAS.telefonos } : {};
-
-        let visualesLegacyMap = {};
-        let diasLegacyMap = {}; 
-        
-        if (resDiagGAS && resDiagGAS.diagramas) {
-            resDiagGAS.diagramas.forEach(d => {
-                let nombreNorm = normalizar(d.nom);
-                visualesLegacyMap[nombreNorm] = { td: d.td, hex_1: d.hex_1, hex_2: d.hex_2, hex1: d.hex1, hex2: d.hex2 };
-                diasLegacyMap[nombreNorm] = d.dias || {}; 
-            });
-        }
+        let docsMap = resDiagGAS.documentos;
+        let habsMap = resDiagGAS.habilitaciones;
+        let certsMap = resDiagGAS.certificados;
+        let dnisMap = resDiagGAS.dnis;
+        let telefonosMap = resDiagGAS.telefonos;
 
         if (choferes) {
             choferes.forEach(c => { 
-                const nombreReal = String(c.nombre || '').trim();
-                const nomNorm = normalizar(nombreReal);
+                const nomNorm = normalizar(c.nombre);
                 mapaNombresId[c.id] = nomNorm; 
-                
                 if (c.dni) dnisMap[nomNorm] = { dni: c.dni };
                 
                 let datosContacto = telefonosMap[nomNorm] || {};
                 if (c.telefono) datosContacto.telefono = c.telefono;
                 if (c.legajo) datosContacto.legajo = c.legajo;
                 if (c.email) datosContacto.email = c.email;
-                
                 telefonosMap[nomNorm] = datosContacto;
                 if (c.dni) telefonosMap[c.dni] = datosContacto;
             });
@@ -194,55 +153,89 @@ async function actualizarCacheDesdeGoogle() {
         fechaLimite.setDate(fechaLimite.getDate() - 365); 
         const fechaLimiteStr = fechaLimite.toISOString().split('T')[0];
 
-        // --- LECTURA A: VIAJES (KMs) ---
+        // 👉 2. LECTURA DIRECTA DE DIAGRAMAS (CALENDARIOS DE GOOGLE SHEETS)
+        let diasLegacyIso = {}; 
+        let srvLegacy = {};
+        let visualesLegacyMap = {}; // Guardaremos TDs y colores si los hubiera
+
+        let hoy = new Date();
+        let offsetsMeses = [-1, 0, 1, 2, 3]; // Ventana de 5 meses
+        let hojasInfo = [];
+
+        for (let i of offsetsMeses) {
+            let d = new Date(hoy.getFullYear(), hoy.getMonth() + i, 1);
+            let anio = d.getFullYear();
+            let mesStr = String(d.getMonth() + 1).padStart(2, '0');
+            let nombreHoja = mesesAbrev[d.getMonth()] + "-" + String(anio).slice(-2);
+            
+            hojasInfo.push({ nombre: nombreHoja, anio, mesStr });
+            
+            let sheetDiag = docDiag.sheetsByTitle[nombreHoja];
+            if (!sheetDiag) continue;
+            
+            await sheetDiag.loadCells('B6:AI150'); // Filas 6 a 150, Cols B(1) a AI(34)
+            
+            for (let r = 5; r < 149; r++) {
+                try {
+                    let cellNombre = sheetDiag.getCell(r, 1).value;
+                    if (!cellNombre || cellNombre === "APELLIDO Y NOMBRE" || cellNombre === "Personal Activo") continue;
+                    
+                    let nomNorm = normalizar(cellNombre);
+                    if (!diasLegacyIso[nomNorm]) diasLegacyIso[nomNorm] = {};
+                    
+                    let srv = sheetDiag.getCell(r, 2).value;
+                    if (srv) srvLegacy[nomNorm] = String(srv).trim();
+                    
+                    // Extraemos los días (Día 1 = Columna E = Index 4)
+                    for (let dia = 1; dia <= 31; dia++) {
+                        let estado = sheetDiag.getCell(r, dia + 3).value;
+                        if (estado && estado !== '-') {
+                            let isoDate = `${anio}-${mesStr}-${String(dia).padStart(2, '0')}`;
+                            diasLegacyIso[nomNorm][isoDate] = String(estado).toUpperCase().trim();
+                        }
+                    }
+                } catch (e) { break; } // Fin de la cuadrícula
+            }
+        }
+
+        // 👉 3. LECTURA DE SUPABASE (Sobrescribe a Google)
         let registrosViajesSQL = [];
-        let masViajes = true;
-        let pagV = 0;
+        let diagramasSQL = [];
+        let masViajes = true, masDiag = true;
+        let pagV = 0, pagD = 0;
+
         while (masViajes) {
             const { data: chunk } = await supabase.from('registros_viajes_km').select('*').gte('fecha', fechaLimiteStr).range(pagV * 1000, (pagV + 1) * 1000 - 1);
-            if (chunk && chunk.length > 0) { registrosViajesSQL.push(...chunk); pagV++; if (chunk.length < 1000) masViajes = false; } 
-            else { masViajes = false; }
+            if (chunk && chunk.length > 0) { registrosViajesSQL.push(...chunk); pagV++; if (chunk.length < 1000) masViajes = false; } else masViajes = false;
+        }
+
+        while (masDiag) {
+            const { data: chunkD } = await supabase.from('diagramas_diarios').select('*').gte('fecha', fechaLimiteStr).range(pagD * 1000, (pagD + 1) * 1000 - 1);
+            if (chunkD && chunkD.length > 0) { diagramasSQL.push(...chunkD); pagD++; if (chunkD.length < 1000) masDiag = false; } else masDiag = false;
         }
 
         let nuevaSeccionViajes = {};
-        if (registrosViajesSQL.length > 0) {
-            registrosViajesSQL.forEach(row => {
-                const choferNorm = mapaNombresId[row.chofer_id];
-                if (!choferNorm) return; 
-                if (!nuevaSeccionViajes[choferNorm]) nuevaSeccionViajes[choferNorm] = {};
-                const fechaLimpia = String(row.fecha).split('T')[0];
-                nuevaSeccionViajes[choferNorm][fechaLimpia] = {
-                    dominio: row.dominio || '', km: Number(row.km || 0), 
-                    liviano: Number(row.liviano || 0), euro: Number(row.euro || 0),
-                    campo: Number(row.campo || 0), infiniaD: Number(row.infinia_d || 0), hoja_ruta: row.hoja_ruta || []
-                };
-            });
-        }
-
-        // --- LECTURA B: DIAGRAMAS DIARIOS ---
-        let diagramasSQL = [];
-        let masDiag = true;
-        let pagD = 0;
-        while (masDiag) {
-            const { data: chunkD, error: errDiag } = await supabase.from('diagramas_diarios').select('*').gte('fecha', fechaLimiteStr).range(pagD * 1000, (pagD + 1) * 1000 - 1);
-            if (errDiag) console.error("⚠️ Error SQL Diagramas:", errDiag.message);
-            if (chunkD && chunkD.length > 0) { diagramasSQL.push(...chunkD); pagD++; if (chunkD.length < 1000) masDiag = false; } 
-            else { masDiag = false; }
-        }
+        registrosViajesSQL.forEach(row => {
+            const choferNorm = mapaNombresId[row.chofer_id];
+            if (!choferNorm) return; 
+            if (!nuevaSeccionViajes[choferNorm]) nuevaSeccionViajes[choferNorm] = {};
+            const fechaLimpia = String(row.fecha).split('T')[0];
+            nuevaSeccionViajes[choferNorm][fechaLimpia] = {
+                dominio: row.dominio || '', km: Number(row.km || 0), 
+                liviano: Number(row.liviano || 0), euro: Number(row.euro || 0),
+                campo: Number(row.campo || 0), infiniaD: Number(row.infinia_d || 0), hoja_ruta: row.hoja_ruta || []
+            };
+        });
 
         const dictDiasSQL = {};
-        if (diagramasSQL.length > 0) {
-            diagramasSQL.forEach(row => {
-                const choferNorm = mapaNombresId[row.chofer_id];
-                if (!choferNorm) return;
-                if (!dictDiasSQL[choferNorm]) dictDiasSQL[choferNorm] = {};
-                const fechaLimpia = String(row.fecha).split('T')[0];
-                dictDiasSQL[choferNorm][fechaLimpia] = row.estado;
-            });
-        }
+        diagramasSQL.forEach(row => {
+            const choferNorm = mapaNombresId[row.chofer_id];
+            if (!choferNorm) return;
+            if (!dictDiasSQL[choferNorm]) dictDiasSQL[choferNorm] = {};
+            dictDiasSQL[choferNorm][String(row.fecha).split('T')[0]] = row.estado;
+        });
 
-        // 👉 LECTURA C: DOCUMENTOS DESDE SQL
-        const { data: documentosSQL, error: errDocs } = await supabase.from('documentos_choferes').select('*');
+        const { data: documentosSQL } = await supabase.from('documentos_choferes').select('*');
         if (documentosSQL) {
             documentosSQL.forEach(doc => {
                 const choferNorm = mapaNombresId[doc.chofer_id];
@@ -254,9 +247,16 @@ async function actualizarCacheDesdeGoogle() {
             });
         }
 
-        // --- ENSAMBLADO FINAL ---
+        // 👉 4. TRADUCTOR FINAL: Mezcla ISO y conversión a Comas para el FrontEnd
         let diagramasHibridos = [];
         let choferesProcesados = new Set(); 
+
+        // Recuperar TDs originales del archivo caché de GAS para asignarlos 
+        const arrayTDsOriginal = extraerJsonDeFila(sheetCacheBasico, 0) || []; 
+        arrayTDsOriginal.forEach(d => {
+            let n = normalizar(d.nom);
+            visualesLegacyMap[n] = { td: d.td, hex1: d.hex1, hex2: d.hex2, hex_1: d.hex_1, hex_2: d.hex_2 };
+        });
 
         if (choferes) {
             choferes.forEach(chofer => {
@@ -272,19 +272,32 @@ async function actualizarCacheDesdeGoogle() {
                     if (u) { unTractor = u.tractor || ''; unSemi = u.semi || ''; unUte = u.n_ute || ''; }
                 }
 
+                // Mezclamos la prioridad: SQL pisotea al Legacy Sheet
+                let mergeIso = { ...(diasLegacyIso[nomNorm] || {}), ...(dictDiasSQL[nomNorm] || {}) };
                 let vL = visualesLegacyMap[nomNorm] || {};
-                let diasCombinados = { ...(diasLegacyMap[nomNorm] || {}), ...(dictDiasSQL[nomNorm] || {}) };
+
+                // Construimos las famosas comas "F,-,L..." para que la UI no se quede ciega
+                let diasFront = {};
+                hojasInfo.forEach(info => {
+                    let tira = [];
+                    for (let dia = 1; dia <= 31; dia++) {
+                        let isoDate = `${info.anio}-${info.mesStr}-${String(dia).padStart(2, '0')}`;
+                        tira.push(mergeIso[isoDate] || "-");
+                    }
+                    diasFront[info.nombre] = tira.join(",");
+                });
 
                 diagramasHibridos.push({
                     _safeId: "drv_" + nomNorm.replace(/[^a-z0-9]/g, "_"), 
                     nom: nombreReal, 
                     tractor: unTractor, 
                     semi: unSemi, 
-                    srv: chofer.c_servicio || '', 
+                    srv: srvLegacy[nomNorm] || chofer.c_servicio || '', 
                     n_ute: unUte, 
                     td: vL.td || '-', 
                     hex1: vL.hex1 || "", hex2: vL.hex2 || "", hex_1: vL.hex_1 || "#ffffff", hex_2: vL.hex_2 || "#ffffff", 
-                    dias: diasCombinados 
+                    dias: diasFront,       // FORMATO FRONTEND
+                    _diasIso: mergeIso     // FORMATO BACKEND (Se guarda en RAM para editar rápido)
                 });
             });
         }
@@ -292,22 +305,26 @@ async function actualizarCacheDesdeGoogle() {
         let resDiag = { 
             diagramas: diagramasHibridos, nuevaSeccionViajes,
             documentos: docsMap, habilitaciones: habsMap, certificados: certsMap,
-            dnis: dnisMap, telefonos: telefonosMap
+            dnis: dnisMap, telefonos: telefonosMap,
+            observaciones: resDiagGAS.observaciones, aptosMedicos: resDiagGAS.aptosMedicos, vencimientosObj: resDiagGAS.vencimientosObj
         };
 
-        if (resDiagGAS && resDiagGAS.observaciones) resDiag.observaciones = resDiagGAS.observaciones;
-        if (resDiagGAS && resDiagGAS.aptosMedicos) resDiag.aptosMedicos = resDiagGAS.aptosMedicos;
-        if (resDiagGAS && resDiagGAS.vencimientosObj) resDiag.vencimientosObj = resDiagGAS.vencimientosObj;
-        if (resDiagGAS && resDiagGAS.fotosImgur) resDiag.fotosImgur = resDiagGAS.fotosImgur;
-
         cacheDatosGlobales.diagramas = resDiag;
-        cacheDatosGlobales.tds = resTDs || cacheDatosGlobales.tds || {};
-        cacheDatosGlobales.nombresMesActual = resNombresMes || [];
+        cacheDatosGlobales.tds = resTDs;
         cacheDatosGlobales.ultimaActualizacion = new Date().toISOString();
         
         io.emit('datos_actualizados', cacheDatosGlobales);
-        console.log(`✅ RAM lista y Sockets emitidos.`);
-    } catch (error) { console.error("❌ Error en ensamblador:", error); }
+        console.log(`✅ Traductor de RAM listo. Sockets emitidos.`);
+    } catch (error) { console.error("❌ Error en ensamblador directo:", error); }
+}
+
+// Helper para convertir fecha a Mes-Anio
+function obtenerInfoHojaDesdeIso(isoDate) {
+    let d = new Date(isoDate + "T12:00:00");
+    let anio = d.getFullYear();
+    let mesStr = String(d.getMonth() + 1).padStart(2, '0');
+    let nombreHoja = mesesAbrev[d.getMonth()] + "-" + String(anio).slice(-2);
+    return { nombre: nombreHoja, anio, mesStr };
 }
 
 // ==========================================
@@ -316,18 +333,12 @@ async function actualizarCacheDesdeGoogle() {
 app.post('/api/webhook/google', async (req, res) => {
     res.json({ success: true, message: "Recibido" }); 
     const evento = req.body.evento || 'TODO';
-    
     if (evento === 'KM') flujoEncoladoKM();
-    else if (evento === 'TD') {
-        const nuevosTDs = await fetchSeguro(`${GAS_URL}?action=obtenerTDs`);
-        cacheDatosGlobales.tds = nuevosTDs || cacheDatosGlobales.tds;
-        cacheDatosGlobales.ultimaActualizacion = new Date().toISOString();
-        io.emit('datos_actualizados', cacheDatosGlobales);
-    } else flujoEncoladoGlobal(); 
+    else flujoEncoladoGlobal(); 
 });
 
 // ==========================================
-// 🌟 4. RUTAS API Y PROXY (MUTACIÓN INTELIGENTE EN RAM)
+// 🌟 4. RUTAS API Y PROXY (MUTACIÓN ISO + FRONTEND)
 // ==========================================
 app.get('/api/datos', (req, res) => {
     if (!cacheDatosGlobales.diagramas) return res.status(503).json({ error: "Cargando DB..." });
@@ -354,7 +365,6 @@ app.post('/api/proxy', async (req, res) => {
                 if (body.exVen) cacheDatosGlobales.diagramas.documentos[choferNorm] = { ven: body.exVen, estado: 'OK' };
                 if (body.licVen) cacheDatosGlobales.diagramas.habilitaciones[choferNorm] = { ven: body.licVen, estado: 'OK' };
                 if (body.certVen) cacheDatosGlobales.diagramas.certificados[choferNorm] = { ven: body.certVen, estado: 'OK' };
-                
                 huboCambios = true;
             }
         }
@@ -386,12 +396,9 @@ app.post('/api/proxy', async (req, res) => {
                     
                     let vEx = cacheDatosGlobales.diagramas.nuevaSeccionViajes[choferNorm][fechaViaje] || {};
                     cacheDatosGlobales.diagramas.nuevaSeccionViajes[choferNorm][fechaViaje] = {
-                        dominio: body.dominio !== undefined ? body.dominio : (vEx.dominio || ''),
-                        km: body.km !== undefined ? Number(body.km) : (vEx.km || 0),
-                        liviano: body.liviano !== undefined ? Number(body.liviano) : (vEx.liviano || 0),
-                        euro: body.euro !== undefined ? Number(body.euro) : (vEx.euro || 0),
-                        campo: body.campo !== undefined ? Number(body.campo) : (vEx.campo || 0),
-                        infiniaD: body.infinia_d !== undefined ? Number(body.infinia_d) : (vEx.infiniaD || 0),
+                        dominio: body.dominio !== undefined ? body.dominio : (vEx.dominio || ''), km: body.km !== undefined ? Number(body.km) : (vEx.km || 0),
+                        liviano: body.liviano !== undefined ? Number(body.liviano) : (vEx.liviano || 0), euro: body.euro !== undefined ? Number(body.euro) : (vEx.euro || 0),
+                        campo: body.campo !== undefined ? Number(body.campo) : (vEx.campo || 0), infiniaD: body.infinia_d !== undefined ? Number(body.infinia_d) : (vEx.infiniaD || 0),
                         hoja_ruta: body.hoja_ruta !== undefined ? body.hoja_ruta : (vEx.hoja_ruta || [])
                     };
                     huboCambios = true;
@@ -399,7 +406,7 @@ app.post('/api/proxy', async (req, res) => {
             }
         }
 
-        // C. DIAGRAMAS (Guarda en SQL + Muta la RAM)
+        // C. DIAGRAMAS (Mutación de ISO a Tira de Comas en tiempo real)
         if (body && body.action === 'actualizarEstado') {
             const nomChofer = body.nombre; const startIso = body.startIso; const endIso = body.endIso; const estPayload = body.est;
 
@@ -412,50 +419,62 @@ app.post('/api/proxy', async (req, res) => {
 
                     let choferNorm = normalizar(nomChofer);
                     let idxChoferRAM = cacheDatosGlobales.diagramas.diagramas ? cacheDatosGlobales.diagramas.diagramas.findIndex(d => normalizar(d.nom) === choferNorm) : -1;
+                    let mesesAfectados = new Set();
 
                     while (current <= dEnd) {
                         let fechaDia = current.toISOString().split('T')[0];
                         let estadoDia = Array.isArray(estPayload) ? (estPayload[dayIndex] || '') : estPayload;
 
+                        let infoHoja = obtenerInfoHojaDesdeIso(fechaDia);
+                        mesesAfectados.add(infoHoja);
+
                         if (estadoDia === 'BORRAR' || estadoDia === '' || estadoDia === null || estadoDia === '-') {
                             await supabase.from('diagramas_diarios').delete().match({ chofer_id: choferData.id, fecha: fechaDia });
-                            if (idxChoferRAM !== -1 && cacheDatosGlobales.diagramas.diagramas[idxChoferRAM].dias) {
-                                delete cacheDatosGlobales.diagramas.diagramas[idxChoferRAM].dias[fechaDia];
+                            if (idxChoferRAM !== -1 && cacheDatosGlobales.diagramas.diagramas[idxChoferRAM]._diasIso) {
+                                delete cacheDatosGlobales.diagramas.diagramas[idxChoferRAM]._diasIso[fechaDia];
                             }
                         } else {
-                            arrayParaUpsert.push({ chofer_id: choferData.id, fecha: fechaDia, estado: String(estadoDia).toUpperCase().trim(), actualizado_en: new Date() });
+                            let limpio = String(estadoDia).toUpperCase().trim();
+                            arrayParaUpsert.push({ chofer_id: choferData.id, fecha: fechaDia, estado: limpio, actualizado_en: new Date() });
                             if (idxChoferRAM !== -1) {
-                                if (!cacheDatosGlobales.diagramas.diagramas[idxChoferRAM].dias) cacheDatosGlobales.diagramas.diagramas[idxChoferRAM].dias = {};
-                                cacheDatosGlobales.diagramas.diagramas[idxChoferRAM].dias[fechaDia] = String(estadoDia).toUpperCase().trim();
+                                if (!cacheDatosGlobales.diagramas.diagramas[idxChoferRAM]._diasIso) cacheDatosGlobales.diagramas.diagramas[idxChoferRAM]._diasIso = {};
+                                cacheDatosGlobales.diagramas.diagramas[idxChoferRAM]._diasIso[fechaDia] = limpio;
                             }
                         }
                         current.setDate(current.getDate() + 1); dayIndex++;
                     }
+
                     if (arrayParaUpsert.length > 0) await supabase.from('diagramas_diarios').upsert(arrayParaUpsert, { onConflict: 'chofer_id,fecha' });
+
+                    // 🚀 MAGIA: Reconstruimos la tira de comas para el mes afectado al vuelo
+                    if (idxChoferRAM !== -1) {
+                        mesesAfectados.forEach(info => {
+                            let tira = [];
+                            for(let d=1; d<=31; d++){
+                                let isoD = `${info.anio}-${info.mesStr}-${String(d).padStart(2,'0')}`;
+                                tira.push(cacheDatosGlobales.diagramas.diagramas[idxChoferRAM]._diasIso[isoD] || "-");
+                            }
+                            cacheDatosGlobales.diagramas.diagramas[idxChoferRAM].dias[info.nombre] = tira.join(",");
+                        });
+                    }
                     huboCambios = true;
                 }
             }
         }
 
-        const REPLICAR_EN_GOOGLE = false; 
-        let respuestaFrontend = { success: true, message: "Guardado rápido en SQL" };
-
-        if (REPLICAR_EN_GOOGLE) {
-            try { respuestaFrontend = await fetch(GAS_URL, { method: 'POST', body: JSON.stringify(body) }).then(r => r.json()); } 
-            catch (err) { console.error("⚠️ Fallo en la réplica:", err.message); }
-        }
-
-        // 🚀 CERO EGRESS DE SUPABASE: Solo emitimos la RAM mutada
+        // =========================================================
+        // EMISIÓN INTELIGENTE CERO-EGRESS
+        // =========================================================
         if (body && body.action !== 'login' && huboCambios) {
             cacheDatosGlobales.ultimaActualizacion = new Date().toISOString();
             io.emit('datos_actualizados', cacheDatosGlobales); 
         }
 
-        res.json(respuestaFrontend);
+        res.json({ success: true, message: "Guardado en SQL y RAM actualizada." });
 
     } catch (error) { console.error(error); res.status(500).json({ success: false, error: "Fallo general en Proxy" }); }
 });
 
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`🚀 Servidor Central SQL Activo en puerto ${PORT}`));
+server.listen(PORT, () => console.log(`🚀 Servidor Central Node (Bypass Total) Activo en puerto ${PORT}`));
