@@ -9,6 +9,8 @@ const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
 const { createClient } = require('@supabase/supabase-js');
 
+const { sincronizarTractoresContinuo } = require('./sincronizadorFlota'); 
+
 const app = express();
 app.use(compression()); 
 
@@ -42,33 +44,46 @@ const mesesAbrev = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep
 let cacheDatosGlobales = { diagramas: null, tds: null, nombresMesActual: [], ultimaActualizacion: null };
 
 // ==========================================
-// 🛡️ SISTEMA DE COLAS
+// 🛡️ SISTEMA DE COLAS INTELIGENTE
 // ==========================================
 let ejecutandoGlobal = false;
 let pendienteGlobal = false;
+let necesitaArranqueProfundo = true; // Iniciamos asumiendo que necesitamos arrancar
 
 async function flujoEncoladoGlobal(esArranque = false) {
+    if (esArranque) necesitaArranqueProfundo = true;
+
     if (ejecutandoGlobal) { pendienteGlobal = true; return; }
     ejecutandoGlobal = true;
-    try { await actualizarCacheDesdeGoogle(esArranque); } 
+
+    try { 
+        // 🌟 REGLA DE ORO: Si la RAM está vacía, SIEMPRE forzamos el arranque profundo
+        let hacerArranque = necesitaArranqueProfundo || cacheDatosGlobales.diagramas === null;
+        necesitaArranqueProfundo = false; // Reseteamos la bandera
+
+        await actualizarCacheDesdeGoogle(hacerArranque); 
+    } 
     finally {
         ejecutandoGlobal = false;
-        if (pendienteGlobal) { pendienteGlobal = false; flujoEncoladoGlobal(false); }
+        if (pendienteGlobal) { 
+            pendienteGlobal = false; 
+            flujoEncoladoGlobal(necesitaArranqueProfundo); 
+        }
     }
 }
 
-// 🚀 ARRANQUE INICIAL: Esperamos a que Render valide el Health Check antes de consumir CPU
+// 🚀 ARRANQUE INICIAL
 setTimeout(() => { 
-    console.log("⏳ [Boot] Iniciando descarga secuencial de planillas...");
+    console.log("⏳ [Boot] Disparando evento inicial...");
     flujoEncoladoGlobal(true); 
 }, 8000); 
 
 // ==========================================
-// 🧠 2. EL CEREBRO: CONSTRUCCIÓN NATIVA EN RAM (PASO A PASO)
+// 🧠 2. EL CEREBRO: CONSTRUCCIÓN NATIVA EN RAM 
 // ==========================================
 async function actualizarCacheDesdeGoogle(esArranque = false) {
     try {
-        console.log(esArranque ? "🚀 ARRANQUE: Procesando cascada de datos..." : "⚡ WEBHOOK: Actualizando RAM (0 Supabase Egress)...");
+        console.log(esArranque ? "🚀 ARRANQUE: Procesando cascada completa de datos..." : "⚡ WEBHOOK: Actualizando RAM de forma ligera...");
         const normalizar = (n) => String(n || '').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
 
         let resDiagGAS = {
@@ -83,7 +98,6 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
         const docObs = new GoogleSpreadsheet(ID_SHEET_OBSERVACIONES, serviceAccountAuth);
         const docAptos = new GoogleSpreadsheet(ID_SHEET_APTOS_MEDICOS, serviceAccountAuth);
 
-        // 🌟 LECTURA ESCALONADA: Eliminamos Promise.all masivos para no asfixiar el CPU de Render
         await docMaster.loadInfo();
         await docObs.loadInfo();
         await docAptos.loadInfo();
@@ -369,7 +383,6 @@ app.post('/api/webhook/google', async (req, res) => {
     flujoEncoladoGlobal(false); 
 });
 
-// 🏥 HEALTH CHECK: Render sabrá de inmediato que la app prendió con éxito
 app.get('/health', (req, res) => res.status(200).send('OK'));
 
 // ==========================================
