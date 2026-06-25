@@ -11,11 +11,19 @@ const app = express();
 app.use(compression()); 
 
 const server = http.createServer(app); 
-const io = new Server(server, { cors: { origin: "*" } });
+const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } });
 
-app.use(cors());
+// 👉 SOLUCIÓN: CORS totalmente permisivo
+app.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
+}));
+
+// Responder OK a las solicitudes OPTIONS (Preflight)
+app.options('*', cors());
+
 app.use(express.json({ type: ['application/json', 'text/plain'] }));
-
 // ==========================================
 // 1. CONFIGURACIÓN E INSTANCIAS
 // ==========================================
