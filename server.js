@@ -1,4 +1,5 @@
 const express = require('express');
+const compression = require('compression'); // ✅ Excelente, importado
 const path = require('path');
 const cors = require('cors');
 const http = require('http'); 
@@ -11,6 +12,10 @@ const { createClient } = require('@supabase/supabase-js');
 const { sincronizarTractoresContinuo } = require('./sincronizadorFlota'); 
 
 const app = express();
+
+// 🌟 TE FALTÓ ESTO: Activa la compresión global antes de todo lo demás
+app.use(compression()); 
+
 const server = http.createServer(app); 
 const io = new Server(server, { cors: { origin: "*" } });
 

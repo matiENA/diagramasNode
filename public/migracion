@@ -9,3 +9,9 @@ datos: km
 tab  api_km json array vertical
 hoja de ruta
 tab  API_CACHE_BASICO row 12
+
+ESc RITURA BORRADO sb
+
+Migracion del sistema diagramas a supabase
+formato json o tabla relacional
+tabla con id nombre
