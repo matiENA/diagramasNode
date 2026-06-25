@@ -10,20 +10,19 @@ const { createClient } = require('@supabase/supabase-js');
 const app = express();
 app.use(compression()); 
 
+// 👉 CORS Blindado (Para que Render y Front-End se comuniquen sin bloqueos 404)
 const server = http.createServer(app); 
 const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } });
 
-// 👉 SOLUCIÓN: CORS totalmente permisivo
 app.use(cors({
     origin: '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
 }));
-
-// Responder OK a las solicitudes OPTIONS (Preflight)
 app.options('*', cors());
 
 app.use(express.json({ type: ['application/json', 'text/plain'] }));
+
 // ==========================================
 // 1. CONFIGURACIÓN E INSTANCIAS
 // ==========================================
@@ -37,7 +36,7 @@ const serviceAccountAuth = new JWT({
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
 });
 
-const ID_SPREADSHEET_MASTER = process.env.SPREADSHEET_ID;
+const ID_SPREADSHEET_MASTER = process.env.SPREADSHEET_ID || '1eQ9Y5diL5fwxYTxvseNgZJFbX-lSUQ13axbp3cLiqPc';
 const ID_SPREADSHEET_DIAGRAMAS = '1mhfXpFCF6upMlnRnZjDdBVS_wqTx5q8v0qQArNCnNAU';
 const ID_SHEET_OBSERVACIONES = '1VwCNK89ecaac7IDlMWWCLHRqZoch9HB6vop5AfQEaA0';
 const ID_SHEET_APTOS_MEDICOS = '1oJmN8hurfHfNnGBYUFcBdlrIj2VUzeIyq0ZTWxTpYNI';
@@ -108,21 +107,40 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
             documentos: {}, habilitaciones: {}, dnis: {}, certificados: {}, telefonos: {}, flota: {} 
         };
 
-        // 🔥 LA LISTA MAESTRA (Si está en el Excel, se dibuja en la web)
+        // 🔥 LA LISTA MAESTRA (Leemos EXCLUSIVAMENTE el JSON de H1)
         let listaChoferesMaestros = [];
-
-        const rowsFlota = await fetchRango(ID_SPREADSHEET_MASTER, "'choferes y unidades'!A2:E300");
-        rowsFlota.forEach(row => {
-            if(!row[0]) return;
-            let nombreReal = String(row[0]).trim();
-            let norm = normalizar(nombreReal);
-            resDiagGAS.flota[norm] = { tractor: row[1] || '', semi: row[2] || '', servicio: row[3] || '', n_ute: row[4] || '' };
-            
-            // Llenamos el array Maestro. No necesitamos Supabase para saber quién trabaja.
-            if (!listaChoferesMaestros.some(c => c.norm === norm)) {
-                listaChoferesMaestros.push({ nombre: nombreReal, norm: norm });
+        
+        try {
+            const rowsH1 = await fetchRango(ID_SPREADSHEET_MASTER, "'choferes y unidades'!H1");
+            if (rowsH1 && rowsH1.length > 0 && rowsH1[0][0]) {
+                let jsonRaw = String(rowsH1[0][0]).trim();
+                let parsedChoferes = JSON.parse(jsonRaw);
+                
+                parsedChoferes.forEach(c => {
+                    if(!c.nombre) return;
+                    let nombreReal = String(c.nombre).trim();
+                    let norm = normalizar(nombreReal);
+                    
+                    // Asignamos todos los datos (incluyendo td y colores de Supabase) a la RAM de Node
+                    resDiagGAS.flota[norm] = { 
+                        tractor: c.tractor || '', 
+                        semi: c.semi || '', 
+                        servicio: c.servicio || '', 
+                        n_ute: c.n_ute || '',
+                        td: c.td || '-',
+                        hex1: c.hex1 || '',
+                        hex2: c.hex2 || ''
+                    };
+                    
+                    if (!listaChoferesMaestros.some(x => x.norm === norm)) {
+                        listaChoferesMaestros.push({ nombre: nombreReal, norm: norm });
+                    }
+                });
+                console.log(`✅ JSON de H1 leído. Conductores activos: ${listaChoferesMaestros.length}`);
             }
-        });
+        } catch(e) {
+            console.error("❌ Error parseando el JSON de H1:", e);
+        }
 
         const rowsAptos = await fetchRango(ID_SHEET_APTOS_MEDICOS, "'Seguimiento Avalados Mensual'!A2:AT350");
         resDiagGAS.aptosMedicos = {};
@@ -195,12 +213,12 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
                 });
             }
 
-            // 🗄️ SUPABASE (Solo Auxiliar para Viajes y Documentos, SIN bloquear la UI)
+            // 🗄️ SUPABASE (Solo Auxiliar para Viajes y Documentos)
             let choferesSupabase = [];
             try {
-                const { data } = await supabase.from('choferes').select('id, nombre, dni, telefono, legajo, email, c_servicio');
+                const { data } = await supabase.from('choferes').select('id, nombre, dni, telefono, legajo, email');
                 if (data) choferesSupabase = data;
-            } catch(e) { console.warn("⚠️ Supabase Egress bloqueado en 'choferes'. Continuamos con Google Sheets."); }
+            } catch(e) {}
 
             const mapaNombresId = {};
             let docsMap = resDiagGAS.documentos || {}; let habsMap = resDiagGAS.habilitaciones || {}; let certsMap = resDiagGAS.certificados || {};
@@ -257,10 +275,9 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
                 dictDiasSQL[choferNorm][String(row.fecha).split('T')[0]] = row.estado;
             });
 
-            // 🚀 ENSAMBLAJE FINAL (Protegido y Basado en Sheets)
+            // 🚀 ENSAMBLAJE FINAL CON LOS DATOS DE H1
             let diagramasHibridos = []; 
             
-            // Iteramos sobre el Excel Maestro, NO sobre Supabase
             listaChoferesMaestros.forEach(choferMaster => {
                 let nomNorm = choferMaster.norm;
                 let nombreReal = choferMaster.nombre;
@@ -278,7 +295,7 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
                 diagramasHibridos.push({
                     _safeId: "drv_" + nomNorm.replace(/[^a-z0-9]/g, "_"), nom: nombreReal, 
                     tractor: flota.tractor || '', semi: flota.semi || '', srv: flota.servicio || '', n_ute: flota.n_ute || '', 
-                    td: '-', hex1: "", hex2: "", hex_1: "#ffffff", hex_2: "#ffffff", dias: diasFront, _diasIso: mergeIso     
+                    td: flota.td || '-', hex1: flota.hex1 || '', hex2: flota.hex2 || '', hex_1: "#ffffff", hex_2: "#ffffff", dias: diasFront, _diasIso: mergeIso     
                 });
             });
 
@@ -289,7 +306,6 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
             };
 
         } else {
-            // Actualización ligera
             if (cacheDatosGlobales.diagramas) {
                 cacheDatosGlobales.diagramas.observaciones = resDiagGAS.observaciones;
                 cacheDatosGlobales.diagramas.aptosMedicos = resDiagGAS.aptosMedicos;
@@ -299,6 +315,7 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
                         if (resDiagGAS.flota[norm]) {
                             d.tractor = resDiagGAS.flota[norm].tractor; d.semi = resDiagGAS.flota[norm].semi;
                             d.srv = resDiagGAS.flota[norm].servicio; d.n_ute = resDiagGAS.flota[norm].n_ute;
+                            d.td = resDiagGAS.flota[norm].td; d.hex1 = resDiagGAS.flota[norm].hex1; d.hex2 = resDiagGAS.flota[norm].hex2;
                         }
                     });
                 }
@@ -308,14 +325,8 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
         cacheDatosGlobales.tds = { campo:{}, infinia:{}, liviano:{}, euro:{}, estados:{}, codigosExtra:{} };
         cacheDatosGlobales.ultimaActualizacion = new Date().toISOString();
         io.emit('datos_actualizados', cacheDatosGlobales);
-        console.log(`✅ RAM Ensamblada. Fuente maestra de UI: Google Sheets.`);
-
-    // 🛡️ FIX: MEJORA DE TRAZABILIDAD Y VISIBILIDAD DE ERRORES FATALES
-    } catch (error) { 
-        console.error("❌ ERROR CRÍTICO en construcción de RAM. La caché quedó nula.");
-        console.error("Motivo exacto:", error.message || error); 
-        console.error("Traza completa:", error.stack);
-    }
+        console.log(`✅ RAM Ensamblada. Fuente maestra: Celda H1 (Google Sheets).`);
+    } catch (error) { console.error("❌ Error en construcción de RAM:", error); }
 }
 
 function obtenerInfoHojaDesdeIso(isoDate) {
@@ -330,26 +341,14 @@ app.post('/api/webhook/google', async (req, res) => { res.json({ success: true }
 app.get('/health', (req, res) => res.status(200).send('OK'));
 
 // ==========================================
-// 🌟 4. RUTAS API Y PROXY (CON AUTO-HEALING)
+// 🌟 4. RUTAS API Y PROXY 
 // ==========================================
 app.get('/api/datos', (req, res) => {
-    if (!cacheDatosGlobales.diagramas) {
-        
-        // 🛠️ FIX UX/UI: SISTEMA DE AUTO-RESCATE (Auto-Healing)
-        // Si el frontend está pidiendo datos, pero la RAM sigue vacía y no estamos descargando nada actualmente, forzamos un rearme de emergencia.
-        if (!ejecutandoGlobal) {
-            console.warn("⚠️ Petición frontend recibida pero RAM vacía. Disparando Auto-Recuperación...");
-            flujoEncoladoGlobal(true);
-        }
-        
-        return res.status(503).json({ error: "Construyendo Base de Datos, por favor aguarde..." });
-    }
-    
+    if (!cacheDatosGlobales.diagramas) return res.status(503).json({ error: "Cargando DB..." });
     res.json({ success: true, diagramas: cacheDatosGlobales.diagramas, tds: cacheDatosGlobales.tds, timestamp: cacheDatosGlobales.ultimaActualizacion });
 });
 
 app.post('/api/proxy', async (req, res) => {
-    // Código intacto del Proxy (mantiene funciones de guardado para la app web)
     try {
         const body = req.body; let huboCambios = false;
         const normalizar = (n) => String(n || '').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
@@ -360,7 +359,60 @@ app.post('/api/proxy', async (req, res) => {
             else { return res.json({ success: false, error: "Usuario o contraseña incorrectos." }); }
         }
 
-        // Resto de lógicas proxy omitidas para mantener simplicidad en la respuesta.
+        if (body && (body.action === 'guardarObservacion' || body.action === 'guardarNuevaObservacion')) {
+            const docObs = new GoogleSpreadsheet(ID_SHEET_OBSERVACIONES, serviceAccountAuth);
+            await docObs.loadInfo(); const sheetMov = docObs.sheetsByTitle['Movimientos'];
+            if (sheetMov) {
+                const nuevaFila = [ body.usuario || body.admin || 'Sistema', body.chofer, body.fecha, body.unidad || "-", body.evento, body.obsEvento || "", body.estado || "-", body.obsEstado || "", "","","","","","","","" ];
+                await sheetMov.addRow(nuevaFila); 
+                huboCambios = true;
+            }
+        }
+
+        if (body && body.action === 'guardarDocumentos') {
+            const { data: choferData } = await supabase.from('choferes').select('id').ilike('nombre', body.nombre).single();
+            if (choferData) {
+                await supabase.from('documentos_choferes').upsert({ chofer_id: choferData.id, venc_periodico: body.exVen, venc_licencia: body.licVen, venc_cert_mp: body.certVen }, { onConflict: 'chofer_id' });
+                huboCambios = true;
+            }
+        }
+
+        if (body && body.action === 'actualizarEstado') {
+            const nomChofer = body.nombre; const startIso = body.startIso; const endIso = body.endIso; const estPayload = body.est;
+            if (nomChofer && startIso && endIso) {
+                const { data: choferData } = await supabase.from('choferes').select('id').ilike('nombre', nomChofer).single();
+                if (choferData) {
+                    let dStart = new Date(startIso + "T12:00:00"); let dEnd = new Date(endIso + "T12:00:00");
+                    let current = new Date(dStart); let dayIndex = 0; let arrayParaUpsert = [];
+
+                    while (current <= dEnd) {
+                        let fechaDia = current.toISOString().split('T')[0]; let estadoDia = Array.isArray(estPayload) ? (estPayload[dayIndex] || '') : estPayload;
+                        if (estadoDia === 'BORRAR' || estadoDia === '' || estadoDia === null || estadoDia === '-') {
+                            await supabase.from('diagramas_diarios').delete().match({ chofer_id: choferData.id, fecha: fechaDia });
+                        } else {
+                            let limpio = String(estadoDia).toUpperCase().trim();
+                            arrayParaUpsert.push({ chofer_id: choferData.id, fecha: fechaDia, estado: limpio, actualizado_en: new Date() });
+                        }
+                        current.setDate(current.getDate() + 1); dayIndex++;
+                    }
+
+                    if (arrayParaUpsert.length > 0) await supabase.from('diagramas_diarios').upsert(arrayParaUpsert, { onConflict: 'chofer_id,fecha' });
+                    huboCambios = true;
+                }
+            }
+        }
+
+        if (body && body.action === 'guardarHojaRutaPlanilla') {
+            const { data: choferData } = await supabase.from('choferes').select('id').ilike('nombre', body.nombre).single();
+            if (choferData) {
+                await supabase.from('registros_viajes_km').upsert({ chofer_id: choferData.id, fecha: body.fecha, hoja_ruta: body.hojas || [], actualizado_en: new Date() }, { onConflict: 'chofer_id,fecha' });
+                huboCambios = true;
+            }
+        }
+
+        if (body && body.action !== 'login' && huboCambios) {
+            flujoEncoladoGlobal(false); 
+        }
         res.json({ success: true, message: "Operación completada" });
 
     } catch (error) { console.error(error); res.status(500).json({ success: false, error: "Fallo general en Proxy" }); }
