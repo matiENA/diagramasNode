@@ -9,7 +9,6 @@ const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
 const { createClient } = require('@supabase/supabase-js');
 
-const { sincronizarTractoresContinuo } = require('./sincronizadorFlota'); 
 
 const app = express();
 app.use(compression()); 
