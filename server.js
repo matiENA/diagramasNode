@@ -1,5 +1,5 @@
 const express = require('express');
-const compression = require('compression'); // ✅ Excelente, importado
+const compression = require('compression');
 const path = require('path');
 const cors = require('cors');
 const http = require('http'); 
@@ -12,8 +12,6 @@ const { createClient } = require('@supabase/supabase-js');
 const { sincronizarTractoresContinuo } = require('./sincronizadorFlota'); 
 
 const app = express();
-
-// 🌟 TE FALTÓ ESTO: Activa la compresión global antes de todo lo demás
 app.use(compression()); 
 
 const server = http.createServer(app); 
@@ -40,6 +38,7 @@ const ID_SPREADSHEET_MASTER = process.env.SPREADSHEET_ID;
 const ID_SPREADSHEET_DIAGRAMAS = '1mhfXpFCF6upMlnRnZjDdBVS_wqTx5q8v0qQArNCnNAU';
 const ID_SHEET_OBSERVACIONES = '1VwCNK89ecaac7IDlMWWCLHRqZoch9HB6vop5AfQEaA0';
 const ID_SHEET_APTOS_MEDICOS = '1oJmN8hurfHfNnGBYUFcBdlrIj2VUzeIyq0ZTWxTpYNI';
+const ID_SHEET_MOVIMIENTOS = '1hhJKwp9xOOHL_zZSJMbrJh5fwfsIPre155UTWhKWI44'; // Flota
 const mesesAbrev = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
 let cacheDatosGlobales = { diagramas: null, tds: null, nombresMesActual: [], ultimaActualizacion: null };
@@ -75,12 +74,20 @@ setInterval(async () => {
 }, 5 * 60 * 1000); 
 
 // ==========================================
-// 🧠 2. EL CEREBRO: LECTURA DIRECTA DE SHEETS (CERO SUPABASE EGRESS)
+// 🧠 2. EL CEREBRO: CONSTRUCCIÓN NATIVA EN RAM (BYPASS GAS)
 // ==========================================
 async function actualizarCacheDesdeGoogle(esArranque = false) {
     try {
-        console.log(esArranque ? "🚀 ARRANQUE: Descargando DB Completa..." : "⚡ WEBHOOK: Leyendo planillas (0 Supabase Egress)...");
+        console.log(esArranque ? "🚀 ARRANQUE: Construyendo JSONs desde cero en memoria..." : "⚡ WEBHOOK: Actualizando RAM (0 Supabase Egress)...");
         const normalizar = (n) => String(n || '').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
+
+        // Bases vacías que persistirán entre actualizaciones ligeras
+        let resDiagGAS = {
+            vencimientosObj: cacheDatosGlobales.diagramas?.vencimientosObj || [],
+            fotosImgur: cacheDatosGlobales.diagramas?.fotosImgur || {},
+            observaciones: cacheDatosGlobales.diagramas?.observaciones || {},
+            aptosMedicos: cacheDatosGlobales.diagramas?.aptosMedicos || {}
+        };
 
         const docMaster = new GoogleSpreadsheet(ID_SPREADSHEET_MASTER, serviceAccountAuth);
         const docObs = new GoogleSpreadsheet(ID_SHEET_OBSERVACIONES, serviceAccountAuth);
@@ -89,54 +96,57 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
 
         await Promise.all([docMaster.loadInfo(), docObs.loadInfo(), docAptos.loadInfo()]);
 
+        // 🛡️ LECTURA EXCLUSIVA DE ARRANQUE (Flota, Fotos, Calendarios)
         if (esArranque) {
             docDiag = new GoogleSpreadsheet(ID_SPREADSHEET_DIAGRAMAS, serviceAccountAuth);
-            try { await docDiag.loadInfo(); } catch (err) {}
+            const docMov = new GoogleSpreadsheet(ID_SHEET_MOVIMIENTOS, serviceAccountAuth);
+            
+            try { 
+                await Promise.all([docDiag.loadInfo(), docMov.loadInfo()]); 
+            } catch (err) { console.error("Error cargando Diag/Mov:", err.message); }
+
+            // 1. Extraer Vencimientos de Flota (Bypass GAS API_CACHE Fila 11)
+            const sheetVencFlota = docMov.sheetsByTitle['Vencimientos.'];
+            if (sheetVencFlota) {
+                await sheetVencFlota.loadCells('B1:N300');
+                resDiagGAS.vencimientosObj = [];
+                for (let r = 1; r < 300; r++) {
+                    let colB = sheetVencFlota.getCell(r, 1).value;
+                    if (colB) {
+                        resDiagGAS.vencimientosObj.push({
+                            col_b: colB,
+                            col_c: sheetVencFlota.getCell(r, 2).formattedValue || "",
+                            col_g: sheetVencFlota.getCell(r, 6).formattedValue || "",
+                            col_h: sheetVencFlota.getCell(r, 7).formattedValue || "",
+                            col_j: sheetVencFlota.getCell(r, 9).formattedValue || "",
+                            col_k: sheetVencFlota.getCell(r, 10).formattedValue || "",
+                            col_l: sheetVencFlota.getCell(r, 11).formattedValue || "",
+                            col_m: sheetVencFlota.getCell(r, 12).formattedValue || "",
+                            col_n: sheetVencFlota.getCell(r, 13).formattedValue || ""
+                        });
+                    }
+                }
+                try { sheetVencFlota.resetLocalCache(); } catch(e){}
+            }
+
+            // 2. Extraer Fotos (Bypass GAS API_CACHE Fila 10)
+            const sheetFotos = docMaster.sheetsByTitle['fotos'];
+            if (sheetFotos) {
+                await sheetFotos.loadCells('A1:B200');
+                resDiagGAS.fotosImgur = {};
+                for (let r = 0; r < 200; r++) {
+                    let dni = sheetFotos.getCell(r, 0).value;
+                    let url = sheetFotos.getCell(r, 1).value;
+                    if (dni && url && String(url).includes('http')) {
+                        let dniLimpio = String(dni).replace(/\D/g, '');
+                        if (dniLimpio) resDiagGAS.fotosImgur[dniLimpio] = String(url).trim();
+                    }
+                }
+                try { sheetFotos.resetLocalCache(); } catch(e){}
+            }
         }
 
-        const sheetCacheBasico = docMaster.sheetsByTitle['API_CACHE_BASICO']; 
-        const sheetNombres = docMaster.sheetsByTitle['API_CACHE_NOMBRES']; 
-        const sheetTDs = docMaster.sheetsByTitle['API_CACHE_TDS']; 
-
-        await Promise.all([
-            sheetCacheBasico ? sheetCacheBasico.loadCells('A1:Z15') : Promise.resolve(),
-            sheetNombres ? sheetNombres.loadCells('A1:Z5') : Promise.resolve(),
-            sheetTDs ? sheetTDs.loadCells('A1:Z15') : Promise.resolve()
-        ]);
-
-        const extraerJsonDeFila = (sheet, filaIndex) => {
-            if (!sheet) return null;
-            let strCompleto = '';
-            for (let col = 0; col < 26; col++) {
-                try {
-                    let cell = sheet.getCell(filaIndex, col);
-                    if (cell && cell.value) strCompleto += String(cell.value).replace(/^'/, "");
-                    else break;
-                } catch(e) { break; }
-            }
-            if (!strCompleto) return null;
-            try { return JSON.parse(strCompleto); } catch (e) { return null; }
-        };
-
-        // Cache Master
-        let resDiagGAS = {
-            diagramas: extraerJsonDeFila(sheetCacheBasico, 0) || [],
-            documentos: extraerJsonDeFila(sheetCacheBasico, 1) || {},
-            habilitaciones: extraerJsonDeFila(sheetCacheBasico, 2) || {},
-            dnis: extraerJsonDeFila(sheetCacheBasico, 3) || {},
-            certificados: extraerJsonDeFila(sheetCacheBasico, 4) || {},
-            telefonos: extraerJsonDeFila(sheetCacheBasico, 5) || {},
-            vencimientosObj: extraerJsonDeFila(sheetCacheBasico, 10) || {}
-        };
-        let resTDs = extraerJsonDeFila(sheetTDs, 0) || {};
-
-        try {
-            if (sheetCacheBasico) sheetCacheBasico.resetLocalCache();
-            if (sheetNombres) sheetNombres.resetLocalCache();
-            if (sheetTDs) sheetTDs.resetLocalCache();
-        } catch (e) {}
-
-        // 📝 LECTURA DIRECTA DE OBSERVACIONES (Bypass Google Apps Script)
+        // 📝 LECTURA DIRECTA DE OBSERVACIONES (En cada webhook)
         const sheetMov = docObs.sheetsByTitle['Movimientos'];
         if (sheetMov) {
             await sheetMov.loadCells('A1:H2000');
@@ -162,7 +172,7 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
             try { sheetMov.resetLocalCache(); } catch(e){}
         }
 
-        // 🩺 LECTURA DIRECTA DE APTOS MÉDICOS (Bypass Google Apps Script)
+        // 🩺 LECTURA DIRECTA DE APTOS MÉDICOS (En cada webhook)
         const sheetAptos = docAptos.sheetsByTitle['Seguimiento Avalados Mensual'];
         if (sheetAptos) {
             await sheetAptos.loadCells('A1:AT350');
@@ -201,17 +211,17 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
             try { sheetAptos.resetLocalCache(); } catch(e){}
         }
 
-
-        // 🛡️ BARRERA: Solo leemos Supabase y Calendarios si es Arranque Inicial
+        // 🛡️ RECOLECCIÓN DE SQL Y CÁLCULO TOTAL (Solo en Arranque)
         if (esArranque) {
             const { data: choferes } = await supabase.from('choferes').select('*, units(n_ute, tractor, semi)');
             const mapaNombresId = {};
             
-            let docsMap = resDiagGAS.documentos;
-            let habsMap = resDiagGAS.habilitaciones;
-            let certsMap = resDiagGAS.certificados;
-            let dnisMap = resDiagGAS.dnis;
-            let telefonosMap = resDiagGAS.telefonos;
+            // Reconstruimos diccionarios dinámicamente
+            let docsMap = {};
+            let habsMap = {};
+            let certsMap = {};
+            let dnisMap = {};
+            let telefonosMap = {};
 
             if (choferes) {
                 choferes.forEach(c => { 
@@ -219,12 +229,24 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
                     mapaNombresId[c.id] = nomNorm; 
                     if (c.dni) dnisMap[nomNorm] = { dni: c.dni };
                     
-                    let datosContacto = telefonosMap[nomNorm] || {};
+                    let datosContacto = {};
                     if (c.telefono) datosContacto.telefono = c.telefono;
                     if (c.legajo) datosContacto.legajo = c.legajo;
                     if (c.email) datosContacto.email = c.email;
                     telefonosMap[nomNorm] = datosContacto;
                     if (c.dni) telefonosMap[c.dni] = datosContacto;
+                });
+            }
+
+            const { data: documentosSQL } = await supabase.from('documentos_choferes').select('*');
+            if (documentosSQL) {
+                documentosSQL.forEach(doc => {
+                    const choferNorm = mapaNombresId[doc.chofer_id];
+                    if (choferNorm) {
+                        if (doc.venc_periodico) docsMap[choferNorm] = { ven: String(doc.venc_periodico).split('T')[0], estado: 'OK' };
+                        if (doc.venc_licencia) habsMap[choferNorm] = { ven: String(doc.venc_licencia).split('T')[0], estado: 'OK' };
+                        if (doc.venc_cert_mp) certsMap[choferNorm] = { ven: String(doc.venc_cert_mp).split('T')[0], estado: 'OK' };
+                    }
                 });
             }
 
@@ -234,7 +256,6 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
 
             let diasLegacyIso = {}; 
             let srvLegacy = {};
-            let visualesLegacyMap = {}; 
 
             let hoy = new Date();
             let offsetsMeses = [-1, 0, 1, 2, 3]; 
@@ -321,26 +342,8 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
                 dictDiasSQL[choferNorm][String(row.fecha).split('T')[0]] = row.estado;
             });
 
-            const { data: documentosSQL } = await supabase.from('documentos_choferes').select('*');
-            if (documentosSQL) {
-                documentosSQL.forEach(doc => {
-                    const choferNorm = mapaNombresId[doc.chofer_id];
-                    if (choferNorm) {
-                        if (doc.venc_periodico) docsMap[choferNorm] = { ven: String(doc.venc_periodico).split('T')[0], estado: 'OK' };
-                        if (doc.venc_licencia) habsMap[choferNorm] = { ven: String(doc.venc_licencia).split('T')[0], estado: 'OK' };
-                        if (doc.venc_cert_mp) certsMap[choferNorm] = { ven: String(doc.venc_cert_mp).split('T')[0], estado: 'OK' };
-                    }
-                });
-            }
-
             let diagramasHibridos = [];
             let choferesProcesados = new Set(); 
-
-            const arrayTDsOriginal = resDiagGAS.diagramas || []; 
-            arrayTDsOriginal.forEach(d => {
-                let n = normalizar(d.nom);
-                visualesLegacyMap[n] = { td: d.td, hex1: d.hex1, hex2: d.hex2, hex_1: d.hex_1, hex_2: d.hex_2 };
-            });
 
             if (choferes) {
                 choferes.forEach(chofer => {
@@ -357,7 +360,6 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
                     }
 
                     let mergeIso = { ...(diasLegacyIso[nomNorm] || {}), ...(dictDiasSQL[nomNorm] || {}) };
-                    let vL = visualesLegacyMap[nomNorm] || {};
 
                     let diasFront = {};
                     hojasInfo.forEach(info => {
@@ -372,7 +374,7 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
                     diagramasHibridos.push({
                         _safeId: "drv_" + nomNorm.replace(/[^a-z0-9]/g, "_"), 
                         nom: nombreReal, tractor: unTractor, semi: unSemi, srv: srvLegacy[nomNorm] || chofer.c_servicio || '', 
-                        n_ute: unUte, td: vL.td || '-', hex1: vL.hex1 || "", hex2: vL.hex2 || "", hex_1: vL.hex_1 || "#ffffff", hex_2: vL.hex_2 || "#ffffff", 
+                        n_ute: unUte, td: '-', hex1: "", hex2: "", hex_1: "#ffffff", hex_2: "#ffffff", 
                         dias: diasFront, _diasIso: mergeIso     
                     });
                 });
@@ -382,23 +384,25 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
                 diagramas: diagramasHibridos, nuevaSeccionViajes,
                 documentos: docsMap, habilitaciones: habsMap, certificados: certsMap,
                 dnis: dnisMap, telefonos: telefonosMap,
-                observaciones: resDiagGAS.observaciones, aptosMedicos: resDiagGAS.aptosMedicos, vencimientosObj: resDiagGAS.vencimientosObj
+                observaciones: resDiagGAS.observaciones, aptosMedicos: resDiagGAS.aptosMedicos, vencimientosObj: resDiagGAS.vencimientosObj,
+                fotosImgur: resDiagGAS.fotosImgur
             };
 
         } else {
-            // Actualización micro
+            // Actualización micro: Mantenemos la estructura RAM y solo inyectamos las Observaciones/Aptos
             if (cacheDatosGlobales.diagramas) {
                 cacheDatosGlobales.diagramas.observaciones = resDiagGAS.observaciones;
                 cacheDatosGlobales.diagramas.aptosMedicos = resDiagGAS.aptosMedicos;
             }
         }
 
-        cacheDatosGlobales.tds = resTDs;
+        // Simulación vacía de TDs para evitar errores visuales en el Front
+        cacheDatosGlobales.tds = { campo:{}, infinia:{}, liviano:{}, euro:{}, estados:{}, codigosExtra:{} };
         cacheDatosGlobales.ultimaActualizacion = new Date().toISOString();
         
         io.emit('datos_actualizados', cacheDatosGlobales);
-        console.log(`✅ Sincronización completa. Sockets emitidos.`);
-    } catch (error) { console.error("❌ Error en ensamblador directo:", error); }
+        console.log(`✅ Sincronización de memoria completada con éxito.`);
+    } catch (error) { console.error("❌ Error en construcción de RAM:", error); }
 }
 
 function obtenerInfoHojaDesdeIso(isoDate) {
@@ -414,9 +418,10 @@ function obtenerInfoHojaDesdeIso(isoDate) {
 // ==========================================
 app.post('/api/webhook/google', async (req, res) => {
     res.json({ success: true, message: "Recibido" }); 
-    // Falso para que el escudo salte a Supabase y Calendarios, pero SÍ actualice Observaciones y Aptos
     flujoEncoladoGlobal(false); 
 });
+
+app.get('/health', (req, res) => res.status(200).send('OK'));
 
 // ==========================================
 // 🌟 4. RUTAS API Y PROXY (MUTACIÓN ISO + FRONTEND)
@@ -432,7 +437,7 @@ app.post('/api/proxy', async (req, res) => {
         let huboCambios = false;
         const normalizar = (n) => String(n || '').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
 
-        // 🔐 1. MÓDULO DE LOGIN (Independiente de Google)
+        // 🔐 1. MÓDULO DE LOGIN
         if (body && body.action === 'login') {
             const { data: user } = await supabase.from('usuarios_auth').select('id, usuario, rol').eq('usuario', body.usuario).eq('password', body.password).single();
             if (user) { return res.json({ success: true, token: 'auth_' + user.id + '_' + Date.now(), rol: user.rol }); } 
@@ -446,10 +451,8 @@ app.post('/api/proxy', async (req, res) => {
             const sheetMov = docObs.sheetsByTitle['Movimientos'];
             
             if (sheetMov) {
-                const nuevaFila = [
-                    body.usuario || body.admin || 'Sistema', body.chofer, body.fecha, body.unidad || "-", body.evento, body.obsEvento || "", body.estado || "-", body.obsEstado || "", "","","","","","","",""
-                ];
-                await sheetMov.addRow(nuevaFila); // Guarda en Google Sheets
+                const nuevaFila = [ body.usuario || body.admin || 'Sistema', body.chofer, body.fecha, body.unidad || "-", body.evento, body.obsEvento || "", body.estado || "-", body.obsEstado || "", "","","","","","","","" ];
+                await sheetMov.addRow(nuevaFila); 
 
                 let choferNorm = normalizar(body.chofer);
                 if (!cacheDatosGlobales.diagramas.observaciones) cacheDatosGlobales.diagramas.observaciones = {};
@@ -559,13 +562,6 @@ app.post('/api/proxy', async (req, res) => {
                     huboCambios = true;
                 }
             }
-        }
-
-        const REPLICAR_EN_GOOGLE = false; 
-
-        if (REPLICAR_EN_GOOGLE) {
-            try { await fetch(GAS_URL, { method: 'POST', body: JSON.stringify(body) }); } 
-            catch (err) {}
         }
 
         if (body && body.action !== 'login' && huboCambios) {
