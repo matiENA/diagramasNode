@@ -284,3 +284,71 @@ Todavía aparece esto en tu log: `🔔 Webhook disparado por cambio en: cambio_d
 Significa que hay alguna función en Google Apps Script (quizás relacionada a checkboxes, notas u otra pestaña) que todavía está enviando esa palabra en lugar de "DIAGRAMA", "KM" o "TD".
 
 ¡No te preocupes! El nuevo sistema anti-avalanchas lo absorberá perfectamente sin colgarse, pero tenlo en cuenta por si quieres limpiar al 100% el código de Apps Script.
+
+¡Estás entrando en las ligas mayores de la infraestructura en la nube! Tener ese plan de Render es como tener las llaves de un servidor corporativo.
+
+Para que tu aplicación actual no devore tus recursos y puedas usar esos 25 GB de ancho de banda y la memoria RAM en otros proyectos gratuitos, aquí tienes las mejores prácticas y cómo sacarle el jugo a las características por las que estás pagando.
+
+### 🧠 1. Prácticas para NO saturar la RAM de Render
+
+El mayor peligro en Node.js son las "Fugas de Memoria" (Memory Leaks). Ya implementamos la defensa principal (`sheet.resetLocalCache()`), pero hay dos reglas de oro que debes mantener:
+
+* **Evita el crecimiento infinito de variables globales:** Tu variable `cacheDatosGlobales` es segura porque la **sobrescribes** cada vez que actualizas (`cacheDatosGlobales.diagramas = ...`). Nunca uses `.push()` en un array global a menos que tengas un mecanismo para borrar lo viejo, de lo contrario, en 3 meses el servidor colapsará.
+* **Limpieza de Sockets "Zombies":** Cuando un despachante cierra la pestaña del navegador, el Socket a veces queda en memoria. Aunque `Socket.io` lo limpia automáticamente después de un rato, es una buena práctica no guardar instancias de usuarios conectados en arrays globales a menos que los borres en el evento `socket.on('disconnect')`.
+
+### 📉 2. Cómo proteger tus 25 GB de Bandwidth (Ancho de Banda)
+
+Tus 25 GB se gastan cada vez que el servidor envía el HTML, CSS y, sobre todo, el gran paquete JSON de `cacheDatosGlobales` a través del Socket.
+Actualmente, envías el texto en formato "crudo". Para reducir el consumo de ancho de banda en un **80% instantáneamente**, debes **comprimir las respuestas del servidor**.
+
+**Aplica esta mejora hoy en tu `server.js`:**
+
+1. Ve a la consola de Render (o en tu terminal local) y ejecuta: `npm install compression`
+2. En tu `server.js`, agrégalo en las primeras líneas:
+
+```javascript
+const express = require('express');
+const compression = require('compression'); // 🌟 NUEVO
+const path = require('path');
+// ... tus otras importaciones
+
+const app = express();
+app.use(compression()); // 🌟 MAGIA: Comprime todo el tráfico saliente
+app.use(cors());
+
+```
+
+Solo con esto, un paquete de datos que antes pesaba 1 MB, ahora pesará unos 150 KB. ¡Tus 25 GB te rendirán para docenas de proyectos simultáneos!
+
+---
+
+### 🚀 3. Cómo aprovechar tu arsenal de funciones "Pro"
+
+Aquí tienes exactamente para qué sirve cada "Feature" de tu plan y cómo usarlo en tu entorno logístico:
+
+#### 🔬 Full-stack Previews (La mejor herramienta)
+
+Como tienes tu código en GitHub, puedes configurar Render para que cada vez que hagas un "Pull Request" (una propuesta de cambio de código), Render cree un **servidor temporal y paralelo**.
+
+* **Uso:** Imagina que quieres probar un rediseño total de la grilla de choferes, pero no quieres romper la pantalla de los despachantes. Creas una rama en GitHub, Render levanta una URL secreta (ej. `diagramas-pr-12.onrender.com`), la pruebas, y cuando ves que funciona, apruebas el cambio y se va al servidor principal. Luego, el servidor temporal se autodestruye.
+
+#### ⚖️ Horizontal Autoscaling (Auto-escalado)
+
+Actualmente tienes un servidor (1 instancia). Si un día tienes a 50 personas abriendo el sistema al mismo tiempo, el CPU podría llegar al 100%.
+
+* **Uso:** Puedes ir a "Scaling" en Render y decirle: *"Si el CPU pasa del 70%, enciende un segundo servidor automáticamente, y cuando baje el tráfico, apágalo"*.
+* *Nota vital:* Si en el futuro activas esto, necesitarás agregar un adaptador de "Redis" a tu `Socket.io`, porque si un despachante se conecta al Servidor A y otro al Servidor B, los Sockets no se escucharán entre sí sin Redis.
+
+#### 🛡️ Isolated Environments & Private Links
+
+Si decides tener múltiples microservicios (por ejemplo, un servidor Node solo para la API y otro servidor separado solo para el Front-End), no necesitas que se comuniquen por el internet público abierto.
+
+* **Uso:** Puedes conectarlos usando "Private Links" dentro de la red interna de Render. Esto hace que la comunicación entre tus propias aplicaciones sea de latencia cero y no cuente para el consumo de tus 25 GB de ancho de banda.
+
+#### 🕵️ Workspace Audit Logs
+
+Si empiezas a sumar a otros desarrolladores o a tu jefe a la cuenta de Render, esta función te permite ver exactamente **quién reinició el servidor, quién cambió una variable de entorno o quién borró un proyecto**, con fecha y hora. Es puro control de calidad empresarial.
+
+#### ♾️ No Service Maximum
+
+En los planes gratuitos, estás limitado a unos pocos proyectos. Aquí puedes tener alojada tu logística, el menú web del restaurante de un amigo, un bot de Telegram, y 10 páginas estáticas. Mientras todos en conjunto no pasen los 25 GB de Egress y las horas de cómputo de tu plan, puedes alojar todo lo que tu creatividad te pida bajo la misma factura.
