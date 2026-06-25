@@ -753,14 +753,38 @@ async function cargarDatosDesdeCache() {
     mostrarCargando(true);
     
     try {
-        // 👉 LE PEDIMOS TODO A NODE AL INSTANTE
-        const resNode = await fetch('https://diagramasnode.onrender.com/api/datos').then(res => res.json());
+        const URL_DATOS = 'https://diagramasnode.onrender.com/api/datos';
         
-        if (!resNode.success) {
-            throw new Error(resNode.error || "El servidor aún está cargando la base de datos.");
+        // 1. Hacemos la petición pero NO parseamos el JSON inmediatamente
+        const res = await fetch(URL_DATOS);
+        
+        // 2. MANEJO DE ARRANQUE EN RENDER (Cold Starts)
+        // Si el servidor está dormido (502) o tu backend está descargando Sheets (503)
+        if (res.status === 503 || res.status === 502) {
+            console.warn("⏳ El servidor está despertando o cargando la DB. Reintentando en 5s...");
+            
+            // Opcional: Si tienes una función tipo showToast o actualizarTextoCargando, úsala aquí 
+            // para avisar al usuario que el sistema se está iniciando.
+            
+            setTimeout(cargarDatosDesdeCache, 5000); // Bucle de reintento inteligente
+            return; // Cortamos la ejecución actual
         }
 
-        const dataTDs = resNode.tds || { campo: {}, infinia: {}, liviano: {}, euro: {}, estados: {}, extra: {} };        const resDiagramas = typeof resNode.diagramas === 'string' ? JSON.parse(resNode.diagramas) : resNode.diagramas;
+        // Si es otro error grave (ej. 404, 500)
+        if (!res.ok) {
+            throw new Error(`Error de red HTTP: ${res.status}`);
+        }
+
+        // 3. Recién aquí parseamos de forma segura
+        const resNode = await res.json();
+        
+        if (!resNode.success) {
+            throw new Error(resNode.error || "El servidor aún está construyendo la base de datos.");
+        }
+
+        // 4. Lógica de normalización de datos (Intacta, porque funciona excelente)
+        const dataTDs = resNode.tds || { campo: {}, infinia: {}, liviano: {}, euro: {}, estados: {}, extra: {} };
+        const resDiagramas = typeof resNode.diagramas === 'string' ? JSON.parse(resNode.diagramas) : resNode.diagramas;
 
         window.tdGlobalData = {
             campo:   dataTDs.campo || {},
@@ -814,12 +838,13 @@ async function cargarDatosDesdeCache() {
         mostrarCargando(false); 
 
     } catch (e) { 
-        mostrarErrorGlobal("Error de sincronización con Node: " + e.message); 
-        mostrarCargando(false); 
+        console.error("Fallo crítico en sincronización:", e);
+        mostrarErrorGlobal("No pudimos conectar con el servidor. Reintentando..."); 
+        // Como estamos en un Kiosko, no queremos que quede la pantalla rota.
+        // Forzamos un reintento si la red se cae momentáneamente.
+        setTimeout(cargarDatosDesdeCache, 10000); 
     }
 }
-// --- AUTO-REFRESH (DATA KEEPING + SMART UI UPDATE) ---
-
 // --- Lógica del Dropdown de Vencimientos de Unidades ---
 window.toggleVencimientosUnidad = function(safeId) {
     const panel = document.getElementById(`venc-unidad-${safeId}`);
