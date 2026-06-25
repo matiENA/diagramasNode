@@ -61,7 +61,7 @@ async function flujoEncoladoGlobal(esArranque = false) {
 setTimeout(() => { flujoEncoladoGlobal(true); }, 5000); 
 
 // ==========================================
-// 🧠 2. EL CEREBRO: CONSTRUCCIÓN NATIVA EN RAM (BYPASS GAS Y SUPABASE)
+// 🧠 2. EL CEREBRO: CONSTRUCCIÓN NATIVA EN RAM
 // ==========================================
 async function actualizarCacheDesdeGoogle(esArranque = false) {
     try {
@@ -107,7 +107,6 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
                         });
                     }
                 }
-                try { sheetVencFlota.resetLocalCache(); } catch(e){}
             }
 
             const sheetFotos = docMaster.sheetsByTitle['fotos'];
@@ -121,7 +120,6 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
                         if (dniLimpio) resDiagGAS.fotosImgur[dniLimpio] = String(url).trim();
                     }
                 }
-                try { sheetFotos.resetLocalCache(); } catch(e){}
             }
         }
 
@@ -141,10 +139,8 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
             resDiagGAS.dnis = extraerJsonDeFila(sheetCacheBasico, 3) || {};
             resDiagGAS.certificados = extraerJsonDeFila(sheetCacheBasico, 4) || {};
             resDiagGAS.telefonos = extraerJsonDeFila(sheetCacheBasico, 5) || {};
-            try { sheetCacheBasico.resetLocalCache(); } catch (e) {}
         }
 
-        // 🚚 NUEVO: LECTURA DIRECTA DE FLOTA (0 Egress, sin Supabase, sin GAS)
         const sheetFlota = docMaster.sheetsByTitle['choferes y unidades'];
         if (sheetFlota) {
             await sheetFlota.loadCells('A1:E300');
@@ -161,10 +157,8 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
                     };
                 } catch(e) { continue; }
             }
-            try { sheetFlota.resetLocalCache(); } catch(e){}
         }
 
-        // 📝 OBSERVACIONES
         const sheetMov = docObs.sheetsByTitle['Movimientos'];
         if (sheetMov) {
             await sheetMov.loadCells('A1:H2000');
@@ -183,10 +177,8 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
                     });
                 } catch(e) { continue; }
             }
-            try { sheetMov.resetLocalCache(); } catch(e){}
         }
 
-        // 🩺 APTOS MÉDICOS
         const sheetAptos = docAptos.sheetsByTitle['Seguimiento Avalados Mensual'];
         if (sheetAptos) {
             await sheetAptos.loadCells('A1:AT350');
@@ -207,12 +199,9 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
                     resDiagGAS.aptosMedicos[norm] = { estado: estadoDiario, cuil: String(cuil), observaciones: String(obs), observaciones_sector_salud: String(obsSalud), responsable: String(resp) };
                 } catch(e) { continue; }
             }
-            try { sheetAptos.resetLocalCache(); } catch(e){}
         }
 
-        // 🛡️ RECOLECCIÓN (Arranque)
         if (esArranque) {
-            // REDUJIMOS LA CONSULTA A SUPABASE (Sin JOIN de unidades = Ahorro extremo de Egress)
             const { data: choferes } = await supabase.from('choferes').select('id, nombre, dni, telefono, legajo, email, c_servicio');
             const mapaNombresId = {};
             
@@ -270,7 +259,6 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
                             }
                         } catch (e) { continue; } 
                     }
-                    try { sheetDiag.resetLocalCache(); } catch(e) {}
                 }
             }
 
@@ -313,7 +301,6 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
                     if (!nombreReal || choferesProcesados.has(nomNorm)) return;
                     choferesProcesados.add(nomNorm);
 
-                    // 🚚 ASIGNAMOS LA FLOTA DIRECTAMENTE DESDE LA RAM (Google Sheets Crudo)
                     let flota = resDiagGAS.flota[nomNorm] || {};
                     let unTractor = flota.tractor || ''; let unSemi = flota.semi || ''; 
                     let unUte = flota.n_ute || ''; let srv = flota.servicio || chofer.c_servicio || '';
@@ -340,12 +327,10 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
             };
 
         } else {
-            // ⚡ ACTUALIZACIÓN MICRO (Live Fleet & Observaciones, 0 Egress)
             if (cacheDatosGlobales.diagramas) {
                 cacheDatosGlobales.diagramas.observaciones = resDiagGAS.observaciones;
                 cacheDatosGlobales.diagramas.aptosMedicos = resDiagGAS.aptosMedicos;
                 
-                // Actualizamos los tractores en vivo al instante
                 if (cacheDatosGlobales.diagramas.diagramas) {
                     cacheDatosGlobales.diagramas.diagramas.forEach(d => {
                         let norm = normalizar(d.nom);
