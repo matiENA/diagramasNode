@@ -57,15 +57,18 @@ async function flujoEncoladoGlobal(esArranque = false) {
     }
 }
 
-// 🚀 ARRANQUE INICIAL
-setTimeout(() => { flujoEncoladoGlobal(true); }, 5000); 
+// 🚀 ARRANQUE INICIAL: Esperamos a que Render valide el Health Check antes de consumir CPU
+setTimeout(() => { 
+    console.log("⏳ [Boot] Iniciando descarga secuencial de planillas...");
+    flujoEncoladoGlobal(true); 
+}, 8000); 
 
 // ==========================================
-// 🧠 2. EL CEREBRO: CONSTRUCCIÓN NATIVA EN RAM
+// 🧠 2. EL CEREBRO: CONSTRUCCIÓN NATIVA EN RAM (PASO A PASO)
 // ==========================================
 async function actualizarCacheDesdeGoogle(esArranque = false) {
     try {
-        console.log(esArranque ? "🚀 ARRANQUE: Construyendo JSONs desde cero en memoria..." : "⚡ WEBHOOK: Actualizando RAM (0 Supabase Egress)...");
+        console.log(esArranque ? "🚀 ARRANQUE: Procesando cascada de datos..." : "⚡ WEBHOOK: Actualizando RAM (0 Supabase Egress)...");
         const normalizar = (n) => String(n || '').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
 
         let resDiagGAS = {
@@ -79,17 +82,20 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
         const docMaster = new GoogleSpreadsheet(ID_SPREADSHEET_MASTER, serviceAccountAuth);
         const docObs = new GoogleSpreadsheet(ID_SHEET_OBSERVACIONES, serviceAccountAuth);
         const docAptos = new GoogleSpreadsheet(ID_SHEET_APTOS_MEDICOS, serviceAccountAuth);
-        let docDiag = null;
 
-        await Promise.all([docMaster.loadInfo(), docObs.loadInfo(), docAptos.loadInfo()]);
+        // 🌟 LECTURA ESCALONADA: Eliminamos Promise.all masivos para no asfixiar el CPU de Render
+        await docMaster.loadInfo();
+        await docObs.loadInfo();
+        await docAptos.loadInfo();
+
+        let docDiag = null;
 
         if (esArranque) {
             docDiag = new GoogleSpreadsheet(ID_SPREADSHEET_DIAGRAMAS, serviceAccountAuth);
             const docMov = new GoogleSpreadsheet(ID_SHEET_MOVIMIENTOS, serviceAccountAuth);
             
-            try { 
-                await Promise.all([docDiag.loadInfo(), docMov.loadInfo()]); 
-            } catch (err) { console.error("Error cargando Diag/Mov:", err.message); }
+            try { await docDiag.loadInfo(); } catch (err) {}
+            try { await docMov.loadInfo(); } catch (err) {}
 
             const sheetVencFlota = docMov.sheetsByTitle['Vencimientos.'];
             if (sheetVencFlota) {
@@ -346,7 +352,7 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
         cacheDatosGlobales.tds = { campo:{}, infinia:{}, liviano:{}, euro:{}, estados:{}, codigosExtra:{} };
         cacheDatosGlobales.ultimaActualizacion = new Date().toISOString();
         io.emit('datos_actualizados', cacheDatosGlobales);
-        console.log(`✅ Sincronización de memoria completada con éxito.`);
+        console.log(`✅ RAM sincronizada sin congelar el CPU.`);
     } catch (error) { console.error("❌ Error en construcción de RAM:", error); }
 }
 
@@ -363,6 +369,7 @@ app.post('/api/webhook/google', async (req, res) => {
     flujoEncoladoGlobal(false); 
 });
 
+// 🏥 HEALTH CHECK: Render sabrá de inmediato que la app prendió con éxito
 app.get('/health', (req, res) => res.status(200).send('OK'));
 
 // ==========================================
