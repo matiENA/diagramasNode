@@ -192,7 +192,7 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
             try {
                 const { data } = await supabase.from('choferes').select('id, nombre, dni, telefono, legajo, email, c_servicio');
                 if (data) choferesSupabase = data;
-            } catch(e) { console.warn("Supabase Egress bloqueado en 'choferes'. Continuamos con Google Sheets."); }
+            } catch(e) { console.warn("⚠️ Supabase Egress bloqueado en 'choferes'. Continuamos con Google Sheets."); }
 
             const mapaNombresId = {};
             let docsMap = resDiagGAS.documentos || {}; let habsMap = resDiagGAS.habilitaciones || {}; let certsMap = resDiagGAS.certificados || {};
@@ -301,7 +301,13 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
         cacheDatosGlobales.ultimaActualizacion = new Date().toISOString();
         io.emit('datos_actualizados', cacheDatosGlobales);
         console.log(`✅ RAM Ensamblada. Fuente maestra de UI: Google Sheets.`);
-    } catch (error) { console.error("❌ Error en construcción de RAM:", error); }
+
+    // 🛡️ FIX: MEJORA DE TRAZABILIDAD Y VISIBILIDAD DE ERRORES FATALES
+    } catch (error) { 
+        console.error("❌ ERROR CRÍTICO en construcción de RAM. La caché quedó nula.");
+        console.error("Motivo exacto:", error.message || error); 
+        console.error("Traza completa:", error.stack);
+    }
 }
 
 function obtenerInfoHojaDesdeIso(isoDate) {
@@ -316,10 +322,21 @@ app.post('/api/webhook/google', async (req, res) => { res.json({ success: true }
 app.get('/health', (req, res) => res.status(200).send('OK'));
 
 // ==========================================
-// 🌟 4. RUTAS API Y PROXY 
+// 🌟 4. RUTAS API Y PROXY (CON AUTO-HEALING)
 // ==========================================
 app.get('/api/datos', (req, res) => {
-    if (!cacheDatosGlobales.diagramas) return res.status(503).json({ error: "Cargando DB..." });
+    if (!cacheDatosGlobales.diagramas) {
+        
+        // 🛠️ FIX UX/UI: SISTEMA DE AUTO-RESCATE (Auto-Healing)
+        // Si el frontend está pidiendo datos, pero la RAM sigue vacía y no estamos descargando nada actualmente, forzamos un rearme de emergencia.
+        if (!ejecutandoGlobal) {
+            console.warn("⚠️ Petición frontend recibida pero RAM vacía. Disparando Auto-Recuperación...");
+            flujoEncoladoGlobal(true);
+        }
+        
+        return res.status(503).json({ error: "Construyendo Base de Datos, por favor aguarde..." });
+    }
+    
     res.json({ success: true, diagramas: cacheDatosGlobales.diagramas, tds: cacheDatosGlobales.tds, timestamp: cacheDatosGlobales.ultimaActualizacion });
 });
 
