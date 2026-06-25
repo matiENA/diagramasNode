@@ -18,8 +18,6 @@ const io = new Server(server, { cors: { origin: "*" } });
 
 app.use(cors());
 app.use(express.json({ type: ['application/json', 'text/plain'] }));
-app.use(express.static(path.join(__dirname, 'public')));
-
 // ==========================================
 // 1. CONFIGURACIÓN E INSTANCIAS
 // ==========================================
@@ -516,6 +514,5 @@ app.post('/api/proxy', async (req, res) => {
     } catch (error) { console.error(error); res.status(500).json({ success: false, error: "Fallo general en Proxy" }); }
 });
 
-app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`🚀 Servidor Node Activo en puerto ${PORT}`));
