@@ -93,9 +93,8 @@ setTimeout(() => {
 }, 3000); 
 
 // ==========================================
-// 🧠 2. EL CEREBRO: CONSTRUCCIÓN NATIVA
+// 🧠 2. EL CEREBRO: CONSTRUCCIÓN NATIVA (CERO DEPENDENCIA DE SUPABASE)
 // ==========================================
-
 async function actualizarCacheDesdeGoogle(esArranque = false) {
     try {
         console.log(esArranque ? "🚀 ARRANQUE: Descarga Cruda (RAM Protegida)..." : "⚡ WEBHOOK: Actualizando RAM ligera...");
@@ -125,38 +124,27 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
             }
         } catch(e) { console.error("❌ Error parseando el JSON de H1:", e); }
 
-        // 👉 NUEVA LÓGICA: EXTRACCIÓN AVANZADA DE APTOS MÉDICOS
         try {
             const rowsAptos = await fetchRango(ID_SHEET_APTOS_MEDICOS, "'Seguimiento Avalados Mensual'!A1:AT350");
             resDiagGAS.aptosMedicos = {};
             
             if (rowsAptos.length > 0) {
-                const headers = rowsAptos[0]; // Fila 1: Encabezados
+                const headers = rowsAptos[0]; 
                 const hoy = new Date();
                 const d = String(hoy.getDate()).padStart(2, '0');
                 const m = String(hoy.getMonth() + 1).padStart(2, '0');
                 const y = hoy.getFullYear();
                 const mesesLargo = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
                 
-                const formatosHoy = [
-                    `${hoy.getDate()}/${mesesLargo[hoy.getMonth()]}/${y}`.toLowerCase(),
-                    `${d}/${m}/${y}`,
-                    `${d}/${m}`,
-                    String(hoy.getDate())
-                ];
+                const formatosHoy = [`${hoy.getDate()}/${mesesLargo[hoy.getMonth()]}/${y}`.toLowerCase(), `${d}/${m}/${y}`, `${d}/${m}`, String(hoy.getDate())];
 
                 let colDiaria = -1;
                 for (let c = 12; c < headers.length; c++) {
                     let headLimpio = String(headers[c] || "").trim().toLowerCase();
-                    if (formatosHoy.includes(headLimpio)) {
-                        colDiaria = c;
-                        break;
-                    }
+                    if (formatosHoy.includes(headLimpio)) { colDiaria = c; break; }
                 }
                 if (colDiaria === -1) {
-                    for (let c = headers.length - 1; c >= 12; c--) {
-                        if (String(headers[c] || "").trim() !== "") { colDiaria = c; break; }
-                    }
+                    for (let c = headers.length - 1; c >= 12; c--) { if (String(headers[c] || "").trim() !== "") { colDiaria = c; break; } }
                 }
 
                 for (let i = 1; i < rowsAptos.length; i++) {
@@ -178,21 +166,11 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
                     let limiteBusqueda = colDiaria > -1 ? colDiaria : fila.length - 1;
                     for (let c = limiteBusqueda; c >= 12; c--) {
                         let val = String(fila[c] || "").trim();
-                        if (val !== "" && val !== "-") {
-                            estadoDiario = val;
-                            break;
-                        }
+                        if (val !== "" && val !== "-") { estadoDiario = val; break; }
                     }
 
                     let nombreNormalizado = nombreRaw.replace(/,/g, '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
-                    let objApto = {
-                        dni: dniLimpio,
-                        cuil: cuil,
-                        estado: estadoDiario,
-                        responsable: responsable,
-                        observaciones: observaciones,
-                        observaciones_sector_salud: observaciones_salud
-                    };
+                    let objApto = { dni: dniLimpio, cuil: cuil, estado: estadoDiario, responsable: responsable, observaciones: observaciones, observaciones_sector_salud: observaciones_salud };
 
                     if (dniLimpio) resDiagGAS.aptosMedicos[dniLimpio] = objApto;
                     if (nombreNormalizado) resDiagGAS.aptosMedicos[nombreNormalizado] = objApto;
@@ -209,6 +187,7 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
             resDiagGAS.observaciones[norm].push({ admin: row[0] || "-", fecha: row[2] || "-", unidad: row[3] || "-", evento: row[4] || "-", obsEvento: row[5] || "", estado: row[6] || "-", obsEstado: row[7] || "" });
         });
 
+        // Carga de Caché Base
         const rowsCache = await fetchRango(ID_SPREADSHEET_MASTER, "'API_CACHE_BASICO'!A1:Z15");
         const extraer = (idx) => { if (!rowsCache[idx]) return {}; try { return JSON.parse(rowsCache[idx].join('').replace(/^'/, "")); } catch(e) { return {}; } };
         resDiagGAS.documentos = extraer(1); resDiagGAS.habilitaciones = extraer(2); resDiagGAS.dnis = extraer(3); resDiagGAS.certificados = extraer(4); resDiagGAS.telefonos = extraer(5);
@@ -216,6 +195,57 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
         let diasLegacyIso = {}; let dictDiasSQL = {}; let hojasInfo = []; let nuevaSeccionViajes = {};
 
         if (esArranque) {
+            // ==========================================
+            // 🪪 RED DE RASTREO MAESTRA DE DNIs 
+            // ==========================================
+            try {
+                const ID_SHEET_HABILITACIONES = '1hPDno09tMBtKh7aIdsvzEYcyOY7leYj2B6XnniD0aXg';
+                const ID_SHEET_DOCUMENTOS = '1pnYXKDSv70Vq78Rchxus5FHMKdgXdbfltVsEg6vArjo';
+                
+                // Pedimos las 3 planillas al mismo tiempo (Paralelismo = Velocidad)
+                const [resDniTab, resDocsTab, resHabsTab] = await Promise.all([
+                    fetchRango(ID_SPREADSHEET_MASTER, "'dni'!A1:I300"),
+                    fetchRango(ID_SHEET_DOCUMENTOS, "'PERIODICOS'!A1:E300"),
+                    fetchRango(ID_SHEET_HABILITACIONES, "'VENCIMIENTOS'!A1:C300")
+                ]);
+
+                let dnisMap = resDiagGAS.dnis || {};
+
+                const extraerDni = (cuil) => {
+                    let l = String(cuil).replace(/\D/g, '');
+                    if (!l) return "";
+                    if (l.length === 11) return String(parseInt(l.substring(2, 10), 10));
+                    if (l.length === 10) return String(parseInt(l.substring(2, 9), 10));
+                    return String(parseInt(l, 10));
+                };
+
+                // 1. Rastrear en pestaña 'dni' del Excel Maestro
+                resDniTab.forEach(fila => {
+                    let nIzq = normalizar(fila[0]); let dIzq = String(fila[2] || '').replace(/\D/g, '');
+                    if (nIzq && dIzq) dnisMap[nIzq] = { dni: String(parseInt(dIzq, 10)) };
+                    
+                    let nDer = normalizar(fila[5]); let dDer = String(fila[7] || '').replace(/\D/g, '');
+                    if (nDer && dDer) dnisMap[nDer] = { dni: String(parseInt(dDer, 10)) };
+                });
+
+                // 2. Rastrear en Excel de Documentos (Tab PERIODICOS)
+                resDocsTab.forEach(fila => {
+                    let nom = normalizar(fila[1]); let cuil = fila[4]; let dni = extraerDni(cuil);
+                    if (nom && dni && !dnisMap[nom]) dnisMap[nom] = { dni: dni };
+                });
+
+                // 3. Rastrear en Excel de Habilitaciones (Tab VENCIMIENTOS)
+                resHabsTab.forEach(fila => {
+                    let nom = normalizar(fila[1]); let dni = String(fila[2] || '').replace(/\D/g, '');
+                    if (nom && dni && !dnisMap[nom]) dnisMap[nom] = { dni: String(parseInt(dni, 10)) };
+                });
+
+                resDiagGAS.dnis = dnisMap;
+                console.log("🪪 Red de DNIs extraída y cruzada exitosamente (Docs, Vencs y Maestro).");
+            } catch (e) { console.error("❌ Error rastreando DNIs en planillas anexas:", e); }
+
+            // ==========================================
+
             const rowsVenc = await fetchRango(ID_SHEET_MOVIMIENTOS, "'Vencimientos.'!A2:N300");
             resDiagGAS.vencimientosObj = rowsVenc.map(row => {
                 if (!row[1]) return null;
@@ -244,46 +274,31 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
                 });
             }
 
-            // 🚀 EXTRACCIÓN DIRECTA DE KILÓMETROS Y VIAJES DESDE GOOGLE SHEETS
             try {
                 const rowsKm = await fetchRango(ID_SHEET_KILOMETROS, "'KM'!A2:T");
                 const limiteDate = new Date();
-                limiteDate.setDate(limiteDate.getDate() - 180); // Cargamos los últimos 6 meses a RAM
-                
+                limiteDate.setDate(limiteDate.getDate() - 180); 
                 const parseNum = (val) => parseFloat(String(val || '').replace(/,/g, '.').replace(/[^0-9.-]/g, '')) || 0;
 
                 rowsKm.forEach(row => {
-                    let fechaRaw = row[1];
-                    let nombreRaw = row[2];
+                    let fechaRaw = row[1]; let nombreRaw = row[2];
                     if (!fechaRaw || !nombreRaw) return;
 
-                    let dObj;
-                    let parts = String(fechaRaw).split(' ')[0].split(/[\/\-]/);
+                    let dObj; let parts = String(fechaRaw).split(' ')[0].split(/[\/\-]/);
                     if (parts.length >= 3) {
                         let aa = parts[2].length === 2 ? "20" + parts[2] : parts[2];
                         dObj = new Date(aa, parseInt(parts[1], 10) - 1, parts[0]);
                     } else { dObj = new Date(fechaRaw); }
-                    
                     if (isNaN(dObj.getTime()) || dObj < limiteDate) return;
 
-                    let choferNorm = normalizar(nombreRaw);
-                    let isoDate = dObj.toISOString().split('T')[0];
-
-                    let kmBase = parseNum(row[16]); // Col Q
-                    let kmBackup = parseNum(row[8]); // Col I
-                    let km = kmBase > 0 ? kmBase : kmBackup;
-
-                    let liviano = parseNum(row[3]);
-                    let euro = parseNum(row[4]);
-                    let campo = parseNum(row[5]);
-                    let infiniaD = parseNum(row[7]);
-                    let hojaStr = String(row[19] || "").trim(); // Col T
+                    let choferNorm = normalizar(nombreRaw); let isoDate = dObj.toISOString().split('T')[0];
+                    let kmBase = parseNum(row[16]); let kmBackup = parseNum(row[8]); let km = kmBase > 0 ? kmBase : kmBackup;
+                    let liviano = parseNum(row[3]); let euro = parseNum(row[4]); let campo = parseNum(row[5]); let infiniaD = parseNum(row[7]);
+                    let hojaStr = String(row[19] || "").trim();
 
                     if (km > 0 || campo > 0 || liviano > 0 || euro > 0 || infiniaD > 0 || hojaStr !== "") {
                         if (!nuevaSeccionViajes[choferNorm]) nuevaSeccionViajes[choferNorm] = {};
-                        if (!nuevaSeccionViajes[choferNorm][isoDate]) {
-                            nuevaSeccionViajes[choferNorm][isoDate] = { dominio: String(row[0] || '').trim(), km: 0, liviano: 0, euro: 0, campo: 0, infiniaD: 0, hoja_ruta: [] };
-                        }
+                        if (!nuevaSeccionViajes[choferNorm][isoDate]) nuevaSeccionViajes[choferNorm][isoDate] = { dominio: String(row[0] || '').trim(), km: 0, liviano: 0, euro: 0, campo: 0, infiniaD: 0, hoja_ruta: [] };
                         let target = nuevaSeccionViajes[choferNorm][isoDate];
                         target.km += km; target.liviano += liviano; target.euro += euro; target.campo += campo; target.infiniaD += infiniaD;
                         if (hojaStr !== "") {
@@ -295,26 +310,11 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
                 console.log("🚚 KMs y Hojas de Ruta extraídas exitosamente desde Google Sheets");
             } catch(e) { console.error("Error leyendo KMs:", e); }
 
-            // 🗄️ SUPABASE (SOLO AUXILIAR PARA ESTADOS Y DOCUMENTOS VIEJOS)
-            let choferesSupabase = [];
-            try { const { data } = await supabase.from('choferes').select('id, nombre, dni, telefono, legajo, email'); if (data) choferesSupabase = data; } catch(e) {}
-            
-            const mapaNombresId = {};
-            choferesSupabase.forEach(c => { 
-                const nomNorm = normalizar(c.nombre); mapaNombresId[c.id] = nomNorm; 
-            });
-
-            try {
-                const { data: chunkD } = await supabase.from('diagramas_diarios').select('*').gte('fecha', new Date(Date.now() - 365*24*60*60*1000).toISOString().split('T')[0]);
-                if (chunkD) chunkD.forEach(row => { const nom = mapaNombresId[row.chofer_id]; if (nom) { if (!dictDiasSQL[nom]) dictDiasSQL[nom] = {}; dictDiasSQL[nom][String(row.fecha).split('T')[0]] = row.estado; }});
-            } catch(e) {}
-
+            // Lógica final de Ensamblaje...
             let diagramasHibridos = []; 
             listaChoferesMaestros.forEach(choferMaster => {
-                let nomNorm = choferMaster.norm;
-                let nombreReal = choferMaster.nombre;
-                let flota = resDiagGAS.flota[nomNorm] || {};
-                let mergeIso = { ...(diasLegacyIso[nomNorm] || {}), ...(dictDiasSQL[nomNorm] || {}) };
+                let nomNorm = choferMaster.norm; let nombreReal = choferMaster.nombre;
+                let flota = resDiagGAS.flota[nomNorm] || {}; let mergeIso = { ...(diasLegacyIso[nomNorm] || {}), ...(dictDiasSQL[nomNorm] || {}) };
                 let diasFront = {};
                 
                 hojasInfo.forEach(info => {
@@ -346,7 +346,7 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
         cacheDatosGlobales.tds = { campo:{}, infinia:{}, liviano:{}, euro:{}, estados:{}, codigosExtra:{} };
         cacheDatosGlobales.ultimaActualizacion = new Date().toISOString();
         io.emit('datos_actualizados', cacheDatosGlobales);
-        console.log(`✅ RAM Ensamblada.`);
+        console.log(`✅ RAM Ensamblada Completa.`);
     } catch (error) { console.error("❌ Error en construcción de RAM:", error); }
 }
 
