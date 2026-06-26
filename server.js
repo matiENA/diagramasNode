@@ -48,17 +48,26 @@ const mesesAbrev = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep
 let cacheDatosGlobales = { diagramas: null, tds: null, nombresMesActual: [], ultimaActualizacion: null };
 
 // ==========================================
-// 🛡️ LECTOR ULTRALIVIANO (API CRUDA)
+// 🛡️ LECTOR ULTRALIVIANO CON ANTI-BLOQUEO (REINTENTOS AUTOMÁTICOS)
 // ==========================================
-async function fetchRango(spreadsheetId, rango) {
-    try {
-        const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(rango)}`;
-        const res = await serviceAccountAuth.request({ url });
-        return res.data.values || [];
-    } catch (e) {
-        console.warn(`⚠️ Error leyendo rango ${rango}:`, e.response?.statusText || e.message);
-        return [];
+async function fetchRango(spreadsheetId, rango, reintentos = 3) {
+    for (let i = 0; i < reintentos; i++) {
+        try {
+            const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(rango)}`;
+            const res = await serviceAccountAuth.request({ url });
+            return res.data.values || [];
+        } catch (e) {
+            if (e.response && e.response.status === 429) {
+                // Si Google pide calmarse, esperamos 1.5s, 3s, o 4.5s según el intento, y repetimos
+                console.warn(`⏳ Límite de Google alcanzado en ${rango}. Reintentando silenciosamente en ${(i + 1) * 1.5}s...`);
+                await new Promise(resolve => setTimeout(resolve, (i + 1) * 1500));
+            } else {
+                console.warn(`⚠️ Error leyendo rango ${rango}:`, e.response?.statusText || e.message);
+                return []; // Si el error es otro (ej. hoja no existe), devolvemos vacío y cortamos
+            }
+        }
     }
+    return []; // Si falló los 3 intentos, abortamos para no colgar el sistema
 }
 
 // ==========================================
@@ -351,10 +360,25 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
 }
 
 // ==========================================
-// 🔔 3. RECEPTORES DE WEBHOOKS
+// 🔔 3. RECEPTORES DE WEBHOOKS (CON AMORTIGUADOR)
 // ==========================================
-    app.post('/api/webhook/google', async (req, res) => { res.json({ success: true }); flujoEncoladoGlobal(false); });
-    app.get('/health', (req, res) => res.status(200).send('OK'));
+let temporizadorWebhook = null;
+
+app.post('/api/webhook/google', async (req, res) => { 
+    // Respondemos 'OK' a Google al instante para que no se quede colgado
+    res.json({ success: true }); 
+    
+    // Si llegan muchos webhooks seguidos, cancelamos la actualización anterior...
+    if (temporizadorWebhook) clearTimeout(temporizadorWebhook);
+    
+    // ...y programamos una sola actualización para dentro de 6 segundos
+    temporizadorWebhook = setTimeout(() => {
+        console.log("📥 Agrupación de webhooks completada. Ejecutando actualización...");
+        flujoEncoladoGlobal(false); 
+    }, 6000); 
+});
+
+app.get('/health', (req, res) => res.status(200).send('OK'));
 
 // ==========================================
 // 🌟 4. RUTAS API Y PROXY (MUTACIÓN ISO + FRONTEND)
