@@ -353,8 +353,8 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
 // ==========================================
 // 🔔 3. RECEPTORES DE WEBHOOKS
 // ==========================================
-app.post('/api/webhook/google', async (req, res) => { res.json({ success: true }); flujoEncoladoGlobal(false); });
-app.get('/health', (req, res) => res.status(200).send('OK'));
+    app.post('/api/webhook/google', async (req, res) => { res.json({ success: true }); flujoEncoladoGlobal(false); });
+    app.get('/health', (req, res) => res.status(200).send('OK'));
 
 // ==========================================
 // 🌟 4. RUTAS API Y PROXY (MUTACIÓN ISO + FRONTEND)
@@ -385,36 +385,113 @@ app.post('/api/proxy', async (req, res) => {
             }
         }
 
+// ==========================================
+        // 🚀 GUARDADO DE DOCUMENTOS Y VENCIMIENTOS
+        // ==========================================
         if (body && body.action === 'guardarDocumentos') {
-            const { data: choferData } = await supabase.from('choferes').select('id').ilike('nombre', body.nombre).single();
-            if (choferData) {
-                await supabase.from('documentos_choferes').upsert({ chofer_id: choferData.id, venc_periodico: body.exVen, venc_licencia: body.licVen, venc_cert_mp: body.certVen }, { onConflict: 'chofer_id' });
-                huboCambios = true;
-            }
-        }
+            let nBuscado = normalizar(body.nombre);
 
-        if (body && body.action === 'actualizarEstado') {
-            const nomChofer = body.nombre; const startIso = body.startIso; const endIso = body.endIso; const estPayload = body.est;
-            if (nomChofer && startIso && endIso) {
-                const { data: choferData } = await supabase.from('choferes').select('id').ilike('nombre', nomChofer).single();
-                if (choferData) {
-                    let dStart = new Date(startIso + "T12:00:00"); let dEnd = new Date(endIso + "T12:00:00");
-                    let current = new Date(dStart); let dayIndex = 0; let arrayParaUpsert = [];
+            // 🎚️ SWITCH: Guardar en Supabase (Encender/Apagar)
+            const GUARDAR_EN_SUPABASE = false; // <-- Cambia a 'true' si algún día quieres reactivarlo
 
-                    while (current <= dEnd) {
-                        let fechaDia = current.toISOString().split('T')[0]; let estadoDia = Array.isArray(estPayload) ? (estPayload[dayIndex] || '') : estPayload;
-                        if (estadoDia === 'BORRAR' || estadoDia === '' || estadoDia === null || estadoDia === '-') {
-                            await supabase.from('diagramas_diarios').delete().match({ chofer_id: choferData.id, fecha: fechaDia });
-                        } else {
-                            let limpio = String(estadoDia).toUpperCase().trim();
-                            arrayParaUpsert.push({ chofer_id: choferData.id, fecha: fechaDia, estado: limpio, actualizado_en: new Date() });
-                        }
-                        current.setDate(current.getDate() + 1); dayIndex++;
+            // --- 1. GUARDADO OPCIONAL EN SUPABASE ---
+            if (GUARDAR_EN_SUPABASE) {
+                try {
+                    const { data: choferData } = await supabase.from('choferes').select('id').ilike('nombre', body.nombre).single();
+                    if (choferData) {
+                        await supabase.from('documentos_choferes').upsert({ chofer_id: choferData.id, venc_periodico: body.exVen, venc_licencia: body.licVen, venc_cert_mp: body.certVen }, { onConflict: 'chofer_id' });
                     }
-                    if (arrayParaUpsert.length > 0) await supabase.from('diagramas_diarios').upsert(arrayParaUpsert, { onConflict: 'chofer_id,fecha' });
-                    huboCambios = true;
-                }
+                } catch(e) { console.error("Error guardando doc en Supabase:", e); }
             }
+
+            // --- 2. GUARDADO DIRECTO EN GOOGLE SHEETS ---
+            // Extraer DNI de la RAM para que la búsqueda sea exacta (como hacía docs.gs)
+            let dniBuscado = cacheDatosGlobales.dnis && cacheDatosGlobales.dnis[nBuscado] ? cacheDatosGlobales.dnis[nBuscado].dni : "";
+
+            // A. GUARDAR HABILITACIONES Y CERTIFICADO (Archivo 1hPDno...)
+            if (body.licVen || body.certVen) {
+                try {
+                    const ID_SHEET_HABILITACIONES = '1hPDno09tMBtKh7aIdsvzEYcyOY7leYj2B6XnniD0aXg';
+                    const resHab = await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_HABILITACIONES}/values/'VENCIMIENTOS'!B:C` });
+                    const rowsHab = resHab.data.values || [];
+                    let rowIndexHab = -1;
+                    
+                    for (let i = 0; i < rowsHab.length; i++) {
+                        let nSheet = normalizar(rowsHab[i][0]);
+                        let dniSheet = String(rowsHab[i][1] || "").replace(/\D/g, '');
+                        if ((dniBuscado && dniSheet === dniBuscado) || nSheet === nBuscado) {
+                            rowIndexHab = i + 1; // La API v4 empieza a contar desde la fila 1
+                            break;
+                        }
+                    }
+                    
+                    if (rowIndexHab !== -1) {
+                        // Actualizamos Licencia (Columna E)
+                        if (body.licVen) {
+                            await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_HABILITACIONES}/values/'VENCIMIENTOS'!E${rowIndexHab}?valueInputOption=USER_ENTERED`, method: 'PUT', data: { values: [[body.licVen]] } });
+                        }
+                        // Actualizamos Certificado (Columna D)
+                        if (body.certVen) {
+                            await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_HABILITACIONES}/values/'VENCIMIENTOS'!D${rowIndexHab}?valueInputOption=USER_ENTERED`, method: 'PUT', data: { values: [[body.certVen]] } });
+                        }
+                    }
+                } catch(e) { console.error("Error guardando Habilitaciones en Sheet:", e); }
+            }
+
+            // B. GUARDAR EXAMEN PERIÓDICO (Archivo 1pnYXK...)
+            if (body.exVen) {
+                try {
+                    const ID_SHEET_DOCUMENTOS = '1pnYXKDSv70Vq78Rchxus5FHMKdgXdbfltVsEg6vArjo';
+                    const resDoc = await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_DOCUMENTOS}/values/'PERIODICOS'!B:E` });
+                    const rowsDoc = resDoc.data.values || [];
+                    let rowIndexDoc = -1;
+
+                    // Replicamos el Extractor exacto que tenías en GAS
+                    const extraerDniDeCuil = (cuil) => {
+                        let limpio = String(cuil).replace(/\D/g, '');
+                        if (!limpio) return "";
+                        if (limpio.length === 11) return String(parseInt(limpio.substring(2, 10), 10));
+                        if (limpio.length === 10) return String(parseInt(limpio.substring(2, 9), 10));
+                        return String(parseInt(limpio, 10));
+                    };
+
+                    for (let i = 0; i < rowsDoc.length; i++) {
+                        let nSheet = normalizar(rowsDoc[i][0]);
+                        let cuilSheet = rowsDoc[i][3];
+                        let dniSheet = extraerDniDeCuil(cuilSheet);
+
+                        if ((dniBuscado && dniSheet === dniBuscado) || nSheet === nBuscado) {
+                            rowIndexDoc = i + 1;
+                            break;
+                        }
+                    }
+
+                    if (rowIndexDoc !== -1) {
+                        // Actualizamos Examen Periódico (Columna I, que equivale a la 9)
+                        await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_DOCUMENTOS}/values/'PERIODICOS'!I${rowIndexDoc}?valueInputOption=USER_ENTERED`, method: 'PUT', data: { values: [[body.exVen]] } });
+                    }
+                } catch(e) { console.error("Error guardando Documentos en Sheet:", e); }
+            }
+
+            // --- 3. ACTUALIZACIÓN INSTANTÁNEA EN RAM ---
+            // Recalcula los estados en memoria para que la tabla frontal cambie de color sin demoras
+            if (!cacheDatosGlobales.documentos) cacheDatosGlobales.documentos = {};
+            if (!cacheDatosGlobales.habilitaciones) cacheDatosGlobales.habilitaciones = {};
+            if (!cacheDatosGlobales.certificados) cacheDatosGlobales.certificados = {};
+            
+            const calcularEstado = (fechaStr) => {
+                if (!fechaStr) return 'OK';
+                let partes = fechaStr.split('-');
+                let v = new Date(partes[0], partes[1] - 1, partes[2]);
+                let diff = Math.ceil((v - new Date()) / 86400000);
+                return diff < 0 ? 'VENCIDO' : (diff <= 30 ? 'POR_VENCER' : 'VIGENTE');
+            };
+
+            if (body.exVen) cacheDatosGlobales.documentos[nBuscado] = { ven: body.exVen, estado: calcularEstado(body.exVen) };
+            if (body.licVen) cacheDatosGlobales.habilitaciones[nBuscado] = { ven: body.licVen, estado: calcularEstado(body.licVen) };
+            if (body.certVen) cacheDatosGlobales.certificados[nBuscado] = { ven: body.certVen, estado: calcularEstado(body.certVen) };
+
+            huboCambios = true;
         }
 
         // 🚀 NUEVO GUARDADO DIRECTO DE HOJA DE RUTA A GOOGLE SHEETS (Adiós Supabase)
