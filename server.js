@@ -404,61 +404,63 @@ app.post('/api/proxy', async (req, res) => {
                 } catch(e) { console.error("Error guardando doc en Supabase:", e); }
             }
 
-            // --- 2. GUARDADO DIRECTO EN GOOGLE SHEETS ---
-            // Extraer DNI de la RAM para que la búsqueda sea exacta (como hacía docs.gs)
-            let dniBuscado = cacheDatosGlobales.dnis && cacheDatosGlobales.dnis[nBuscado] ? cacheDatosGlobales.dnis[nBuscado].dni : "";
+            // --- 2. GUARDADO DIRECTO EN GOOGLE SHEETS VISUALES ---
+            // Extraer DNI de la RAM (Usando la ruta correcta: diagramas.dnis)
+            let dniBuscado = cacheDatosGlobales.diagramas && cacheDatosGlobales.diagramas.dnis && cacheDatosGlobales.diagramas.dnis[nBuscado] ? cacheDatosGlobales.diagramas.dnis[nBuscado].dni : "";
 
             // A. GUARDAR HABILITACIONES Y CERTIFICADO (Archivo 1hPDno...)
             if (body.licVen || body.certVen) {
                 try {
                     const ID_SHEET_HABILITACIONES = '1hPDno09tMBtKh7aIdsvzEYcyOY7leYj2B6XnniD0aXg';
-                    const resHab = await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_HABILITACIONES}/values/'VENCIMIENTOS'!B:C` });
+                    // Pedimos desde la A para alinear el índice de array con el número de fila exacto
+                    const resHab = await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_HABILITACIONES}/values/'VENCIMIENTOS'!A:C` });
                     const rowsHab = resHab.data.values || [];
                     let rowIndexHab = -1;
                     
                     for (let i = 0; i < rowsHab.length; i++) {
-                        let nSheet = normalizar(rowsHab[i][0]);
-                        let dniSheet = String(rowsHab[i][1] || "").replace(/\D/g, '');
+                        let nSheet = normalizar(rowsHab[i][1]); // Columna B
+                        let dniSheet = String(rowsHab[i][2] || "").replace(/\D/g, ''); // Columna C
                         if ((dniBuscado && dniSheet === dniBuscado) || nSheet === nBuscado) {
-                            rowIndexHab = i + 1; // La API v4 empieza a contar desde la fila 1
+                            rowIndexHab = i + 1; 
                             break;
                         }
                     }
                     
                     if (rowIndexHab !== -1) {
-                        // Actualizamos Licencia (Columna E)
+                        let reqs = [];
                         if (body.licVen) {
-                            await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_HABILITACIONES}/values/'VENCIMIENTOS'!E${rowIndexHab}?valueInputOption=USER_ENTERED`, method: 'PUT', data: { values: [[body.licVen]] } });
+                            let p = body.licVen.split('-'); let fechaArg = `${p[2]}/${p[1]}/${p[0]}`; // Convertir a DD/MM/YYYY
+                            reqs.push(serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_HABILITACIONES}/values/'VENCIMIENTOS'!E${rowIndexHab}?valueInputOption=USER_ENTERED`, method: 'PUT', data: { values: [[fechaArg]] } }));
                         }
-                        // Actualizamos Certificado (Columna D)
                         if (body.certVen) {
-                            await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_HABILITACIONES}/values/'VENCIMIENTOS'!D${rowIndexHab}?valueInputOption=USER_ENTERED`, method: 'PUT', data: { values: [[body.certVen]] } });
+                            let p = body.certVen.split('-'); let fechaArg = `${p[2]}/${p[1]}/${p[0]}`; // Convertir a DD/MM/YYYY
+                            reqs.push(serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_HABILITACIONES}/values/'VENCIMIENTOS'!D${rowIndexHab}?valueInputOption=USER_ENTERED`, method: 'PUT', data: { values: [[fechaArg]] } }));
                         }
+                        await Promise.all(reqs); // Guardar ambos en paralelo súper rápido
                     }
-                } catch(e) { console.error("Error guardando Habilitaciones en Sheet:", e); }
+                } catch(e) { console.error("Error guardando Habilitaciones:", e); }
             }
 
             // B. GUARDAR EXAMEN PERIÓDICO (Archivo 1pnYXK...)
             if (body.exVen) {
                 try {
                     const ID_SHEET_DOCUMENTOS = '1pnYXKDSv70Vq78Rchxus5FHMKdgXdbfltVsEg6vArjo';
-                    const resDoc = await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_DOCUMENTOS}/values/'PERIODICOS'!B:E` });
+                    const resDoc = await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_DOCUMENTOS}/values/'PERIODICOS'!A:E` });
                     const rowsDoc = resDoc.data.values || [];
                     let rowIndexDoc = -1;
 
-                    // Replicamos el Extractor exacto que tenías en GAS
-                    const extraerDniDeCuil = (cuil) => {
-                        let limpio = String(cuil).replace(/\D/g, '');
-                        if (!limpio) return "";
-                        if (limpio.length === 11) return String(parseInt(limpio.substring(2, 10), 10));
-                        if (limpio.length === 10) return String(parseInt(limpio.substring(2, 9), 10));
-                        return String(parseInt(limpio, 10));
+                    const extraerDni = (cuil) => {
+                        let l = String(cuil).replace(/\D/g, '');
+                        if (!l) return "";
+                        if (l.length === 11) return String(parseInt(l.substring(2, 10), 10));
+                        if (l.length === 10) return String(parseInt(l.substring(2, 9), 10));
+                        return String(parseInt(l, 10));
                     };
 
                     for (let i = 0; i < rowsDoc.length; i++) {
-                        let nSheet = normalizar(rowsDoc[i][0]);
-                        let cuilSheet = rowsDoc[i][3];
-                        let dniSheet = extraerDniDeCuil(cuilSheet);
+                        let nSheet = normalizar(rowsDoc[i][1]); // Columna B
+                        let cuilSheet = rowsDoc[i][4]; // Columna E
+                        let dniSheet = extraerDni(cuilSheet);
 
                         if ((dniBuscado && dniSheet === dniBuscado) || nSheet === nBuscado) {
                             rowIndexDoc = i + 1;
@@ -467,18 +469,17 @@ app.post('/api/proxy', async (req, res) => {
                     }
 
                     if (rowIndexDoc !== -1) {
-                        // Actualizamos Examen Periódico (Columna I, que equivale a la 9)
-                        await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_DOCUMENTOS}/values/'PERIODICOS'!I${rowIndexDoc}?valueInputOption=USER_ENTERED`, method: 'PUT', data: { values: [[body.exVen]] } });
+                        let p = body.exVen.split('-'); let fechaArg = `${p[2]}/${p[1]}/${p[0]}`; // Convertir a DD/MM/YYYY
+                        await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_DOCUMENTOS}/values/'PERIODICOS'!I${rowIndexDoc}?valueInputOption=USER_ENTERED`, method: 'PUT', data: { values: [[fechaArg]] } });
                     }
-                } catch(e) { console.error("Error guardando Documentos en Sheet:", e); }
+                } catch(e) { console.error("Error guardando Documentos:", e); }
             }
 
-            // --- 3. ACTUALIZACIÓN INSTANTÁNEA EN RAM ---
-            // Recalcula los estados en memoria para que la tabla frontal cambie de color sin demoras
-            if (!cacheDatosGlobales.documentos) cacheDatosGlobales.documentos = {};
-            if (!cacheDatosGlobales.habilitaciones) cacheDatosGlobales.habilitaciones = {};
-            if (!cacheDatosGlobales.certificados) cacheDatosGlobales.certificados = {};
-            
+            // --- 3. ACTUALIZACIÓN INSTANTÁNEA EN LA ESTRUCTURA RAM CORRECTA ---
+            if (!cacheDatosGlobales.diagramas.documentos) cacheDatosGlobales.diagramas.documentos = {};
+            if (!cacheDatosGlobales.diagramas.habilitaciones) cacheDatosGlobales.diagramas.habilitaciones = {};
+            if (!cacheDatosGlobales.diagramas.certificados) cacheDatosGlobales.diagramas.certificados = {};
+
             const calcularEstado = (fechaStr) => {
                 if (!fechaStr) return 'OK';
                 let partes = fechaStr.split('-');
@@ -487,9 +488,29 @@ app.post('/api/proxy', async (req, res) => {
                 return diff < 0 ? 'VENCIDO' : (diff <= 30 ? 'POR_VENCER' : 'VIGENTE');
             };
 
-            if (body.exVen) cacheDatosGlobales.documentos[nBuscado] = { ven: body.exVen, estado: calcularEstado(body.exVen) };
-            if (body.licVen) cacheDatosGlobales.habilitaciones[nBuscado] = { ven: body.licVen, estado: calcularEstado(body.licVen) };
-            if (body.certVen) cacheDatosGlobales.certificados[nBuscado] = { ven: body.certVen, estado: calcularEstado(body.certVen) };
+            if (body.exVen) cacheDatosGlobales.diagramas.documentos[nBuscado] = { ven: body.exVen, estado: calcularEstado(body.exVen) };
+            if (body.licVen) cacheDatosGlobales.diagramas.habilitaciones[nBuscado] = { ven: body.licVen, estado: calcularEstado(body.licVen) };
+            if (body.certVen) cacheDatosGlobales.diagramas.certificados[nBuscado] = { ven: body.certVen, estado: calcularEstado(body.certVen) };
+
+            // 💾 PERSISTIR LA RAM EN 'API_CACHE_BASICO' PARA FUTUROS REINICIOS
+            const ID_SPREADSHEET_MASTER = process.env.SPREADSHEET_ID || '1eQ9Y5diL5fwxYTxvseNgZJFbX-lSUQ13axbp3cLiqPc';
+            const guardarCacheRow = async (fila, dataObj) => {
+                let jsonStr = JSON.stringify(dataObj);
+                let chunks = [];
+                for (let i = 0; i < jsonStr.length; i += 45000) chunks.push("'" + jsonStr.substring(i, i + 45000));
+                try {
+                    // Primero vaciar fila para evitar basura y luego escribir
+                    await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_MASTER}/values/'API_CACHE_BASICO'!A${fila}:Z${fila}:clear`, method: 'POST' });
+                    await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_MASTER}/values/'API_CACHE_BASICO'!A${fila}?valueInputOption=USER_ENTERED`, method: 'PUT', data: { values: [chunks] } });
+                } catch(e) { console.error(`Error guardando caché fila ${fila}:`, e); }
+            };
+
+            // Escribe en paralelo en la BD Maestra las filas 2, 3 y 5
+            let promesasCache = [];
+            if (body.exVen) promesasCache.push(guardarCacheRow(2, cacheDatosGlobales.diagramas.documentos));
+            if (body.licVen) promesasCache.push(guardarCacheRow(3, cacheDatosGlobales.diagramas.habilitaciones));
+            if (body.certVen) promesasCache.push(guardarCacheRow(5, cacheDatosGlobales.diagramas.certificados));
+            await Promise.all(promesasCache);
 
             huboCambios = true;
         }
