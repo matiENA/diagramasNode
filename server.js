@@ -171,16 +171,16 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
 
         if (esArranque) {
             
-            // ==========================================
-            // 🪪 MOTOR DE RASTREO MAESTRO (Planilla LEGAJOS)
+ // ==========================================
+            // 🪪 MOTOR DE RASTREO MAESTRO (Desde Pestaña 'LEGAJOS' del Master)
             // ==========================================
             let dnisMap = {};
             let telefonosMap = {};
 
             try {
-                // 👉 Lee EXACTAMENTE a partir de la fila 8, omitiendo todos los encabezados
-                const TAB_NAME = "INFORMACION CONDUCTORES";
-                const rowsLegajos = await fetchRango(ID_SHEET_LEGAJOS_MAESTRO, `'${TAB_NAME}'!A8:P350`);
+                // 👉 Leemos la nueva pestaña LEGAJOS que creaste en el Master
+                // Empezamos desde A2 porque A1 tiene el encabezado traído por el IMPORTRANGE
+                const rowsLegajos = await fetchRango(ID_SPREADSHEET_MASTER, "'LEGAJOS'!A2:P350");
                 
                 if (rowsLegajos && rowsLegajos.length > 0) {
                     rowsLegajos.forEach(row => {
@@ -216,9 +216,9 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
                             telefonosMap[dniPuro] = datosContacto;
                         }
                     });
-                    console.log(`✅ ${Object.keys(dnisMap).length} choferes extraídos de '${TAB_NAME}' (Lectura Fija A8).`);
+                    console.log(`✅ ${Object.keys(dnisMap).length} choferes extraídos de 'LEGAJOS' (vía IMPORTRANGE).`);
                 } else {
-                    console.warn(`⚠️ No se encontraron datos a partir de A8 en '${TAB_NAME}'.`);
+                    console.warn(`⚠️ No se encontraron datos en la pestaña 'LEGAJOS' del Master.`);
                 }
             } catch (e) { 
                 console.error("❌ Error en Motor de Rastreo de Legajos:", e); 
