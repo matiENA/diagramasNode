@@ -95,6 +95,7 @@ setTimeout(() => {
 // ==========================================
 // 🧠 2. EL CEREBRO: CONSTRUCCIÓN NATIVA
 // ==========================================
+
 async function actualizarCacheDesdeGoogle(esArranque = false) {
     try {
         console.log(esArranque ? "🚀 ARRANQUE: Descarga Cruda (RAM Protegida)..." : "⚡ WEBHOOK: Actualizando RAM ligera...");
@@ -124,15 +125,80 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
             }
         } catch(e) { console.error("❌ Error parseando el JSON de H1:", e); }
 
-        const rowsAptos = await fetchRango(ID_SHEET_APTOS_MEDICOS, "'Seguimiento Avalados Mensual'!A2:AT350");
-        resDiagGAS.aptosMedicos = {};
-        rowsAptos.forEach(row => {
-            if(!row[0] || row[0] === "Nombre Completo") return;
-            let norm = normalizar(row[0]);
-            let estadoDiario = "-";
-            for (let c = 45; c >= 12; c--) { if (row[c] && row[c].trim() !== "" && row[c].trim() !== "-") { estadoDiario = row[c].trim(); break; } }
-            resDiagGAS.aptosMedicos[norm] = { estado: estadoDiario, cuil: row[1] || "", observaciones: row[10] || "", observaciones_sector_salud: row[11] || "", responsable: row[5] || "" };
-        });
+        // 👉 NUEVA LÓGICA: EXTRACCIÓN AVANZADA DE APTOS MÉDICOS
+        try {
+            const rowsAptos = await fetchRango(ID_SHEET_APTOS_MEDICOS, "'Seguimiento Avalados Mensual'!A1:AT350");
+            resDiagGAS.aptosMedicos = {};
+            
+            if (rowsAptos.length > 0) {
+                const headers = rowsAptos[0]; // Fila 1: Encabezados
+                const hoy = new Date();
+                const d = String(hoy.getDate()).padStart(2, '0');
+                const m = String(hoy.getMonth() + 1).padStart(2, '0');
+                const y = hoy.getFullYear();
+                const mesesLargo = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+                
+                const formatosHoy = [
+                    `${hoy.getDate()}/${mesesLargo[hoy.getMonth()]}/${y}`.toLowerCase(),
+                    `${d}/${m}/${y}`,
+                    `${d}/${m}`,
+                    String(hoy.getDate())
+                ];
+
+                let colDiaria = -1;
+                for (let c = 12; c < headers.length; c++) {
+                    let headLimpio = String(headers[c] || "").trim().toLowerCase();
+                    if (formatosHoy.includes(headLimpio)) {
+                        colDiaria = c;
+                        break;
+                    }
+                }
+                if (colDiaria === -1) {
+                    for (let c = headers.length - 1; c >= 12; c--) {
+                        if (String(headers[c] || "").trim() !== "") { colDiaria = c; break; }
+                    }
+                }
+
+                for (let i = 1; i < rowsAptos.length; i++) {
+                    let fila = rowsAptos[i];
+                    let nombreRaw = String(fila[0] || "").trim(); 
+                    if (!nombreRaw || nombreRaw.toLowerCase() === "nombre completo") continue;
+
+                    let cuil = String(fila[1] || "").trim();
+                    let dniLimpio = String(cuil).replace(/\D/g, '');
+                    if (dniLimpio.length === 11) dniLimpio = String(parseInt(dniLimpio.substring(2, 10), 10));
+                    else if (dniLimpio.length === 10) dniLimpio = String(parseInt(dniLimpio.substring(2, 9), 10));
+                    else dniLimpio = String(parseInt(dniLimpio, 10) || "");
+
+                    let responsable = String(fila[5] || "").trim();
+                    let observaciones = String(fila[10] || "").trim();
+                    let observaciones_salud = String(fila[11] || "").trim();
+
+                    let estadoDiario = "-";
+                    let limiteBusqueda = colDiaria > -1 ? colDiaria : fila.length - 1;
+                    for (let c = limiteBusqueda; c >= 12; c--) {
+                        let val = String(fila[c] || "").trim();
+                        if (val !== "" && val !== "-") {
+                            estadoDiario = val;
+                            break;
+                        }
+                    }
+
+                    let nombreNormalizado = nombreRaw.replace(/,/g, '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
+                    let objApto = {
+                        dni: dniLimpio,
+                        cuil: cuil,
+                        estado: estadoDiario,
+                        responsable: responsable,
+                        observaciones: observaciones,
+                        observaciones_sector_salud: observaciones_salud
+                    };
+
+                    if (dniLimpio) resDiagGAS.aptosMedicos[dniLimpio] = objApto;
+                    if (nombreNormalizado) resDiagGAS.aptosMedicos[nombreNormalizado] = objApto;
+                }
+            }
+        } catch (e) { console.error("❌ Error leyendo Aptos Médicos:", e); }
 
         const rowsObs = await fetchRango(ID_SHEET_OBSERVACIONES, "'Movimientos'!A5:H2000");
         resDiagGAS.observaciones = {};
