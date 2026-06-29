@@ -1503,23 +1503,6 @@ window.agregarInputExtraTD = function(tdId, event) {
         renderizarOpcionesIndividual(datos);
     }
 
-function renderizarOpcionesIndividual(lista) {
-        const container = document.getElementById('lista-opciones-individual');
-        if(!container) return;
-        if(lista.length === 0) { container.innerHTML = `<div class="p-5 text-center text-sm font-bold text-gray-500">Sin coincidencias.</div>`; return; }
-        let html = '';
-        lista.sort((a,b) => a.nom.localeCompare(b.nom)).forEach(c => {
-            const theme = getSrvTheme(c.srv);
-            html += `<div onclick="seleccionarConductorIndividual('${c._safeId}', '${c.nom.replace(/'/g, "\\'")}')" class="flex items-center justify-between p-3 rounded-xl hover:bg-gray-50 cursor-pointer border border-transparent hover:border-gray-200 transition-all group">
-                <div class="flex items-center gap-3">
-                    <div class="${theme.softBg} ${theme.softText} border ${theme.border} w-11 h-11 rounded-lg flex items-center justify-center font-black text-[10px] shrink-0 shadow-sm uppercase overflow-hidden text-center leading-tight">${(c.srv || 'S/A').substring(0,4)}</div>
-                    <div class="flex flex-col"><span class="font-black text-gray-900 text-sm group-hover:text-primary transition-colors">${c.nom}</span><span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">UTE: ${c.n_ute || '-'}</span></div>
-                </div>
-                <span class="${theme.solidBg} ${theme.solidText} px-3 py-1.5 rounded-lg text-[10px] font-bold shadow-sm hidden sm:block tracking-wide">${c.srv || 'SIN ASIGNAR'}</span>
-            </div>`;
-        });
-        container.innerHTML = html;
-    }
 
 window.mostrarDetalleConductor = function(safeId, mantenerSeleccion = false) {
     if (!mantenerSeleccion) { conductorSeleccionadoId = safeId; seleccionInicioIso = null; currentEndIso = null; }
@@ -2891,11 +2874,13 @@ window.filtrarDropdownIndividual = function() {
     }
     
     const filtrados = datosGlobales.filter(c => {
+        // 👉 SALVAVIDAS: Si el objeto está dañado o no tiene nombre, lo ignoramos para evitar que explote
+        if (!c || !c.nom) return false; 
+
         let nKey = String(c.nom || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
         let datosDni = dnisGlobales[nKey];
         let dniString = datosDni ? String(datosDni.dni || datosDni).toLowerCase() : "";
 
-        // 👉 SOLUCIÓN: Restaurada la búsqueda por c.n_ute (Legajo)
         return nKey.includes(termNorm) || 
                String(c.n_ute || '').toLowerCase().includes(termNorm) || 
                String(c.srv || '').toLowerCase().includes(termNorm) ||
@@ -2906,7 +2891,42 @@ window.filtrarDropdownIndividual = function() {
     abrirDropdownIndividual();
 };
 
-    // 4. Selecciona un conductor de la lista del dropdown
+function renderizarOpcionesIndividual(lista) {
+    const container = document.getElementById('lista-opciones-individual');
+    if(!container) return;
+    
+    // 👉 SALVAVIDAS: Protegemos contra arrays nulos
+    if(!lista || lista.length === 0) { 
+        container.innerHTML = `<div class="p-5 text-center text-sm font-bold text-gray-500">Sin coincidencias.</div>`; 
+        return; 
+    }
+    
+    let html = '';
+    
+    // 👉 SALVAVIDAS: Aplicamos String() en el sort para que no colapse si a.nom es undefined
+    lista.sort((a,b) => String(a.nom || '').localeCompare(String(b.nom || ''))).forEach(c => {
+        // Ignoramos completamente objetos corruptos en el dibujado
+        if (!c || !c.nom) return;
+
+        // Limpiamos el nombre asegurándonos de que es un String válido antes del replace()
+        let nombreSeguro = String(c.nom).replace(/'/g, "\\'");
+        let srvAbreviado = String(c.srv || 'S/A').substring(0,4);
+        
+        const theme = getSrvTheme(c.srv);
+        
+        html += `<div onclick="seleccionarConductorIndividual('${c._safeId}', '${nombreSeguro}')" class="flex items-center justify-between p-3 rounded-xl hover:bg-gray-50 cursor-pointer border border-transparent hover:border-gray-200 transition-all group">
+            <div class="flex items-center gap-3">
+                <div class="${theme.softBg} ${theme.softText} border ${theme.border} w-11 h-11 rounded-lg flex items-center justify-center font-black text-[10px] shrink-0 shadow-sm uppercase overflow-hidden text-center leading-tight">${srvAbreviado}</div>
+                <div class="flex flex-col"><span class="font-black text-gray-900 text-sm group-hover:text-primary transition-colors">${c.nom}</span><span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">UTE: ${c.n_ute || '-'}</span></div>
+            </div>
+            <span class="${theme.solidBg} ${theme.solidText} px-3 py-1.5 rounded-lg text-[10px] font-bold shadow-sm hidden sm:block tracking-wide">${c.srv || 'SIN ASIGNAR'}</span>
+        </div>`;
+    });
+    
+    container.innerHTML = html;
+}
+
+// 4. Selecciona un conductor de la lista del dropdown
 window.seleccionarConductorIndividual = function(safeId, nombre) {
         const input = document.getElementById('input-busqueda-individual');
         if (input) input.value = nombre || '';
