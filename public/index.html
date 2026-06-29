@@ -1324,8 +1324,7 @@ html += `
             </div>`;
                     });
         html += `</div>`;
-        container.innerHTML = html;
-    }
+        window.actualizarSinBlink('contenedor-lista-principal', html);    }
 
     window.toggleDetalle = function(id) {
         const d = document.getElementById(`detalle-${id}`); const i = document.getElementById(`icon-chevron-${id}`);
@@ -1414,8 +1413,7 @@ tr += `<td id="cell-${c._safeId}-${isoStr}" data-row="${c._safeId}" data-col="${
             tablaHtml += tr + '</tr>';
         });
         
-        container.innerHTML = tablaHtml + '</tbody></table></div>';
-
+    window.actualizarSinBlink('contenedor-lista-principal', tablaHtml + '</tbody></table></div>');
         setTimeout(() => {
             let isoHoy = formatIsoShort(fBaseObj);
             let celdaHoy = document.getElementById(`header-day-${isoHoy}`);
@@ -1861,7 +1859,7 @@ let isToday = (isCurrentMonth && i === fBaseObj.getDate()) ? 'ring-2 ring-primar
     </div>
     `;
     
-    contenedor.innerHTML = html + getHTMLRestante(chofer, doc, hab, cert, apto, badgeExam, badgeLic, badgeCert);
+window.actualizarSinBlink('contenedor-detalle-chofer', html + getHTMLRestante(chofer, doc, hab, cert, apto, badgeExam, badgeLic, badgeCert));
     renderizarHistorialEventos(chofer.nom);
 
 if (mantenerSeleccion && seleccionInicioIso && currentEndIso) {
@@ -3059,8 +3057,38 @@ async function enviarCambioEstado(chofer, fIni, fFin, estado) {
   });
 }
 
+// ====================================================================
+// 🧬 MOTOR DE MUTACIÓN DOM (CERO BLINK)
+// ====================================================================
+window.actualizarSinBlink = function(elementoId, nuevoHTML) {
+    const contenedor = document.getElementById(elementoId);
+    if (!contenedor) return;
+
+    if (typeof morphdom !== 'undefined') {
+        // Creamos un nodo temporal virtual
+        const nodoVirtual = contenedor.cloneNode(false);
+        nodoVirtual.innerHTML = nuevoHTML;
+        
+        // Morphdom compara el nodo real con el virtual y aplica SOLO las diferencias
+        morphdom(contenedor, nodoVirtual, {
+            onBeforeElUpdated: function(fromEl, toEl) {
+                // Si el elemento es un input y estamos escribiendo en él, no lo sobreescribimos
+                if (fromEl.tagName === 'INPUT' && fromEl === document.activeElement) {
+                    return false; 
+                }
+                return true;
+            }
+        });
+    } else {
+        // Respaldo por si falla internet y no carga la librería
+        contenedor.innerHTML = nuevoHTML;
+    }
+};
+
   </script>
 
+<script src="https://unpkg.com/morphdom@2.7.1/dist/morphdom-umd.min.js"></script>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
   
 <script>
