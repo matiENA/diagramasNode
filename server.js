@@ -260,10 +260,27 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
                 return { col_b: row[1] || "", col_c: row[2] || "", col_g: row[6] || "", col_h: row[7] || "", col_j: row[9] || "", col_k: row[10] || "", col_l: row[11] || "", col_m: row[12] || "", col_n: row[13] || "" };
             }).filter(Boolean);
 
-            const rowsFotos = await fetchRango(ID_SPREADSHEET_MASTER, "'fotos'!A1:B200");
+// ==========================================
+            // 📸 EXTRACCIÓN DE FOTOS (Columna completa y DNI Inteligente)
+            // ==========================================
+            const rowsFotos = await fetchRango(ID_SPREADSHEET_MASTER, "'fotos'!A:B"); // Lee toda la hoja sin límite
             resDiagGAS.fotosImgur = {};
-            rowsFotos.forEach(row => { if (row[0] && row[1] && row[1].includes('http')) resDiagGAS.fotosImgur[row[0].replace(/\D/g, '')] = row[1].trim(); });
-
+            
+            rowsFotos.forEach(row => { 
+                if (row[0] && row[1] && String(row[1]).includes('http')) {
+                    let numStr = String(row[0]).replace(/\D/g, '');
+                    if (!numStr) return;
+                    
+                    // Si alguien pegó un CUIL en vez de un DNI, lo recortamos al DNI
+                    if (numStr.length === 11) numStr = numStr.substring(2, 10);
+                    else if (numStr.length === 10) numStr = numStr.substring(2, 9);
+                    
+                    let dniPuro = String(parseInt(numStr, 10)); // Quita ceros a la izquierda
+                    resDiagGAS.fotosImgur[dniPuro] = String(row[1]).trim(); 
+                }
+            });
+            console.log(`📸 ${Object.keys(resDiagGAS.fotosImgur).length} Fotos extraídas de la base de datos.`);
+            
             let hoy = new Date(); let offsetsMeses = [-1, 0, 1, 2, 3]; 
             for (let i of offsetsMeses) {
                 let d = new Date(hoy.getFullYear(), hoy.getMonth() + i, 1); let anio = d.getFullYear(); let mesStr = String(d.getMonth() + 1).padStart(2, '0');
