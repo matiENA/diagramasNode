@@ -164,6 +164,7 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
         resDiagGAS.dnis = dnisMap; resDiagGAS.telefonos = telefonosMap;
 
         // Aptos y Observaciones
+// Aptos y Observaciones
         try {
             const rowsAptos = await fetchRango(ID_SHEET_APTOS_MEDICOS, "'Seguimiento Avalados Mensual'!A1:AT350");
             resDiagGAS.aptosMedicos = {};
@@ -180,14 +181,30 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
                 for (let i = 1; i < rowsAptos.length; i++) {
                     let fila = rowsAptos[i]; let nombreRaw = String(fila[0] || "").trim(); 
                     if (!nombreRaw || nombreRaw.toLowerCase() === "nombre completo") continue;
-                    let cuil = String(fila[1] || "").trim(); let dniLimpio = String(cuil).replace(/\D/g, '');
+                    
+                    let cuil = String(fila[1] || "").trim(); 
+                    let dniLimpio = String(cuil).replace(/\D/g, '');
                     if (dniLimpio.length === 11) dniLimpio = String(parseInt(dniLimpio.substring(2, 10), 10));
                     else if (dniLimpio.length === 10) dniLimpio = String(parseInt(dniLimpio.substring(2, 9), 10));
                     else dniLimpio = String(parseInt(dniLimpio, 10) || "");
+                    
                     let estadoDiario = "-"; let limiteBusqueda = colDiaria > -1 ? colDiaria : fila.length - 1;
                     for (let c = limiteBusqueda; c >= 12; c--) { let val = String(fila[c] || "").trim(); if (val !== "" && val !== "-") { estadoDiario = val; break; } }
                     let nombreNormalizado = nombreRaw.replace(/,/g, '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ' ').replace(/\s+/g, ' ');
-                    let objApto = { dni: dniLimpio, cuil: cuil, estado: estadoDiario, responsable: fila[5] || "", observaciones: fila[10] || "", observaciones_sector_salud: fila[11] || "" };
+                    
+                    // 👉 NUEVA LÍNEA: Extracción de la Columna C (Estado)
+                    let estadoGeneral = String(fila[2] || "").trim();
+
+                    let objApto = { 
+                        dni: dniLimpio, 
+                        cuil: cuil, 
+                        estadoGeneral: estadoGeneral, // 👈 Se guarda en la RAM
+                        estado: estadoDiario, 
+                        responsable: fila[5] || "", 
+                        observaciones: fila[10] || "", 
+                        observaciones_sector_salud: fila[11] || "" 
+                    };
+                    
                     if (dniLimpio) resDiagGAS.aptosMedicos[dniLimpio] = objApto;
                     if (nombreNormalizado) resDiagGAS.aptosMedicos[nombreNormalizado] = objApto;
                 }
