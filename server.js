@@ -280,7 +280,7 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
                 }
             });
             console.log(`📸 ${Object.keys(resDiagGAS.fotosImgur).length} Fotos extraídas de la base de datos.`);
-            
+
             let hoy = new Date(); let offsetsMeses = [-1, 0, 1, 2, 3]; 
             for (let i of offsetsMeses) {
                 let d = new Date(hoy.getFullYear(), hoy.getMonth() + i, 1); let anio = d.getFullYear(); let mesStr = String(d.getMonth() + 1).padStart(2, '0');
@@ -498,9 +498,11 @@ app.post('/api/proxy', async (req, res) => {
             huboCambios = true;
         }
 
-        if (body && body.action === 'guardarHojaRutaPlanilla') {
+       if (body && body.action === 'guardarHojaRutaPlanilla') {
             let stringHojas = (body.hojas || []).join(', ');
             let nBuscado = normalizar(body.nombre);
+            
+            // Creamos targetStr en formato "DD/MM/YY" estricto (Ej: "07/06/26")
             let dTarget = new Date(body.fecha + "T12:00:00");
             let targetStr = `${String(dTarget.getDate()).padStart(2,'0')}/${String(dTarget.getMonth()+1).padStart(2,'0')}/${String(dTarget.getFullYear()).slice(-2)}`;
             
@@ -510,8 +512,38 @@ app.post('/api/proxy', async (req, res) => {
             
             let rowIndex = -1;
             for (let i = 1; i < rowsBC.length; i++) {
-                let fFila = String(rowsBC[i][0] || '').trim(); let nFila = normalizar(rowsBC[i][1]);
-                if (nFila === nBuscado && (fFila.startsWith(targetStr) || fFila.startsWith(body.fecha) || fFila.includes(targetStr))) { rowIndex = i + 1; break; }
+                let fFilaRaw = String(rowsBC[i][0] || '').trim();
+                let nFila = normalizar(rowsBC[i][1]);
+                
+                if (nFila === nBuscado) {
+                    // Limpiamos la fecha de la planilla (Quitamos " - domingo", etc.)
+                    let partesFecha = fFilaRaw.split(' ')[0].split(/[\/\-]/);
+                    let coincide = false;
+                    
+                    if (partesFecha.length >= 3) {
+                        // Forzamos a que siempre tenga ceros a la izquierda (7 -> 07)
+                        let diaFila = String(parseInt(partesFecha[0], 10)).padStart(2, '0');
+                        let mesFila = String(parseInt(partesFecha[1], 10)).padStart(2, '0');
+                        let anioFila = partesFecha[2].length === 4 ? partesFecha[2].slice(-2) : partesFecha[2];
+                        
+                        // Respaldo por si pegan la fecha al revés (YYYY-MM-DD)
+                        if (partesFecha[0].length === 4) {
+                            diaFila = String(parseInt(partesFecha[2], 10)).padStart(2, '0');
+                            mesFila = String(parseInt(partesFecha[1], 10)).padStart(2, '0');
+                            anioFila = partesFecha[0].slice(-2);
+                        }
+                        
+                        let filaNormalizada = `${diaFila}/${mesFila}/${anioFila}`;
+                        
+                        // Ahora comparamos "07/06/26" === "07/06/26"
+                        if (filaNormalizada === targetStr) coincide = true;
+                    } else {
+                        // Respaldo de emergencia
+                        if (fFilaRaw.includes(targetStr) || fFilaRaw.startsWith(body.fecha)) coincide = true;
+                    }
+
+                    if (coincide) { rowIndex = i + 1; break; }
+                }
             }
 
             if (rowIndex !== -1) {
