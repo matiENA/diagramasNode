@@ -237,64 +237,33 @@ window.procesarLogin = function() {
     btn.disabled = true;
     errorBox.classList.add('hidden');
 
-    // PATRÓN HÍBRIDO: Determinar entorno de ejecución
-    if (typeof google !== 'undefined' && google.script && google.script.run) {
-        
-        // --- 1. ENTORNO NATIVO (App Script /exec) ---
-        google.script.run
-            .withSuccessHandler(function(res) {
-                if (res.success) {
-                    sessionStorage.setItem('eor_session_token', res.token);
-                    sessionStorage.setItem('eor_session_role', res.rol);
-                    localStorage.setItem('usuarioActivo', user); 
-                    desbloquearSistema();
-                } else {
-                    errorBox.innerText = res.error || "Credenciales incorrectas.";
-                    errorBox.classList.remove('hidden');
-                }
-                btn.innerHTML = "Ingresar al Sistema";
-                btn.disabled = false;
-            })
-            .withFailureHandler(function(err) {
-                errorBox.innerText = "Error de red. Intente nuevamente.";
-                errorBox.classList.remove('hidden');
-                btn.innerHTML = "Ingresar al Sistema";
-                btn.disabled = false;
-            })
-            .validarLogin(user, pass);
-            
-    } else {
-        
-        // --- 2. ENTORNO EXTERNO (Render, Vercel, Localhost) ---
-        fetch(API_URL, {
-            method: 'POST',
-            headers: {
-                "Content-Type": "text/plain;charset=utf-8" 
-            },
-            body: JSON.stringify({ action: 'login', usuario: user, password: pass })
-        })
-        .then(res => res.json())
-        .then(res => {
-            if (res.success) {
-                sessionStorage.setItem('eor_session_token', res.token);
-                sessionStorage.setItem('eor_session_role', res.rol);
-                localStorage.setItem('usuarioActivo', user); 
-                desbloquearSistema();
-            } else {
-                errorBox.innerText = res.error || "Acceso denegado.";
-                errorBox.classList.remove('hidden');
-            }
-        })
-        .catch(err => {
-            errorBox.innerText = "Error de red. Intente nuevamente.";
+    // Conexión Directa a Node.js
+    fetch(API_URL, {
+        method: 'POST',
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: 'login', usuario: user, password: pass })
+    })
+    .then(res => res.json())
+    .then(res => {
+        if (res.success) {
+            sessionStorage.setItem('eor_session_token', res.token);
+            sessionStorage.setItem('eor_session_role', res.rol);
+            localStorage.setItem('usuarioActivo', user); 
+            desbloquearSistema();
+        } else {
+            errorBox.innerText = res.error || "Acceso denegado.";
             errorBox.classList.remove('hidden');
-            console.error("Error en Fetch Login:", err);
-        })
-        .finally(() => {
-            btn.innerHTML = "Ingresar al Sistema";
-            btn.disabled = false;
-        });
-    }
+        }
+    })
+    .catch(err => {
+        errorBox.innerText = "Error de red. Intente nuevamente.";
+        errorBox.classList.remove('hidden');
+        console.error("Error en Fetch Login:", err);
+    })
+    .finally(() => {
+        btn.innerHTML = "Ingresar al Sistema";
+        btn.disabled = false;
+    });
 }
 
 window.sincronizarBackend = function() {
@@ -499,16 +468,6 @@ window.mapearVencimientos = function(patente, jsonVencimientos) {
     };
 };
 
-    // --- [TAG: UTILS Y CORE] ---
-
-   
-    // 👉 SOLUCIÓN: Función global elevada para que el caché no colapse
-    window.normalizarNombreTD = function(nom) {
-        return String(nom || "").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
-    };
-    function normalizarNombreTD(nom) {
-        return window.normalizarNombreTD(nom);
-    }
     
     window.parseFechaObs = function(fechaStr) {
         if (!fechaStr || fechaStr === '-') return null;
@@ -783,7 +742,6 @@ async function cargarDatosDesdeCache() {
         }
 
         // 4. Lógica de normalización de datos (Intacta, porque funciona excelente)
-        const dataTDs = resNode.tds || { campo: {}, infinia: {}, liviano: {}, euro: {}, estados: {}, extra: {} };
         const resDiagramas = typeof resNode.diagramas === 'string' ? JSON.parse(resNode.diagramas) : resNode.diagramas;
 
         window.tdGlobalData = {
@@ -1459,27 +1417,7 @@ window.irAVistaIndividual = function(safeId) {
             }
         }
     };
-
-window.agregarInputExtraTD = function(tdId, event) {
-    if(event) event.stopPropagation();
-    const container = document.getElementById(`inputs-container-${tdId}`);
-    if(!container) return;
-    
-    const div = document.createElement('div');
-    div.className = "flex items-center gap-1 w-full relative animate-expand-anim";
-    div.innerHTML = `
-        <input type="text" maxlength="6" placeholder="000000" 
-               class="td-extra-input-${tdId} w-full text-center px-2 py-1 text-[11px] font-mono font-bold bg-white text-indigo-900 border border-gray-300 shadow-inner rounded focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 outline-none transition-all duration-300"
-               onfocus="this.classList.remove('bg-gray-100', 'text-gray-500', 'border-transparent', 'opacity-80'); this.classList.add('bg-white', 'text-indigo-900', 'border-gray-300', 'shadow-inner');"
-               onchange="guardarDatosExtraTD('${tdId}')" 
-               oninput="this.value = this.value.replace(/[^0-9]/g, '');"
-               onkeydown="if(event.key === 'Enter') { event.preventDefault(); this.blur(); guardarDatosExtraTD('${tdId}'); }">
-        <button type="button" onclick="this.parentElement.remove(); guardarDatosExtraTD('${tdId}');" class="text-red-400 hover:text-red-600 bg-red-50 hover:bg-red-100 rounded w-6 h-6 shrink-0 flex items-center justify-center text-lg leading-none transition-colors" title="Quitar">×</button>
-    `;
-    container.appendChild(div);
-    div.querySelector('input').focus(); 
-};
-
+ 
     function renderizarVistaIndividual(datos, container) {
         let html = `
             <div class="w-full grid grid-cols-12 gap-4 animate-[fadeIn_0.3s_ease-out]">
@@ -3148,15 +3086,6 @@ window.actualizarSinBlink = function(elementoId, nuevoHTML) {
     // 3. Escuchamos el evento mágico
     socket.on('datos_actualizados', (data) => {
         try {
-            // --- PASO 1: ACTUALIZACIÓN DE MEMORIA (0 milisegundos) ---
-            window.tdGlobalData = {
-                campo: data.tds.campo || {}, 
-                infinia: data.tds.infinia || {},
-                liviano: data.tds.liviano || {}, 
-                euro: data.tds.euro || {},
-                estados: data.tds.estados || {}, 
-                extra: data.tds.codigosExtra || {}
-            };
 
             const dataDiag = typeof data.diagramas === 'string' ? JSON.parse(data.diagramas) : data.diagramas;
             
