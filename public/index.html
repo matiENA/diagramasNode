@@ -2228,7 +2228,7 @@ if (apto) {
             } else if (estApto.includes('AVALADO') || estApto.includes('VIGENTE')) {
                 badgeApto = '<span class="text-[10px] text-green-700 bg-green-50 px-2.5 py-1 rounded font-black border border-green-200 shadow-sm uppercase">AVALADO</span>';
             } else {
-                badgeApto = `<span class="text-[10px] text-gray-600 bg-gray-100 px-2.5 py-1 rounded font-black border border-gray-300 shadow-sm uppercase">${apto.estado}</span>`;
+                badgeApto = `<span class="text-[10px] text-gray-600 bg-gray-100 px-2.5 py-1 rounded font-black border border-gray-300 shadow-sm uppercase">${apto.estadoGeneral}</span>`;
             }
 
             let obsExtraHtml = apto.observaciones_sector_salud ? `<div class="bg-gray-50 rounded-lg p-3 text-xs text-gray-700 border border-gray-100 shadow-sm flex flex-col gap-1 mt-3"><span class="leading-relaxed"><strong class="text-gray-800 uppercase text-[9px] font-black tracking-widest block mb-0.5">Observaciones Sector Salud:</strong> ${apto.observaciones_sector_salud}</span></div>` : '';
