@@ -19,7 +19,7 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
 }));
 app.options('*', cors());
-app.use(express.json({ type: ['application/json', 'text/plain'] }));
+app.use(express.json({ limit: '10mb', type: ['application/json', 'text/plain'] }));
 
 // ==========================================
 // 1. CONFIGURACIÓN E INSTANCIAS
@@ -362,10 +362,10 @@ app.get('/health', (req, res) => res.status(200).send('OK'));
 // ==========================================
 // 🌟 4. RUTAS API Y PROXY
 // ==========================================
-app.get('/api/datos', (req, res) => {
+    app.get('/api/datos', (req, res) => {
     if (!cacheDatosGlobales.diagramas) return res.status(503).json({ error: "Cargando DB..." });
     res.json({ success: true, diagramas: cacheDatosGlobales.diagramas, tds: cacheDatosGlobales.tds, timestamp: cacheDatosGlobales.ultimaActualizacion });
-});
+        });
 
 app.post('/api/proxy', async (req, res) => {
     try {
@@ -514,6 +514,75 @@ app.post('/api/proxy', async (req, res) => {
         res.json({ success: true, message: "Operación completada" });
 
     } catch (error) { console.error(error); res.status(500).json({ success: false, error: "Fallo general en Proxy" }); }
+});
+
+// ==========================================
+// 📸 MÓDULO DE FOTOS (SUBIDA A IMGUR Y GOOGLE SHEETS)
+// ==========================================
+app.post('/api/subir-foto', async (req, res) => {
+    try {
+        const { dni, imagenBase64 } = req.body;
+        if (!dni || !imagenBase64) return res.status(400).json({ success: false, error: "Faltan datos (DNI o Imagen)" });
+
+        // 1. SUBIR LA FOTO A LA API DE IMGUR
+        const IMGUR_CLIENT_ID = process.env.IMGUR_CLIENT_ID || 'Tu_Client_ID_Aqui'; // Reemplázalo o ponlo en las variables de entorno de Render
+        
+        // Limpiamos el prefijo 'data:image/jpeg;base64,' que envía el HTML
+        const base64Data = imagenBase64.replace(/^data:image\/\w+;base64,/, "");
+        
+        const imgurResponse = await fetch('https://api.imgur.com/3/image', {
+            method: 'POST',
+            headers: { 'Authorization': `Client-ID ${IMGUR_CLIENT_ID}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image: base64Data, type: 'base64' })
+        });
+        
+        const imgurData = await imgurResponse.json();
+        if (!imgurData.success) throw new Error("La API de Imgur rechazó la imagen.");
+        
+        const linkOficial = imgurData.data.link; // Ej: https://i.imgur.com/xxxxx.jpg
+
+        // 2. GUARDAR EL LINK EN LA PESTAÑA 'fotos' DE GOOGLE SHEETS
+        const urlPestañaFotos = `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_MASTER}/values/'fotos'!A:B`;
+        const resFotos = await serviceAccountAuth.request({ url: urlPestañaFotos });
+        const rowsFotos = resFotos.data.values || [];
+        
+        let rowIndex = -1;
+        let dniPuro = String(dni).replace(/\D/g, '');
+
+        // Buscamos si el chofer ya tenía una foto anterior
+        for (let i = 0; i < rowsFotos.length; i++) {
+            if (String(rowsFotos[i][0]).replace(/\D/g, '') === dniPuro) {
+                rowIndex = i + 1; break;
+            }
+        }
+
+        if (rowIndex !== -1) {
+            // Si existe, ACTUALIZAMOS la columna B
+            await serviceAccountAuth.request({
+                url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_MASTER}/values/'fotos'!B${rowIndex}?valueInputOption=USER_ENTERED`,
+                method: 'PUT',
+                data: { values: [[linkOficial]] }
+            });
+        } else {
+            // Si es nuevo, LO AGREGAMOS al final de la lista
+            await serviceAccountAuth.request({
+                url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_MASTER}/values/'fotos'!A:B:append?valueInputOption=USER_ENTERED`,
+                method: 'POST',
+                data: { values: [[dniPuro, linkOficial]] }
+            });
+        }
+
+        // 3. ACTUALIZAR LA MEMORIA RAM Y AVISAR A LAS PANTALLAS
+        if (!cacheDatosGlobales.diagramas.fotosImgur) cacheDatosGlobales.diagramas.fotosImgur = {};
+        cacheDatosGlobales.diagramas.fotosImgur[dniPuro] = linkOficial;
+        io.emit('datos_actualizados', cacheDatosGlobales);
+
+        res.json({ success: true, link: linkOficial, mensaje: "Foto vinculada exitosamente al legajo." });
+
+    } catch (error) {
+        console.error("❌ Error subiendo foto:", error);
+        res.status(500).json({ success: false, error: "Error en el servidor procesando la imagen." });
+    }
 });
 
 const PORT = process.env.PORT || 3000;
