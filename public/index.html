@@ -501,6 +501,41 @@ window.mapearVencimientos = function(patente, jsonVencimientos) {
         return 'VIGENTE';
     };
 
+    window.evaluarAlertasUnidad = function(unidadData, fBaseObj) {
+        if (!unidadData) return 'OK';
+        
+        // Escaneamos todas las columnas de la unidad
+        let docs = [
+            unidadData.mass_tr || unidadData.col_g,
+            unidadData.mass_semi || unidadData.col_j,
+            unidadData.vtv_tr || unidadData.col_h,
+            unidadData.vtv_semi || unidadData.col_k,
+            unidadData.esp_es || unidadData.col_l,
+            unidadData.vi || unidadData.col_m,
+            unidadData.ve || unidadData.col_n
+        ];
+        
+        let tieneVencido = false;
+        let tienePorVencer = false;
+        
+        docs.forEach(d => {
+            if (!d || d === '-' || String(d).trim() === '') return;
+            let fechaNormalizada = String(d).trim();
+            // Normalizar fechas tipo dd/mm/yyyy a yyyy-mm-dd para el evaluador
+            if (fechaNormalizada.includes('/')) {
+                let partes = fechaNormalizada.split('/');
+                if (partes.length === 3) fechaNormalizada = `${partes[2]}-${partes[1]}-${partes[0]}`;
+            }
+            let est = window.evaluarEstadoDoc(fechaNormalizada, fBaseObj);
+            if (est === 'VENCIDO') tieneVencido = true;
+            if (est === 'POR_VENCER') tienePorVencer = true;
+        });
+        
+        if (tieneVencido) return 'VENCIDO';
+        if (tienePorVencer) return 'POR_VENCER';
+        return 'OK';
+    };
+
     function getValDiaGlobal(diasObj, dateObj) {
         if (!diasObj) return '';
         let strDias = diasObj[getTabNameFromDate(dateObj)];
@@ -1063,7 +1098,7 @@ function renderizarPanelFiltros() {
         contenedor.innerHTML = html;
     }
 
-    function renderizarGrillaDiaria(datos, container) {
+function renderizarGrillaDiaria(datos, container) {
         const fBaseObj = new Date(fechaGlobalContexto + "T12:00:00");
         const targetMes = String(fBaseObj.getMonth() + 1).padStart(2, '0');
         const targetAnio = String(fBaseObj.getFullYear()).slice(-2);
@@ -1161,107 +1196,151 @@ function renderizarPanelFiltros() {
                 totalKm += window.obtenerKmDia(item.nom, formatIsoShort(d));
             }
 
-            let alertasMinimalistas = '';
-            if (item._diaRetornoObj) {
-                let retIso = formatIsoShort(item._diaRetornoObj);
-                if (retIso === fechaGlobalContexto) alertasMinimalistas += `<span class="px-2 py-1 rounded-md text-[10px] font-bold bg-indigo-100 text-indigo-800 border border-indigo-300">🔄 Retorna HOY</span> `;
-                else {
-                    let diffDays = Math.ceil(Math.abs(item._diaRetornoObj - fBaseObj) / (1000 * 60 * 60 * 24)); 
-                    let dd = String(item._diaRetornoObj.getDate()).padStart(2, '0'); let mm = String(item._diaRetornoObj.getMonth() + 1).padStart(2, '0');
-                    alertasMinimalistas += `<span class="px-2 py-1 rounded-md text-[10px] font-bold bg-indigo-100 text-indigo-800 border border-indigo-300">🔄 Vuelve en ${diffDays}d</span> `;
-                }
-            }
-            if(dEst === 'VENCIDO' || hEst === 'VENCIDO' || cEst === 'VENCIDO') alertasMinimalistas += `<span class="px-2 py-1 rounded-md text-[10px] font-bold bg-red-100 text-red-700 border border-red-300">🔴 DOCS</span> `;
-            else if(dEst === 'POR_VENCER' || hEst === 'POR_VENCER' || cEst === 'POR_VENCER') alertasMinimalistas += `<span class="px-2 py-1 rounded-md text-[10px] font-bold bg-yellow-100 text-yellow-800 border border-yellow-300">🟡 DOCS</span> `;
+// ==========================================
+    // 🚨 ANÁLISIS DE ALERTAS DE UNIDAD
+    // ==========================================
+    let unidadData = (window.unidadesGlobales && window.unidadesGlobales[chofer.tractor]) || {};
+    try {
+        let cache = window.vencimientosCacheGlobal;
+        if (cache && typeof cache === 'string') { cache = JSON.parse(cache); }
+        if (cache && Array.isArray(cache) && chofer.tractor) {
+            let datosVencimientos = window.mapearVencimientos(chofer.tractor, cache);
+            if (datosVencimientos) { unidadData = { ...unidadData, ...datosVencimientos }; }
+        }
+    } catch (error) { console.error("Error UI al procesar vencimientos de la unidad:", error); }
 
-            const dot = (c) => `<span class="w-2 h-2 rounded-full shadow-sm shrink-0" style="background-color: ${c}"></span>`;
-            const docCls = "flex items-center gap-2 text-[11px] font-mono font-bold px-2.5 py-1 bg-white rounded-md border border-gray-200 text-gray-700 shadow-sm";
+    let estadoAlertaUnidad = window.evaluarAlertasUnidad(unidadData, fBaseObj);
+
+    let html = `
+    <div class="col-span-12 bg-white p-5 sm:p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col md:flex-row gap-5 w-full items-stretch">
+        <div class="shrink-0 w-full md:w-36 lg:w-48 flex justify-center md:justify-start self-start">
+            ${avatarHtml}
+        </div>
+        <div class="flex flex-col gap-4 w-full flex-1 min-w-0 justify-between">
+            <div class="flex flex-col xl:flex-row gap-4 items-start xl:items-center justify-between w-full border-b border-gray-100 pb-3">
+                <div class="flex flex-col gap-1 min-w-[250px]">
+                    <h2 class="text-xl sm:text-2xl font-black text-gray-900 leading-tight inline-block hover:text-blue-700 cursor-pointer transition-all w-max max-w-full truncate" onclick="copiarAlPortapapeles('${chofer.nom.replace(/'/g, "\\'")}', event)" title="Copiar Nombre">${chofer.nom}</h2>
+                    <div class="flex flex-wrap items-center gap-x-3 gap-y-2 text-[10px] sm:text-xs font-bold text-gray-500 uppercase tracking-wide mt-1.5">
+                        <span class="flex items-center gap-1">Legajo: <span class="text-gray-800 font-black">${legajoChofer}</span></span>
+                        <span class="w-1 h-1 rounded-full bg-gray-300 hidden sm:block"></span>
+                        <span class="flex items-center gap-1">Alta: <span class="text-gray-800">${altaChofer}</span></span>
+                        <span class="w-1 h-1 rounded-full bg-gray-300 hidden sm:block"></span>
+                        <span class="flex items-center gap-1">DNI: <span class="cursor-pointer text-gray-800 hover:text-blue-600 transition-colors" onclick="copiarAlPortapapeles('${dniDelChofer}', event)" title="Copiar DNI">${dniDelChofer}</span></span>
+                        <span class="w-1 h-1 rounded-full bg-gray-300 hidden xl:block"></span>
+                        <span class="lowercase font-mono text-gray-600 hover:text-blue-600 cursor-pointer transition-colors" onclick="copiarAlPortapapeles('${mailChofer}', event)" title="Copiar Email">${mailChofer}</span>
+                        <span class="w-1 h-1 rounded-full bg-gray-300 hidden sm:block"></span>
+                        <span class="flex items-center text-gray-800 font-black">
+                            Tel: <span class="cursor-pointer text-gray-900 hover:text-blue-600 transition-colors ml-1" onclick="copiarAlPortapapeles('${displayTel}', event)" title="Copiar Teléfono">${displayTel}</span> ${linkWspIndividual}
+                        </span>
+                    </div>
+                </div>
+                <div class="flex flex-wrap items-stretch gap-3 w-full xl:w-auto justify-start xl:justify-end">
+                    <div class="flex items-center gap-3 bg-gray-50 p-2.5 rounded-xl border border-gray-100 shrink-0 justify-center min-w-[150px]">
+                        <div class="text-center shrink-0 px-2"><span class="block text-2xl font-black text-gray-800 leading-none">${estadoDiaRaw || '-'}</span><span class="text-[9px] uppercase font-bold text-gray-400 tracking-wider">Día ${fBaseObj.getDate()}</span></div>
+                        ${badgeFatiga ? `<div class="w-px h-8 bg-gray-200 hidden sm:block"></div><div class="flex flex-col gap-1.5 flex-1 min-w-[120px] pr-1"><div class="flex gap-1.5 justify-center">${badgeFatiga}</div></div>` : ''}
+                    </div>
+                    <div class="bg-[#fff9e6] p-2.5 rounded-xl border border-[#ffe599] flex flex-col justify-center items-center shadow-sm shrink-0 min-w-[100px]">
+                        <span class="text-[10px] font-black text-yellow-700 uppercase tracking-widest mb-0.5 text-center">Vacaciones</span>
+                        <div class="flex items-baseline gap-1">
+                            <span class="font-black text-yellow-900 text-2xl leading-none">${vacacionesAPI}</span>
+                            <span class="text-[10px] font-bold text-yellow-700">días</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
             
-            let badgeExam = `<div class="${docCls}">${dot(dEst === 'VENCIDO' ? '#ef4444' : dEst === 'POR_VENCER' ? '#eab308' : '#22c55e')} ${formatVen(doc.ven)}</div>`;
-            let badgeLic = `<div class="${docCls}">${dot(hEst === 'VENCIDO' ? '#ef4444' : hEst === 'POR_VENCER' ? '#eab308' : '#22c55e')} ${formatVen(hab.ven)}</div>`;
-            let badgeCert = `<div class="${docCls}">${dot(cEst === 'VENCIDO' ? '#ef4444' : cEst === 'POR_VENCER' ? '#eab308' : '#22c55e')} ${formatVen(cert.ven)}</div>`;
+            <div class="flex flex-col xl:flex-row items-center gap-2 bg-white p-2 rounded-xl border border-gray-100 shadow-sm overflow-x-auto custom-scrollbar w-full">
+                <div class="text-[11px] font-black uppercase text-indigo-900 tracking-widest px-3 border-r border-gray-100 shrink-0 text-center xl:text-left flex items-center gap-1.5">
+                    📅 ${nombresMeses[fBaseObj.getMonth()].toUpperCase()} 25
+                </div>
+                <div class="flex gap-2 w-max sm:w-full">
+                    <div class="flex justify-between items-center gap-2 bg-blue-50 border border-blue-200 px-2 py-1.5 rounded-md shadow-sm shrink-0 whitespace-nowrap flex-1">
+                        <span class="text-[9px] font-bold text-blue-800 uppercase">Activos</span>
+                        <span class="font-black text-blue-900 text-xs">${histTrabajados}</span>
+                    </div>
+                    <div class="flex justify-between items-center gap-2 bg-indigo-50 border border-indigo-200 px-2 py-1.5 rounded-md shadow-sm shrink-0 whitespace-nowrap flex-1">
+                        <span class="text-[9px] font-bold text-indigo-800 uppercase">Km</span>
+                        <span class="font-black text-indigo-900 text-xs">${totalKm.toLocaleString('es-AR')}</span>
+                    </div>
+                    <div class="flex justify-between items-center gap-2 bg-purple-50 border border-purple-200 px-2 py-1.5 rounded-md shadow-sm shrink-0 whitespace-nowrap flex-1">
+                        <span class="text-[9px] font-bold text-purple-800 uppercase">Campos</span>
+                        <span class="font-black text-purple-900 text-xs">${totalCampo.toLocaleString('es-AR')}</span>
+                    </div>
+                    <div class="flex justify-between items-center gap-2 bg-emerald-50 border border-emerald-200 px-2 py-1.5 rounded-md shadow-sm shrink-0 whitespace-nowrap flex-1">
+                        <span class="text-[9px] font-bold text-emerald-800 uppercase">Liviano</span>
+                        <span class="font-black text-emerald-900 text-xs">${totalLiviano.toLocaleString('es-AR')}</span>
+                    </div>
+                    <div class="flex justify-between items-center gap-2 bg-teal-50 border border-teal-200 px-2 py-1.5 rounded-md shadow-sm shrink-0 whitespace-nowrap flex-1">
+                        <span class="text-[9px] font-bold text-teal-800 uppercase">Euro</span>
+                        <span class="font-black text-teal-900 text-xs">${totalEuro.toLocaleString('es-AR')}</span>
+                    </div>
+                    <div class="flex justify-between items-center gap-2 bg-cyan-50 border border-cyan-200 px-2 py-1.5 rounded-md shadow-sm shrink-0 whitespace-nowrap flex-1">
+                        <span class="text-[9px] font-bold text-cyan-800 uppercase">Infinia D</span>
+                        <span class="font-black text-cyan-900 text-xs">${totalInfiniaD.toLocaleString('es-AR')}</span>
+                    </div>
+                </div>
+            </div>
 
-            const theme = getSrvTheme(item.srv);
+            <div class="flex-1 flex flex-col w-full min-w-0">
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 bg-slate-50 p-4 rounded-t-xl border border-slate-100 w-full relative z-10 shadow-sm">
+                    <div class="flex flex-col"><span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">N° UTE Interno</span><div><span onclick="copiarAlPortapapeles('${chofer.n_ute}', event)" class="font-black text-gray-800 text-base bg-white px-2 py-0.5 rounded border border-dashed border-gray-300 inline-block cursor-pointer hover:text-blue-600 shadow-sm transition-colors">${chofer.n_ute || '-'}</span></div></div>
+                    <div class="flex flex-col"><span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Tractor</span><div><span onclick="copiarAlPortapapeles('${chofer.tractor}', event)" class="font-mono font-bold text-blue-900 text-base bg-white px-2 py-0.5 rounded border border-blue-200 inline-block cursor-pointer hover:bg-blue-50 shadow-sm transition-colors">${chofer.tractor || '-'}</span></div></div>
+                    <div class="flex flex-col"><span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Semi</span><div><span onclick="copiarAlPortapapeles('${chofer.semi}', event)" class="font-mono font-bold text-blue-900 text-base bg-white px-2 py-0.5 rounded border border-blue-200 inline-block cursor-pointer hover:bg-blue-50 shadow-sm transition-colors">${chofer.semi || '-'}</span></div></div>
+                    <div class="flex flex-col"><span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Servicio</span><div><span class="inline-block ${theme.softBg} ${theme.softText} border ${theme.border} px-2 py-0.5 rounded font-black text-sm shadow-sm tracking-wide">${chofer.srv || '-'}</span></div></div>
+                </div>
 
-html += `
-            <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow">
-                <div class="p-3 sm:p-4 cursor-pointer select-none" onclick="toggleDetalle('${item._safeId}')">
-                    <div class="flex flex-col lg:grid lg:grid-cols-12 gap-3 items-start lg:items-center w-full">
-                        <div class="lg:col-span-4 w-full min-w-0">
-                            <h3 class="font-bold text-gray-900 text-sm md:text-base leading-tight mb-1 truncate hover:text-blue-600 cursor-pointer inline-block" onclick="copiarAlPortapapeles('${item.nom.replace(/'/g, "\\'")}', event)" title="Copiar Nombre">${item.nom}</h3>
-                            <div class="flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-wider">
-                                <span class="${theme.softBg} ${theme.softText} border ${theme.border} px-1.5 py-0.5 rounded">${item.srv || '-'}</span>
-                                <span class="px-1.5 py-0.5 rounded border border-dashed border-gray-300 bg-gray-50 text-gray-500 hover:text-blue-600 transition-colors cursor-pointer" onclick="copiarAlPortapapeles('${item.n_ute}', event)" title="Copiar UTE">UTE: ${item.n_ute || '-'}</span>
-                                ${linkWspDiaria}
-                            </div>
+                ${estadoAlertaUnidad === 'VENCIDO' ? `
+                <div class="bg-red-50 border-x border-b border-red-200 rounded-b-xl hover:bg-red-100 transition-colors cursor-pointer flex justify-center items-center py-2 group shadow-sm z-0 relative -mt-1 animate-pulse" onclick="toggleVencimientosUnidad('${chofer._safeId}')">
+                    <span class="text-[9px] font-black text-red-600 uppercase tracking-widest flex items-center gap-1.5">
+                        🔴 Alerta Unidad: Documentación Vencida 
+                        <svg id="icon-venc-unidad-${chofer._safeId}" class="w-3.5 h-3.5 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path></svg>
+                    </span>
+                </div>
+                ` : estadoAlertaUnidad === 'POR_VENCER' ? `
+                <div class="bg-yellow-50 border-x border-b border-yellow-200 rounded-b-xl hover:bg-yellow-100 transition-colors cursor-pointer flex justify-center items-center py-2 group shadow-sm z-0 relative -mt-1" onclick="toggleVencimientosUnidad('${chofer._safeId}')">
+                    <span class="text-[9px] font-black text-yellow-700 uppercase tracking-widest flex items-center gap-1.5">
+                        🟡 Alerta Unidad: Vencimiento Próximo 
+                        <svg id="icon-venc-unidad-${chofer._safeId}" class="w-3.5 h-3.5 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path></svg>
+                    </span>
+                </div>
+                ` : `
+                <div class="bg-slate-100 border-x border-b border-slate-200 rounded-b-xl hover:bg-slate-200/80 transition-colors cursor-pointer flex justify-center items-center py-2 group shadow-sm z-0 relative -mt-1" onclick="toggleVencimientosUnidad('${chofer._safeId}')">
+                    <span class="text-[9px] font-black text-slate-500 uppercase tracking-widest group-hover:text-primary transition-colors flex items-center gap-1.5">
+                        Documentación Unidad (VTV / MASS) 
+                        <svg id="icon-venc-unidad-${chofer._safeId}" class="w-3.5 h-3.5 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path></svg>
+                    </span>
+                </div>
+                `}
+
+                <div id="venc-unidad-${chofer._safeId}" class="hidden bg-white border border-slate-200 rounded-xl mt-3 p-4 shadow-sm">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div class="flex flex-col gap-2 bg-gray-50 p-3 rounded-xl border border-gray-100 shadow-inner">
+                            <span class="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-1 border-b border-gray-200 pb-1.5 text-center flex justify-center items-center gap-1"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg> MASS</span>
+                            ${renderBadgeUnidad(unidadData.mass_tr || unidadData.col_g, 'MASS', 'TR', fBaseObj)}
+                            ${renderBadgeUnidad(unidadData.mass_semi || unidadData.col_j, 'MASS', 'SE', fBaseObj)}
                         </div>
-                        <div class="lg:col-span-3 flex items-center gap-2 w-full justify-start lg:border-none border-t border-gray-100 pt-2 lg:pt-0">
-                            <div onclick="copiarAlPortapapeles('${item.tractor}', event)" title="Copiar Tractor" class="bg-gray-50 rounded-lg p-1.5 border border-gray-200 flex items-center gap-1.5 cursor-pointer hover:bg-blue-50 transition-colors group"><span class="text-[9px] font-bold text-gray-400 uppercase">Trac</span><span class="font-mono text-xs font-bold text-blue-900 w-16 truncate text-center">${item.tractor || '-'}</span></div>
-                            <div onclick="copiarAlPortapapeles('${item.semi}', event)" title="Copiar Semi" class="bg-gray-50 rounded-lg p-1.5 border border-gray-200 flex items-center gap-1.5 cursor-pointer hover:bg-blue-50 transition-colors group"><span class="text-[9px] font-bold text-gray-400 uppercase">Semi</span><span class="font-mono text-xs font-bold text-blue-900 w-16 truncate text-center">${item.semi || '-'}</span></div>
+                        <div class="flex flex-col gap-2 bg-gray-50 p-3 rounded-xl border border-gray-100 shadow-inner">
+                            <span class="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-1 border-b border-gray-200 pb-1.5 text-center flex justify-center items-center gap-1"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg> VTV / RTO</span>
+                            ${renderBadgeUnidad(unidadData.vtv_tr || unidadData.col_h, 'VTV', 'TR', fBaseObj)}
+                            ${renderBadgeUnidad(unidadData.vtv_semi || unidadData.col_k, 'VTV', 'SE', fBaseObj)}
                         </div>
-                        
-                        <div class="lg:col-span-5 flex items-center justify-between w-full lg:contents">
-                            <div class="lg:col-span-3 flex gap-1.5 flex-wrap justify-start items-center w-full">
-                                ${alertasMinimalistas || '<span class="text-[10px] font-bold text-gray-300 flex items-center gap-1">OK</span>'}
-                            </div>
-                            
-                            <div class="lg:col-span-2 flex items-center justify-end gap-3 shrink-0">
-                                ${item.td && String(item.td).trim() !== "" && String(item.td).trim() !== "-" ? `
-                                <div onclick="copiarAlPortapapeles('${item.td}', event)" title="Copiar TD" 
-                                     class="cursor-pointer transition-all hover:scale-105 border border-gray-400/50 rounded-md px-1.5 py-1 text-[10px] font-black tracking-widest flex items-center shadow-sm mr-1 gap-1.5"
-                                     style="background-image: linear-gradient(135deg, ${String(item.hex_1 || item.hex1 || '').trim() || '#ffffff'} 50%, ${String(item.hex_2 || item.hex2 || '').trim() || '#e5e7eb'} 50%) !important;">
-                                     <span class="text-gray-000 font-bold uppercase text-[8px] [text-shadow:_0_0_3px_#fff,_0_0_3px_#fff]">TD</span>
-                                     <span class="text-gray-000 font-mono [text-shadow:_0_0_3px_#fff,_0_0_3px_#fff]">${item.td}</span>
-                                </div>
-                                ` : ''}
-                                <div class="${bgEstado} px-4 py-1.5 rounded-lg text-sm font-black text-center min-w-[3.5rem] flex flex-col items-center justify-center leading-none shadow-sm">
-                                    ${contenidoBadge}
-                                </div>
-                                <div class="text-gray-300 hover:text-indigo-500 transition-colors ml-1">
-                                    <svg class="w-5 h-5 transition-transform duration-300" id="icon-chevron-${item._safeId}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-                                </div>
-                            </div>
+                        <div class="flex flex-col gap-2 bg-gray-50 p-3 rounded-xl border border-gray-100 shadow-inner">
+                            <span class="text-[9px] font-black text-purple-400 uppercase tracking-widest mb-1 border-b border-gray-200 pb-1.5 text-center flex justify-center items-center gap-1"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg> CERTIFICADOS EXTRA</span>
+                            ${renderBadgeUnidad(unidadData.esp_es || unidadData.col_l, 'ESP-ES', 'TR', fBaseObj)}
+                            ${renderBadgeUnidad(unidadData.vi || unidadData.col_m, 'VI', 'TR', fBaseObj)}
+                            ${renderBadgeUnidad(unidadData.ve || unidadData.col_n, 'VE', 'TR', fBaseObj)}
                         </div>
                     </div>
                 </div>
-
-                <div id="detalle-${item._safeId}" class="hidden border-t border-gray-100 bg-gray-50/50 p-2.5 sm:p-3"> 
-                    
-                    <div class="flex flex-col md:flex-row gap-2.5 items-stretch w-full"> 
-                        
-                        <div class="flex-1 grid grid-cols-2 gap-2">
-                            <div class="bg-white border border-indigo-100 shadow-sm rounded-lg p-2 flex flex-col justify-center items-center">
-                                <span class="text-[8px] font-black text-indigo-400 uppercase tracking-widest mb-0.5 text-center leading-tight">Días Activos<br>(26 al 25)</span>
-                                <span class="text-lg font-black text-indigo-900 leading-none mt-1">${histTrabajados}</span>
-                            </div>
-                            <div class="bg-white border border-blue-100 shadow-sm rounded-lg p-2 flex flex-col justify-center items-center">
-                                <span class="text-[8px] font-black text-blue-400 uppercase tracking-widest mb-0.5 text-center leading-tight">KMs<br>(26 al 25)</span>
-                                <span class="text-lg font-black text-blue-900 leading-none mt-1">${totalKm.toLocaleString('es-AR')}</span>
-                            </div>
-                        </div>
-
-                        <div class="flex-[1.5] bg-gray-100/50 border border-gray-200 rounded-lg p-2 flex flex-col justify-center">
-
-                            <div class="grid grid-cols-3 gap-1.5">
-                                <div class="flex flex-col gap-0.5"><span class="text-[8px] uppercase font-bold text-gray-500 px-1 truncate">Periódico</span>${badgeExam}</div>
-                                <div class="flex flex-col gap-0.5"><span class="text-[8px] uppercase font-bold text-gray-500 px-1 truncate">Licencia</span>${badgeLic}</div>
-                                <div class="flex flex-col gap-0.5"><span class="text-[8px] uppercase font-bold text-gray-500 px-1 truncate">Cert. M.P</span>${badgeCert}</div>
-                            </div>
-                        </div>
-
-                        <div class="flex flex-col justify-center md:border-l border-gray-200 md:pl-3 shrink-0 mt-2 md:mt-0">
-                            <button onclick="irAVistaIndividual('${item._safeId}'); event.stopPropagation();" class="w-full md:w-auto px-4 py-2 bg-white text-indigo-600 border border-indigo-200 text-[9px] font-black uppercase tracking-wider rounded-lg hover:bg-indigo-50 hover:border-indigo-300 transition-colors shadow-sm flex flex-row items-center justify-center gap-1.5">
-                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
-                                Ficha
-                            </button>
-                        </div>
-                        
-                    </div>
-                </div>
-            </div>`;
-                    });
+            </div>
+        </div>
+    </div>
+    `;
+        });
         html += `</div>`;
-        window.actualizarSinBlink('contenedor-lista-principal', html);    }
+        window.actualizarSinBlink('contenedor-lista-principal', html);    
+    }
+
 
     window.toggleDetalle = function(id) {
         const d = document.getElementById(`detalle-${id}`); const i = document.getElementById(`icon-chevron-${id}`);
