@@ -237,66 +237,34 @@ window.procesarLogin = function() {
     btn.disabled = true;
     errorBox.classList.add('hidden');
 
-    // PATRÓN HÍBRIDO: Determinar entorno de ejecución
-    if (typeof google !== 'undefined' && google.script && google.script.run) {
-        
-        // --- 1. ENTORNO NATIVO (App Script /exec) ---
-        google.script.run
-            .withSuccessHandler(function(res) {
-                if (res.success) {
-                    sessionStorage.setItem('eor_session_token', res.token);
-                    sessionStorage.setItem('eor_session_role', res.rol);
-                    localStorage.setItem('usuarioActivo', user); 
-                    desbloquearSistema();
-                } else {
-                    errorBox.innerText = res.error || "Credenciales incorrectas.";
-                    errorBox.classList.remove('hidden');
-                }
-                btn.innerHTML = "Ingresar al Sistema";
-                btn.disabled = false;
-            })
-            .withFailureHandler(function(err) {
-                errorBox.innerText = "Error de red. Intente nuevamente.";
-                errorBox.classList.remove('hidden');
-                btn.innerHTML = "Ingresar al Sistema";
-                btn.disabled = false;
-            })
-            .validarLogin(user, pass);
-            
-    } else {
-        
-        // --- 2. ENTORNO EXTERNO (Render, Vercel, Localhost) ---
-        fetch(API_URL, {
-            method: 'POST',
-            headers: {
-                "Content-Type": "text/plain;charset=utf-8" 
-            },
-            body: JSON.stringify({ action: 'login', usuario: user, password: pass })
-        })
-        .then(res => res.json())
-        .then(res => {
-            if (res.success) {
-                sessionStorage.setItem('eor_session_token', res.token);
-                sessionStorage.setItem('eor_session_role', res.rol);
-                localStorage.setItem('usuarioActivo', user); 
-                desbloquearSistema();
-            } else {
-                errorBox.innerText = res.error || "Acceso denegado.";
-                errorBox.classList.remove('hidden');
-            }
-        })
-        .catch(err => {
-            errorBox.innerText = "Error de red. Intente nuevamente.";
+    // Conexión Directa a Node.js
+    fetch(API_URL, {
+        method: 'POST',
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: 'login', usuario: user, password: pass })
+    })
+    .then(res => res.json())
+    .then(res => {
+        if (res.success) {
+            sessionStorage.setItem('eor_session_token', res.token);
+            sessionStorage.setItem('eor_session_role', res.rol);
+            localStorage.setItem('usuarioActivo', user); 
+            desbloquearSistema();
+        } else {
+            errorBox.innerText = res.error || "Acceso denegado.";
             errorBox.classList.remove('hidden');
-            console.error("Error en Fetch Login:", err);
-        })
-        .finally(() => {
-            btn.innerHTML = "Ingresar al Sistema";
-            btn.disabled = false;
-        });
-    }
+        }
+    })
+    .catch(err => {
+        errorBox.innerText = "Error de red. Intente nuevamente.";
+        errorBox.classList.remove('hidden');
+        console.error("Error en Fetch Login:", err);
+    })
+    .finally(() => {
+        btn.innerHTML = "Ingresar al Sistema";
+        btn.disabled = false;
+    });
 }
-
 window.sincronizarBackend = function() {
     const btn = document.getElementById('btn-sync-global');
     const icon = document.getElementById('icon-sync-global');
