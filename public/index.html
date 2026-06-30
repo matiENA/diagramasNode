@@ -171,7 +171,8 @@
         <button id="btn-vista-semanal" onclick="cambiarVistaPrincipal('semanal')" class="px-3 sm:px-5 py-1.5 sm:py-2 text-[11px] sm:text-sm font-bold rounded-md text-gray-500 hover:text-gray-700 transition-all whitespace-nowrap">Diagrama</button>
         <button id="btn-vista-individual" onclick="cambiarVistaPrincipal('individual')" class="px-3 sm:px-5 py-1.5 sm:py-2 text-[11px] sm:text-sm font-bold rounded-md text-gray-500 hover:text-gray-700 transition-all whitespace-nowrap">Individual</button>
         <button id="btn-vista-metricas" onclick="cambiarVistaPrincipal('metricas')" class="px-3 sm:px-5 py-1.5 sm:py-2 text-[11px] sm:text-sm font-bold rounded-md text-gray-500 hover:text-gray-700 transition-all whitespace-nowrap">Métricas</button>
-      </div>
+        <button id="btn-vista-unidades" onclick="cambiarVistaPrincipal('unidades')" class="px-3 sm:px-5 py-1.5 sm:py-2 text-[11px] sm:text-sm font-bold rounded-md text-gray-500 hover:text-gray-700 transition-all whitespace-nowrap">Flota</button>
+    </div>
       
       <div class="hidden xl:block w-[350px]"></div>
 
@@ -475,7 +476,7 @@ document.addEventListener('click', (e) => {
         return window.normalizarNombreTD(nom);
     }
     
-    function cambiarVistaPrincipal(vista) {
+function cambiarVistaPrincipal(vista) {
         vistaActual = vista;
         const btnClasses = {
             active: "px-3 sm:px-5 py-1.5 sm:py-2 text-[11px] sm:text-sm font-bold rounded-md bg-white shadow text-primary transition-all whitespace-nowrap",
@@ -486,12 +487,15 @@ document.addEventListener('click', (e) => {
         document.getElementById('btn-vista-semanal').className = vista === 'semanal' ? btnClasses.active : btnClasses.inactive;
         document.getElementById('btn-vista-individual').className = vista === 'individual' ? btnClasses.active : btnClasses.inactive;
         document.getElementById('btn-vista-metricas').className = vista === 'metricas' ? btnClasses.active : btnClasses.inactive;
+        if (document.getElementById('btn-vista-unidades')) {
+            document.getElementById('btn-vista-unidades').className = vista === 'unidades' ? btnClasses.active : btnClasses.inactive;
+        }
         
-        document.getElementById('container-busqueda').style.display = (vista === 'individual' || vista === 'metricas') ? 'none' : 'block';
+        document.getElementById('container-busqueda').style.display = (vista === 'individual' || vista === 'metricas' || vista === 'unidades') ? 'none' : 'block';
         filtrarTabla();
     }
-
-window.mapearVencimientos = function(patente, jsonVencimientos) {
+    
+    window.mapearVencimientos = function(patente, jsonVencimientos) {
     if (!patente || !jsonVencimientos || !Array.isArray(jsonVencimientos)) return null;
     
     const patenteLimpia = String(patente).replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
@@ -1013,16 +1017,14 @@ function filtrarTabla() {
             return true;
         });
 
-    const dashboard = document.getElementById('dashboard');
+const dashboard = document.getElementById('dashboard');
         if (vistaActual === 'individual') {
             if (!document.getElementById('contenedor-individual')) {
                 dashboard.innerHTML = '<div id="contenedor-individual" class="w-full"></div>';
-                // 👉 SOLUCIÓN: Pasamos 'filtrados' en lugar de 'datosGlobales'
                 renderizarVistaIndividual(filtrados, document.getElementById('contenedor-individual'));
             } else {
                 renderizarOpcionesIndividual(filtrados);
             }
-            
             if(conductorSeleccionadoId) mostrarDetalleConductor(conductorSeleccionadoId, true);
             
         } else if (vistaActual === 'metricas') {
@@ -1031,7 +1033,15 @@ function filtrarTabla() {
             }
             renderizarVistaMetricas(document.getElementById('contenedor-metricas'));
             
-        } else {            if (!document.getElementById('contenedor-lista-principal')) {
+        // 👉 NUEVO ENRUTADOR PARA LA PESTAÑA UNIDADES
+        } else if (vistaActual === 'unidades') {
+            if (!document.getElementById('contenedor-unidades')) {
+                dashboard.innerHTML = '<div id="contenedor-unidades" class="w-full"></div>';
+            }
+            window.renderizarVistaUnidades(document.getElementById('contenedor-unidades'));
+
+        } else {            
+            if (!document.getElementById('contenedor-lista-principal')) {
                 dashboard.innerHTML = `
                     <div class="grid grid-cols-12 gap-6 items-start w-full">
                         <div id="contenedor-lista-principal" class="col-span-12 lg:col-span-9 w-full min-w-0"></div>
@@ -1045,6 +1055,7 @@ function filtrarTabla() {
             renderizarPanelFiltros();
         }
     }
+
     window.toggleFiltroRetornan = function() {
         filtrosActivos.retornan = !filtrosActivos.retornan;
         if (!filtrosActivos.retornan) filtrosActivos.fechaRetorno = ''; 
@@ -3314,6 +3325,132 @@ window.actualizarSinBlink = function(elementoId, nuevoHTML) {
             else { sun.classList.add('hidden'); moon.classList.remove('hidden'); }
         }
     };
+
+   // ==========================================
+    // 🚚 VISTA EXCLUSIVA: CONTROL DE UNIDADES
+    // ==========================================
+    window.renderizarVistaUnidades = function(container) {
+        let cache = window.vencimientosCacheGlobal;
+        if (typeof cache === 'string') { try { cache = JSON.parse(cache); } catch(e) { cache = []; } }
+        if (!Array.isArray(cache)) cache = [];
+
+        let fBaseObj = new Date(fechaGlobalContexto + "T12:00:00");
+        
+        let html = `
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden animate-[fadeIn_0.3s_ease-out] mb-8">
+            <div class="bg-gradient-to-r from-gray-800 to-gray-600 p-5 flex justify-between items-center text-white">
+                <div>
+                    <h2 class="text-xl font-bold">Control de Flota</h2>
+                    <p class="text-xs text-gray-200 mt-1">Lista exclusiva para el seguimiento de vencimientos de las Unidades</p>
+                </div>
+                <span class="px-3 py-1 bg-white/20 rounded-lg text-sm font-black border border-white/30 backdrop-blur-sm">${cache.length} Unidades</span>
+            </div>
+            
+            <div class="p-4 sm:p-6 bg-gray-50/50">
+                <div class="grid grid-cols-1 gap-3 w-full">
+        `;
+
+        if (cache.length === 0) {
+            html += `<div class="text-center p-10 bg-white rounded-xl shadow-sm border border-gray-200 font-bold text-gray-500">No hay unidades registradas en la base de datos.</div>`;
+        }
+
+        // Ordenar alfabéticamente por Patente/Dominio
+        let listaUnidades = [...cache].sort((a, b) => String(a.col_b || '').localeCompare(String(b.col_b || '')));
+
+        listaUnidades.forEach((u, index) => {
+            let patente = String(u.col_b || '').trim().toUpperCase();
+            if(!patente) return;
+            
+            let safeId = "unit_" + patente.replace(/[^a-zA-Z0-9]/g, "_") + "_" + index;
+
+            let unidadData = {
+                mass_tr: u.col_g, vtv_tr: u.col_h,
+                mass_semi: u.col_j, vtv_semi: u.col_k,
+                esp_es: u.col_l, vi: u.col_m, ve: u.col_n
+            };
+
+            // Detección automática: Si tiene info en J o K (y no en TR), es un Semi
+            let esSemi = (!u.col_g && !u.col_h && (u.col_j || u.col_k)); 
+            
+            let estadoGlobal = window.evaluarAlertasUnidad(unidadData, fBaseObj);
+            
+            let bgBarra = 'bg-white';
+            let textBarra = 'text-gray-700';
+            let alertIcon = '';
+            
+            if (estadoGlobal === 'VENCIDO') {
+                bgBarra = 'bg-red-50 hover:bg-red-100 border-red-200';
+                textBarra = 'text-red-700';
+                alertIcon = '🔴';
+            } else if (estadoGlobal === 'POR_VENCER') {
+                bgBarra = 'bg-yellow-50 hover:bg-yellow-100 border-yellow-200';
+                textBarra = 'text-yellow-800';
+                alertIcon = '🟡';
+            } else {
+                bgBarra = 'bg-white hover:bg-gray-50 border-gray-200';
+                textBarra = 'text-gray-700';
+                alertIcon = '✅';
+            }
+
+            html += `
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <button onclick="toggleUnidadDetalle('${safeId}')" class="w-full p-4 flex justify-between items-center ${bgBarra} transition-colors focus:outline-none cursor-pointer border-b">
+                    <div class="flex items-center gap-4">
+                        <div class="w-10 h-10 rounded-lg ${esSemi ? 'bg-indigo-100 text-indigo-600' : 'bg-blue-100 text-blue-600'} flex items-center justify-center text-lg shadow-inner">
+                            ${esSemi ? '🔗' : '🚚'}
+                        </div>
+                        <div class="flex flex-col text-left">
+                            <span class="font-black ${textBarra} text-lg tracking-wide">${patente}</span>
+                            <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">${esSemi ? 'Semirremolque' : 'Tractor'}</span>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <span class="hidden sm:block text-[10px] font-black uppercase tracking-widest ${textBarra}">${alertIcon} ${estadoGlobal.replace('_', ' ')}</span>
+                        <svg id="icon-unit-${safeId}" class="w-5 h-5 ${textBarra} transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </div>
+                </button>
+                
+                <div id="panel-unit-${safeId}" class="hidden bg-slate-50 p-4 border-t border-gray-100">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div class="flex flex-col gap-2 bg-white p-3 rounded-xl border border-gray-200 shadow-sm">
+                            <span class="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-1 border-b border-gray-100 pb-1.5 text-center flex justify-center items-center gap-1"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg> MASS</span>
+                            ${window.renderBadgeUnidad(unidadData.mass_tr, 'MASS', 'TR', fBaseObj)}
+                            ${window.renderBadgeUnidad(unidadData.mass_semi, 'MASS', 'SE', fBaseObj)}
+                        </div>
+                        <div class="flex flex-col gap-2 bg-white p-3 rounded-xl border border-gray-200 shadow-sm">
+                            <span class="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-1 border-b border-gray-100 pb-1.5 text-center flex justify-center items-center gap-1"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg> VTV / RTO</span>
+                            ${window.renderBadgeUnidad(unidadData.vtv_tr, 'VTV', 'TR', fBaseObj)}
+                            ${window.renderBadgeUnidad(unidadData.vtv_semi, 'VTV', 'SE', fBaseObj)}
+                        </div>
+                        <div class="flex flex-col gap-2 bg-white p-3 rounded-xl border border-gray-200 shadow-sm">
+                            <span class="text-[9px] font-black text-purple-400 uppercase tracking-widest mb-1 border-b border-gray-100 pb-1.5 text-center flex justify-center items-center gap-1"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg> CERTIFICADOS EXTRA</span>
+                            ${window.renderBadgeUnidad(unidadData.esp_es, 'ESP-ES', 'TR', fBaseObj)}
+                            ${window.renderBadgeUnidad(unidadData.vi, 'VI', 'TR', fBaseObj)}
+                            ${window.renderBadgeUnidad(unidadData.ve, 'VE', 'TR', fBaseObj)}
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+        });
+
+        html += `</div></div></div>`;
+        container.innerHTML = html;
+    };
+
+    window.toggleUnidadDetalle = function(id) {
+        const panel = document.getElementById(`panel-unit-${id}`);
+        const icon = document.getElementById(`icon-unit-${id}`);
+        if (panel.classList.contains('hidden')) {
+            panel.classList.remove('hidden');
+            panel.classList.add('expand-anim');
+            icon.style.transform = 'rotate(180deg)';
+        } else {
+            panel.classList.add('hidden');
+            panel.classList.remove('expand-anim');
+            icon.style.transform = 'rotate(0deg)';
+        }
+    };
+     
   </script>
 
 <script src="https://unpkg.com/morphdom@2.7.1/dist/morphdom-umd.min.js"></script>
