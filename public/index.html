@@ -144,6 +144,25 @@
           <span class="hidden sm:block uppercase tracking-wider">Cerrar Sesión</span>
         </button>
     </div>
+
+    <div class="relative group">
+        <button class="flex items-center justify-center w-10 h-10 bg-white border border-gray-200 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all shadow-sm focus:outline-none">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+        </button>
+        
+        <div class="absolute right-0 mt-2 w-48 bg-white border border-gray-100 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 transform origin-top-right group-hover:scale-100 scale-95">
+            <div class="p-2 flex flex-col gap-1">
+                <span class="px-3 py-1.5 text-[9px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-100 mb-1">Módulos Especiales</span>
+                
+                <button onclick="cambiarVistaPrincipal('inducciones')" class="w-full text-left px-3 py-2 rounded-lg text-sm font-bold text-gray-700 hover:bg-teal-50 hover:text-teal-700 transition-colors flex items-center gap-2">
+                    <svg class="w-4 h-4 text-teal-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>
+                    Inducciones
+                </button>
+                
+                </div>
+        </div>
+    </div>
+
   </header>
 
   <nav class="max-w-7xl mx-auto w-full px-4 sm:px-6 mb-4 mt-2">
@@ -1033,12 +1052,21 @@ const dashboard = document.getElementById('dashboard');
             }
             renderizarVistaMetricas(document.getElementById('contenedor-metricas'));
             
-        // 👉 NUEVO ENRUTADOR PARA LA PESTAÑA UNIDADES
+        // 👉 ENRUTADOR PARA LA PESTAÑA UNIDADES
         } else if (vistaActual === 'unidades') {
             if (!document.getElementById('contenedor-unidades')) {
                 dashboard.innerHTML = '<div id="contenedor-unidades" class="w-full"></div>';
             }
             window.renderizarVistaUnidades(document.getElementById('contenedor-unidades'));
+
+        // 👉 NUEVO ENRUTADOR PARA LA PESTAÑA INDUCCIONES
+        } else if (vistaActual === 'inducciones') {
+            if (!document.getElementById('contenedor-inducciones')) {
+                dashboard.innerHTML = '<div id="contenedor-inducciones" class="w-full"></div>';
+            }
+            if(window.renderizarVistaInducciones) {
+                window.renderizarVistaInducciones(document.getElementById('contenedor-inducciones'));
+            }
 
         } else {            
             if (!document.getElementById('contenedor-lista-principal')) {
@@ -1054,8 +1082,7 @@ const dashboard = document.getElementById('dashboard');
             else if (vistaActual === 'semanal') renderizarGrillaSemanal(filtrados, contLista);
             renderizarPanelFiltros();
         }
-    }
-
+        
     window.toggleFiltroRetornan = function() {
         filtrosActivos.retornan = !filtrosActivos.retornan;
         if (!filtrosActivos.retornan) filtrosActivos.fechaRetorno = ''; 
@@ -3606,5 +3633,6 @@ window.procesarNuevaFoto = function(inputElement, dniChofer, safeId) {
         }
     });
   </script>
+  <script src="modulo_inducciones.js"></script>
 </body>
 </html>
