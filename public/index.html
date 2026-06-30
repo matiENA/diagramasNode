@@ -501,10 +501,10 @@ window.mapearVencimientos = function(patente, jsonVencimientos) {
         return 'VIGENTE';
     };
 
-    window.evaluarAlertasUnidad = function(unidadData, fBaseObj) {
+window.evaluarAlertasUnidad = function(unidadData, fBaseObj) {
         if (!unidadData) return 'OK';
         
-        // Escaneamos todas las columnas de la unidad
+        // Escaneamos todas las columnas de la unidad (TR y SEMI)
         let docs = [
             unidadData.mass_tr || unidadData.col_g,
             unidadData.mass_semi || unidadData.col_j,
@@ -521,11 +521,13 @@ window.mapearVencimientos = function(patente, jsonVencimientos) {
         docs.forEach(d => {
             if (!d || d === '-' || String(d).trim() === '') return;
             let fechaNormalizada = String(d).trim();
+            
             // Normalizar fechas tipo dd/mm/yyyy a yyyy-mm-dd para el evaluador
             if (fechaNormalizada.includes('/')) {
                 let partes = fechaNormalizada.split('/');
                 if (partes.length === 3) fechaNormalizada = `${partes[2]}-${partes[1]}-${partes[0]}`;
             }
+            
             let est = window.evaluarEstadoDoc(fechaNormalizada, fBaseObj);
             if (est === 'VENCIDO') tieneVencido = true;
             if (est === 'POR_VENCER') tienePorVencer = true;
@@ -535,7 +537,7 @@ window.mapearVencimientos = function(patente, jsonVencimientos) {
         if (tienePorVencer) return 'POR_VENCER';
         return 'OK';
     };
-
+    
     function getValDiaGlobal(diasObj, dateObj) {
         if (!diasObj) return '';
         let strDias = diasObj[getTabNameFromDate(dateObj)];
