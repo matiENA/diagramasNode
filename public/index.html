@@ -1836,14 +1836,17 @@ window.mostrarDetalleConductor = function(safeId, mantenerSeleccion = false) {
         }
     }
 
-    const theme = getSrvTheme(chofer.srv);
+   const theme = getSrvTheme(chofer.srv);
     let urlFoto = fotosGlobales[dniDelChofer];
-    let imgSource = urlFoto ? urlFoto : `https://ui-avatars.com/api/?name=${encodeURIComponent(chofer.nom)}&background=e0e7ff&color=19407E&bold=true&size=256`;
     
-    // 👉 NUEVO: Avatar interactivo con botón de carga
+    // 1. Definimos la imagen o el salvavidas (por si falla la carga)
+    let imgSource = urlFoto ? urlFoto : `https://ui-avatars.com/api/?name=${encodeURIComponent(chofer.nom)}&background=e0e7ff&color=19407E&bold=true&size=256`;
+    let errorFallback = `this.onerror=null; this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(chofer.nom)}&background=e0e7ff&color=19407E&bold=true&size=256';`;
+    
+    // 2. Avatar Interactivo Único (Con prevención de burbujeo en el input)
     let avatarHtml = `
     <div class="relative group cursor-pointer w-full h-48 md:h-auto aspect-[3/4] rounded-xl overflow-hidden shadow-sm border border-gray-200 shrink-0 bg-white" onclick="document.getElementById('input-foto-${chofer._safeId}').click()">
-        <img id="img-avatar-${chofer._safeId}" src="${imgSource}" referrerpolicy="no-referrer" class="w-full h-full object-cover group-hover:opacity-40 transition-opacity duration-300" alt="Foto de ${chofer.nom}">
+        <img id="img-avatar-${chofer._safeId}" src="${imgSource}" onerror="${errorFallback}" referrerpolicy="no-referrer" class="w-full h-full object-cover group-hover:opacity-40 transition-opacity duration-300" alt="Foto de ${chofer.nom}">
         
         <div class="absolute inset-0 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
             <span class="bg-black/70 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg flex items-center gap-2 shadow-lg backdrop-blur-sm uppercase tracking-widest">
@@ -1852,19 +1855,12 @@ window.mostrarDetalleConductor = function(safeId, mantenerSeleccion = false) {
             </span>
         </div>
         
-        <input type="file" id="input-foto-${chofer._safeId}" class="hidden" accept="image/jpeg, image/png, image/webp" onchange="procesarNuevaFoto(this, '${dniDelChofer}', '${chofer._safeId}')">
+        <input type="file" id="input-foto-${chofer._safeId}" class="hidden" accept="image/jpeg, image/png, image/webp" onclick="event.stopPropagation()" onchange="procesarNuevaFoto(this, '${dniDelChofer}', '${chofer._safeId}')">
         
-        <div id="loader-foto-${chofer._safeId}" class="hidden absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-10">
+        <div id="loader-foto-${chofer._safeId}" style="display: none;" class="absolute inset-0 bg-white/80 backdrop-blur-sm items-center justify-center z-10">
             <span class="animate-spin w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full"></span>
         </div>
     </div>`;
-
-    let commonImgClasses = "w-full h-48 md:h-auto aspect-[3/4] object-cover rounded-xl shadow-sm border border-gray-200 shrink-0 bg-white";    
-    if (urlFoto) {
-        avatarHtml = `<img src="${urlFoto}" referrerpolicy="no-referrer" onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(chofer.nom)}&background=e0e7ff&color=19407E&bold=true&size=256'" class="${commonImgClasses}" alt="Foto de ${chofer.nom}">`;
-    } else {
-        avatarHtml = `<img src="https://ui-avatars.com/api/?name=${encodeURIComponent(chofer.nom)}&background=e0e7ff&color=19407E&bold=true&size=256" class="${commonImgClasses}" alt="Avatar de ${chofer.nom}">`;
-    }
 
     // ==========================================
     // 🚨 ANÁLISIS DE ALERTAS DE UNIDAD (NUEVO)
@@ -3478,35 +3474,29 @@ window.procesarNuevaFoto = function(inputElement, dniChofer, safeId) {
     const file = inputElement.files[0];
     if (!file) return;
 
-    // Validar tamaño (máximo 5MB)
     if (file.size > 5 * 1024 * 1024) {
         showToast("La imagen es demasiado pesada. Máximo 5MB.", "error");
-        inputElement.value = ''; // Resetear input
+        inputElement.value = '';
         return;
     }
 
-    // Mostrar loader en el avatar
+    // 👉 Encendido forzado del cargador
     const loader = document.getElementById(`loader-foto-${safeId}`);
-    if (loader) loader.classList.remove('hidden');
+    if (loader) loader.style.display = 'flex';
 
     const reader = new FileReader();
     reader.onload = function(event) {
         const base64Data = event.target.result;
 
-        // Enviar a nuestra API en Node.js
         fetch(API_URL.replace('/proxy', '/subir-foto'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                dni: dniChofer,
-                imagenBase64: base64Data
-            })
+            body: JSON.stringify({ dni: dniChofer, imagenBase64: base64Data })
         })
         .then(res => res.json())
         .then(data => {
             if (data.success) {
                 showToast("Foto actualizada correctamente.", "success");
-                // Actualizar la imagen visualmente sin recargar la página
                 const imgElement = document.getElementById(`img-avatar-${safeId}`);
                 if (imgElement) imgElement.src = data.link;
             } else {
@@ -3518,14 +3508,14 @@ window.procesarNuevaFoto = function(inputElement, dniChofer, safeId) {
             showToast("Error de conexión al subir la foto.", "error");
         })
         .finally(() => {
-            if (loader) loader.classList.add('hidden');
-            inputElement.value = ''; // Limpiar el input para permitir subir la misma foto de nuevo si hay error
+            // 👉 Apagado del cargador
+            if (loader) loader.style.display = 'none';
+            inputElement.value = ''; 
         });
     };
 
     reader.readAsDataURL(file);
 };
-
   </script>
 
 <script src="https://unpkg.com/morphdom@2.7.1/dist/morphdom-umd.min.js"></script>
