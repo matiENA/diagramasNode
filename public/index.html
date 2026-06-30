@@ -1052,21 +1052,12 @@ const dashboard = document.getElementById('dashboard');
             }
             renderizarVistaMetricas(document.getElementById('contenedor-metricas'));
             
-        // 👉 ENRUTADOR PARA LA PESTAÑA UNIDADES
+        // 👉 NUEVO ENRUTADOR PARA LA PESTAÑA UNIDADES
         } else if (vistaActual === 'unidades') {
             if (!document.getElementById('contenedor-unidades')) {
                 dashboard.innerHTML = '<div id="contenedor-unidades" class="w-full"></div>';
             }
             window.renderizarVistaUnidades(document.getElementById('contenedor-unidades'));
-
-        // 👉 NUEVO ENRUTADOR PARA LA PESTAÑA INDUCCIONES
-        } else if (vistaActual === 'inducciones') {
-            if (!document.getElementById('contenedor-inducciones')) {
-                dashboard.innerHTML = '<div id="contenedor-inducciones" class="w-full"></div>';
-            }
-            if(window.renderizarVistaInducciones) {
-                window.renderizarVistaInducciones(document.getElementById('contenedor-inducciones'));
-            }
 
         } else {            
             if (!document.getElementById('contenedor-lista-principal')) {
@@ -1082,7 +1073,8 @@ const dashboard = document.getElementById('dashboard');
             else if (vistaActual === 'semanal') renderizarGrillaSemanal(filtrados, contLista);
             renderizarPanelFiltros();
         }
-        
+    }
+
     window.toggleFiltroRetornan = function() {
         filtrosActivos.retornan = !filtrosActivos.retornan;
         if (!filtrosActivos.retornan) filtrosActivos.fechaRetorno = ''; 
