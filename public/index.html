@@ -740,17 +740,9 @@ async function cargarDatosDesdeCache() {
         }
 
         // 4. Lógica de normalización de datos (Intacta, porque funciona excelente)
-        const dataTDs = resNode.tds || { campo: {}, infinia: {}, liviano: {}, euro: {}, estados: {}, extra: {} };
         const resDiagramas = typeof resNode.diagramas === 'string' ? JSON.parse(resNode.diagramas) : resNode.diagramas;
 
-        window.tdGlobalData = {
-            campo:   dataTDs.campo || {},
-            infinia: dataTDs.infinia || {},
-            liviano: dataTDs.liviano || {},
-            euro:    dataTDs.euro || {},
-            estados: dataTDs.estados || {},
-            extra:   dataTDs.codigosExtra || {}
-        };
+
 
         const normalize = (obj) => {
             if (!obj) return {};
@@ -3105,15 +3097,7 @@ window.actualizarSinBlink = function(elementoId, nuevoHTML) {
     // 3. Escuchamos el evento mágico
     socket.on('datos_actualizados', (data) => {
         try {
-            // --- PASO 1: ACTUALIZACIÓN DE MEMORIA (0 milisegundos) ---
-            window.tdGlobalData = {
-                campo: data.tds.campo || {}, 
-                infinia: data.tds.infinia || {},
-                liviano: data.tds.liviano || {}, 
-                euro: data.tds.euro || {},
-                estados: data.tds.estados || {}, 
-                extra: data.tds.codigosExtra || {}
-            };
+
 
             const dataDiag = typeof data.diagramas === 'string' ? JSON.parse(data.diagramas) : data.diagramas;
             
