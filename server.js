@@ -11,7 +11,16 @@ const app = express();
 app.use(compression()); 
 
 const server = http.createServer(app); 
-const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } });
+
+// 👉 CONFIGURACIÓN ACTUALIZADA DE SOCKET.IO PARA EVITAR ERROR CORS Y 502
+const io = new Server(server, { 
+    cors: { 
+        origin: ["https://diagramas-hp1p.onrender.com", "http://localhost:3000", "*"], 
+        methods: ["GET", "POST"],
+        credentials: true
+    },
+    transports: ['websocket', 'polling']
+});
 
 app.use(cors({
     origin: '*',
@@ -117,12 +126,11 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
             }
         } catch(e) {}
 
-// ==========================================
+        // ==========================================
         // 🪪 MOTOR DE RASTREO MAESTRO (Planilla LEGAJOS vía IMPORTRANGE)
         // ==========================================
         let dnisMap = {}; let telefonosMap = {};
         try {
-            // 👉 Lee de la pestaña 'LEGAJOS' que creaste en el Master Sheet
             const rowsLegajos = await fetchRango(ID_SPREADSHEET_MASTER, "'LEGAJOS'!A2:P350");
             
             if (rowsLegajos && rowsLegajos.length > 0) {
@@ -163,12 +171,12 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
 
         resDiagGAS.dnis = dnisMap; resDiagGAS.telefonos = telefonosMap;
 
-// ==========================================
+        // ==========================================
         // 🩺 EXTRACCIÓN DE APTOS MÉDICOS (Dinámico Diario)
         // ==========================================
         try {
-            // 👉 RANGO ABIERTO HASTA 'ZZ' PARA SOPORTAR COLUMNAS INFINITAS
-            const rowsAptos = await fetchRango(ID_SHEET_APTOS_MEDICOS, "'Seguimiento Avalados Mensual'!A1:ZZ500");
+            // 👉 RANGO LIMITADO A 'DZ' (130 columnas) PARA NO SATURAR LA RAM DE RENDER
+            const rowsAptos = await fetchRango(ID_SHEET_APTOS_MEDICOS, "'Seguimiento Avalados Mensual'!A1:DZ500");
             resDiagGAS.aptosMedicos = {};
             
             if (rowsAptos.length > 0) {
@@ -179,16 +187,13 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
                 const y = hoy.getFullYear();
                 const mesesLargo = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
                 
-                // Formatos posibles que usan en las columnas (Ej: "29/junio/2026")
                 const formatosHoy = [`${hoy.getDate()}/${mesesLargo[hoy.getMonth()]}/${y}`.toLowerCase(), `${d}/${m}/${y}`, `${d}/${m}`, String(hoy.getDate())];
 
                 let colDiaria = -1;
-                // 1. Buscamos si ya crearon la columna con la fecha exacta de HOY
                 for (let c = 12; c < headers.length; c++) { 
                     if (formatosHoy.includes(String(headers[c] || "").trim().toLowerCase())) { colDiaria = c; break; } 
                 }
                 
-                // 2. Si no la crearon (ej. fin de semana), tomamos la ÚLTIMA columna que exista
                 if (colDiaria === -1) { 
                     for (let c = headers.length - 1; c >= 12; c--) { 
                         if (String(headers[c] || "").trim() !== "") { colDiaria = c; break; } 
@@ -209,22 +214,19 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
                     let estadoDiario = "-"; 
                     let limiteBusqueda = colDiaria > -1 ? colDiaria : fila.length - 1;
                     
-                    // 3. Escáner hacia atrás: Busca el ÚLTIMO estado cargado para este chofer
                     for (let c = limiteBusqueda; c >= 12; c--) { 
                         let val = String(fila[c] || "").trim(); 
                         if (val !== "" && val !== "-") { estadoDiario = val; break; } 
                     }
                     
                     let nombreNormalizado = nombreRaw.replace(/,/g, '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ' ').replace(/\s+/g, ' ');
-                    
-                    // Guardamos la columna C como "Estado General"
                     let estadoGeneral = String(fila[2] || "").trim();
 
                     let objApto = { 
                         dni: dniLimpio, 
                         cuil: cuil, 
                         estadoGeneral: estadoGeneral, 
-                        estado: estadoDiario, // El estado de la última columna de la derecha
+                        estado: estadoDiario, 
                         responsable: fila[5] || "", 
                         observaciones: fila[10] || "", 
                         observaciones_sector_salud: fila[11] || "" 
@@ -235,6 +237,7 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
                 }
             }
         } catch (e) { console.error("❌ Error en Aptos Médicos:", e); }
+        
         const rowsObs = await fetchRango(ID_SHEET_OBSERVACIONES, "'Movimientos'!A5:H2000");
         resDiagGAS.observaciones = {};
         rowsObs.forEach(row => {
@@ -251,7 +254,7 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
         let diasLegacyIso = {}; let dictDiasSQL = {}; let hojasInfo = []; 
         
         // ==========================================
-        // 🚚 EXTRACCIÓN DE KILÓMETROS Y VIAJES (SIEMPRE SE EJECUTA)
+        // 🚚 EXTRACCIÓN DE KILÓMETROS Y VIAJES
         // ==========================================
         let nuevaSeccionViajes = {};
         try {
@@ -348,7 +351,6 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
             if (cacheDatosGlobales.diagramas) {
                 cacheDatosGlobales.diagramas.observaciones = resDiagGAS.observaciones;
                 cacheDatosGlobales.diagramas.aptosMedicos = resDiagGAS.aptosMedicos;
-                // 👉 ¡AQUÍ ESTÁ LA MAGIA! AHORA ACTUALIZAMOS LOS VIAJES EN TIEMPO REAL
                 cacheDatosGlobales.diagramas.nuevaSeccionViajes = nuevaSeccionViajes; 
             }
         }
@@ -381,7 +383,6 @@ app.post('/api/proxy', async (req, res) => {
         const body = req.body; let huboCambios = false;
         const normalizar = (n) => String(n || '').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
 
-        // 🔐 LOGIN CON SUPABASE
         if (body && body.action === 'login') {
             try {
                 const { data: user } = await supabase.from('usuarios_auth').select('id, usuario, rol').eq('usuario', body.usuario).eq('password', body.password).single();
@@ -494,7 +495,6 @@ app.post('/api/proxy', async (req, res) => {
             let stringHojas = (body.hojas || []).join(', ');
             let nBuscado = normalizar(body.nombre);
             
-            // Creamos targetStr en formato "DD/MM/YY" estricto (Ej: "07/06/26")
             let dTarget = new Date(body.fecha + "T12:00:00");
             let targetStr = `${String(dTarget.getDate()).padStart(2,'0')}/${String(dTarget.getMonth()+1).padStart(2,'0')}/${String(dTarget.getFullYear()).slice(-2)}`;
             
@@ -508,17 +508,14 @@ app.post('/api/proxy', async (req, res) => {
                 let nFila = normalizar(rowsBC[i][1]);
                 
                 if (nFila === nBuscado) {
-                    // Limpiamos la fecha de la planilla (Quitamos " - domingo", etc.)
                     let partesFecha = fFilaRaw.split(' ')[0].split(/[\/\-]/);
                     let coincide = false;
                     
                     if (partesFecha.length >= 3) {
-                        // Forzamos a que siempre tenga ceros a la izquierda (7 -> 07)
                         let diaFila = String(parseInt(partesFecha[0], 10)).padStart(2, '0');
                         let mesFila = String(parseInt(partesFecha[1], 10)).padStart(2, '0');
                         let anioFila = partesFecha[2].length === 4 ? partesFecha[2].slice(-2) : partesFecha[2];
                         
-                        // Respaldo por si pegan la fecha al revés (YYYY-MM-DD)
                         if (partesFecha[0].length === 4) {
                             diaFila = String(parseInt(partesFecha[2], 10)).padStart(2, '0');
                             mesFila = String(parseInt(partesFecha[1], 10)).padStart(2, '0');
@@ -526,11 +523,8 @@ app.post('/api/proxy', async (req, res) => {
                         }
                         
                         let filaNormalizada = `${diaFila}/${mesFila}/${anioFila}`;
-                        
-                        // Ahora comparamos "07/06/26" === "07/06/26"
                         if (filaNormalizada === targetStr) coincide = true;
                     } else {
-                        // Respaldo de emergencia
                         if (fFilaRaw.includes(targetStr) || fFilaRaw.startsWith(body.fecha)) coincide = true;
                     }
 
@@ -565,10 +559,7 @@ app.post('/api/subir-foto', async (req, res) => {
         const { dni, imagenBase64 } = req.body;
         if (!dni || !imagenBase64) return res.status(400).json({ success: false, error: "Faltan datos (DNI o Imagen)" });
 
-        // 1. SUBIR LA FOTO A LA API DE IMGUR
-        const IMGUR_CLIENT_ID = process.env.IMGUR_CLIENT_ID || 'Tu_Client_ID_Aqui'; // Reemplázalo o ponlo en las variables de entorno de Render
-        
-        // Limpiamos el prefijo 'data:image/jpeg;base64,' que envía el HTML
+        const IMGUR_CLIENT_ID = process.env.IMGUR_CLIENT_ID || 'Tu_Client_ID_Aqui';
         const base64Data = imagenBase64.replace(/^data:image\/\w+;base64,/, "");
         
         const imgurResponse = await fetch('https://api.imgur.com/3/image', {
@@ -580,9 +571,8 @@ app.post('/api/subir-foto', async (req, res) => {
         const imgurData = await imgurResponse.json();
         if (!imgurData.success) throw new Error("La API de Imgur rechazó la imagen.");
         
-        const linkOficial = imgurData.data.link; // Ej: https://i.imgur.com/xxxxx.jpg
+        const linkOficial = imgurData.data.link;
 
-        // 2. GUARDAR EL LINK EN LA PESTAÑA 'fotos' DE GOOGLE SHEETS
         const urlPestañaFotos = `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_MASTER}/values/'fotos'!A:B`;
         const resFotos = await serviceAccountAuth.request({ url: urlPestañaFotos });
         const rowsFotos = resFotos.data.values || [];
@@ -590,7 +580,6 @@ app.post('/api/subir-foto', async (req, res) => {
         let rowIndex = -1;
         let dniPuro = String(dni).replace(/\D/g, '');
 
-        // Buscamos si el chofer ya tenía una foto anterior
         for (let i = 0; i < rowsFotos.length; i++) {
             if (String(rowsFotos[i][0]).replace(/\D/g, '') === dniPuro) {
                 rowIndex = i + 1; break;
@@ -598,14 +587,12 @@ app.post('/api/subir-foto', async (req, res) => {
         }
 
         if (rowIndex !== -1) {
-            // Si existe, ACTUALIZAMOS la columna B
             await serviceAccountAuth.request({
                 url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_MASTER}/values/'fotos'!B${rowIndex}?valueInputOption=USER_ENTERED`,
                 method: 'PUT',
                 data: { values: [[linkOficial]] }
             });
         } else {
-            // Si es nuevo, LO AGREGAMOS al final de la lista
             await serviceAccountAuth.request({
                 url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_MASTER}/values/'fotos'!A:B:append?valueInputOption=USER_ENTERED`,
                 method: 'POST',
@@ -613,7 +600,6 @@ app.post('/api/subir-foto', async (req, res) => {
             });
         }
 
-        // 3. ACTUALIZAR LA MEMORIA RAM Y AVISAR A LAS PANTALLAS
         if (!cacheDatosGlobales.diagramas.fotosImgur) cacheDatosGlobales.diagramas.fotosImgur = {};
         cacheDatosGlobales.diagramas.fotosImgur[dniPuro] = linkOficial;
         io.emit('datos_actualizados', cacheDatosGlobales);
