@@ -235,7 +235,7 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
             }
             console.log(`✅ Flota ensamblada en RAM: ${listaChoferesMaestros.length} choferes vinculados a sus unidades diarias.`);
         } catch (e) { console.error("❌ Error construyendo la Flota en RAM:", e); }
-        
+
         // ==========================================
         // 🪪 MOTOR DE RASTREO MAESTRO (Planilla LEGAJOS vía IMPORTRANGE)
         // ==========================================
@@ -662,27 +662,34 @@ app.post('/api/proxy', async (req, res) => {
 });
 
 // ==========================================
-// 📸 MÓDULO DE FOTOS (SUBIDA A IMGUR Y GOOGLE SHEETS)
+// 📸 MÓDULO DE FOTOS (SUBIDA A IMGBB Y GOOGLE SHEETS)
 // ==========================================
 app.post('/api/subir-foto', async (req, res) => {
     try {
         const { dni, imagenBase64 } = req.body;
         if (!dni || !imagenBase64) return res.status(400).json({ success: false, error: "Faltan datos (DNI o Imagen)" });
 
-        const IMGUR_CLIENT_ID = process.env.IMGUR_CLIENT_ID || 'Tu_Client_ID_Aqui';
+        // 1. SUBIR LA FOTO A LA API DE IMGBB
+        const IMGBB_API_KEY = process.env.IMGBB_API_KEY || 'Pon_Tu_Clave_Aqui_Si_No_Usas_Variables';
+        
+        // Limpiamos el prefijo 'data:image/jpeg;base64,'
         const base64Data = imagenBase64.replace(/^data:image\/\w+;base64,/, "");
         
-        const imgurResponse = await fetch('https://api.imgur.com/3/image', {
+        // ImgBB requiere que los datos viajen como Form Data
+        const formData = new URLSearchParams();
+        formData.append("image", base64Data);
+        
+        const imgbbResponse = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, {
             method: 'POST',
-            headers: { 'Authorization': `Client-ID ${IMGUR_CLIENT_ID}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ image: base64Data, type: 'base64' })
+            body: formData
         });
         
-        const imgurData = await imgurResponse.json();
-        if (!imgurData.success) throw new Error("La API de Imgur rechazó la imagen.");
+        const imgbbData = await imgbbResponse.json();
+        if (!imgbbData.success) throw new Error("La API de ImgBB rechazó la imagen.");
         
-        const linkOficial = imgurData.data.link;
+        const linkOficial = imgbbData.data.url; // Ej: https://i.ibb.co/xxxxx/foto.jpg
 
+        // 2. GUARDAR EL LINK EN LA PESTAÑA 'fotos' DE GOOGLE SHEETS
         const urlPestañaFotos = `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_MASTER}/values/'fotos'!A:B`;
         const resFotos = await serviceAccountAuth.request({ url: urlPestañaFotos });
         const rowsFotos = resFotos.data.values || [];
@@ -710,6 +717,7 @@ app.post('/api/subir-foto', async (req, res) => {
             });
         }
 
+        // 3. ACTUALIZAR LA MEMORIA RAM Y AVISAR A LAS PANTALLAS
         if (!cacheDatosGlobales.diagramas.fotosImgur) cacheDatosGlobales.diagramas.fotosImgur = {};
         cacheDatosGlobales.diagramas.fotosImgur[dniPuro] = linkOficial;
         io.emit('datos_actualizados', cacheDatosGlobales);
@@ -717,7 +725,7 @@ app.post('/api/subir-foto', async (req, res) => {
         res.json({ success: true, link: linkOficial, mensaje: "Foto vinculada exitosamente al legajo." });
 
     } catch (error) {
-        console.error("❌ Error subiendo foto:", error);
+        console.error("❌ Error subiendo foto a ImgBB:", error);
         res.status(500).json({ success: false, error: "Error en el servidor procesando la imagen." });
     }
 });
