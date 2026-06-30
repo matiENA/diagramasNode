@@ -1838,7 +1838,27 @@ window.mostrarDetalleConductor = function(safeId, mantenerSeleccion = false) {
 
     const theme = getSrvTheme(chofer.srv);
     let urlFoto = fotosGlobales[dniDelChofer];
-    let avatarHtml = '';
+    let imgSource = urlFoto ? urlFoto : `https://ui-avatars.com/api/?name=${encodeURIComponent(chofer.nom)}&background=e0e7ff&color=19407E&bold=true&size=256`;
+    
+    // 👉 NUEVO: Avatar interactivo con botón de carga
+    let avatarHtml = `
+    <div class="relative group cursor-pointer w-full h-48 md:h-auto aspect-[3/4] rounded-xl overflow-hidden shadow-sm border border-gray-200 shrink-0 bg-white" onclick="document.getElementById('input-foto-${chofer._safeId}').click()">
+        <img id="img-avatar-${chofer._safeId}" src="${imgSource}" referrerpolicy="no-referrer" class="w-full h-full object-cover group-hover:opacity-40 transition-opacity duration-300" alt="Foto de ${chofer.nom}">
+        
+        <div class="absolute inset-0 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+            <span class="bg-black/70 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg flex items-center gap-2 shadow-lg backdrop-blur-sm uppercase tracking-widest">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                Cambiar Foto
+            </span>
+        </div>
+        
+        <input type="file" id="input-foto-${chofer._safeId}" class="hidden" accept="image/jpeg, image/png, image/webp" onchange="procesarNuevaFoto(this, '${dniDelChofer}', '${chofer._safeId}')">
+        
+        <div id="loader-foto-${chofer._safeId}" class="hidden absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-10">
+            <span class="animate-spin w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full"></span>
+        </div>
+    </div>`;
+
     let commonImgClasses = "w-full h-48 md:h-auto aspect-[3/4] object-cover rounded-xl shadow-sm border border-gray-200 shrink-0 bg-white";    
     if (urlFoto) {
         avatarHtml = `<img src="${urlFoto}" referrerpolicy="no-referrer" onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(chofer.nom)}&background=e0e7ff&color=19407E&bold=true&size=256'" class="${commonImgClasses}" alt="Foto de ${chofer.nom}">`;
@@ -3450,7 +3470,62 @@ window.actualizarSinBlink = function(elementoId, nuevoHTML) {
             icon.style.transform = 'rotate(0deg)';
         }
     };
-     
+
+    // ==========================================
+// 📸 PROCESAMIENTO Y CARGA DE FOTOS
+// ==========================================
+window.procesarNuevaFoto = function(inputElement, dniChofer, safeId) {
+    const file = inputElement.files[0];
+    if (!file) return;
+
+    // Validar tamaño (máximo 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+        showToast("La imagen es demasiado pesada. Máximo 5MB.", "error");
+        inputElement.value = ''; // Resetear input
+        return;
+    }
+
+    // Mostrar loader en el avatar
+    const loader = document.getElementById(`loader-foto-${safeId}`);
+    if (loader) loader.classList.remove('hidden');
+
+    const reader = new FileReader();
+    reader.onload = function(event) {
+        const base64Data = event.target.result;
+
+        // Enviar a nuestra API en Node.js
+        fetch(API_URL.replace('/proxy', '/subir-foto'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                dni: dniChofer,
+                imagenBase64: base64Data
+            })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                showToast("Foto actualizada correctamente.", "success");
+                // Actualizar la imagen visualmente sin recargar la página
+                const imgElement = document.getElementById(`img-avatar-${safeId}`);
+                if (imgElement) imgElement.src = data.link;
+            } else {
+                showToast(data.error || "Error al subir la foto.", "error");
+            }
+        })
+        .catch(err => {
+            console.error("Error subiendo foto:", err);
+            showToast("Error de conexión al subir la foto.", "error");
+        })
+        .finally(() => {
+            if (loader) loader.classList.add('hidden');
+            inputElement.value = ''; // Limpiar el input para permitir subir la misma foto de nuevo si hay error
+        });
+    };
+
+    reader.readAsDataURL(file);
+};
+
   </script>
 
 <script src="https://unpkg.com/morphdom@2.7.1/dist/morphdom-umd.min.js"></script>
