@@ -52,6 +52,44 @@
 /* Tipografía de contraste dinámico */
 .text-contraste-dark { color: #1e293b; text-shadow: 0 1px 0 rgba(255,255,255,0.4); }
 .text-contraste-light { color: #ffffff; text-shadow: 0 1px 2px rgba(0,0,0,0.3); }
+
+/* =========================================
+       🌙 MOTOR DE MODO OSCURO (SMART MAPPING)
+       ========================================= */
+    html.dark-theme, html.dark-theme body { background-color: #0f172a !important; color: #e2e8f0 !important; }
+    
+    /* Superficies Principales */
+    html.dark-theme .bg-white { background-color: #1e293b !important; border-color: #334155 !important; color: #f8fafc !important; }
+    html.dark-theme .bg-gray-50, html.dark-theme .bg-gray-100, html.dark-theme .bg-gray-200, 
+    html.dark-theme .bg-slate-50, html.dark-theme .bg-slate-100 { background-color: #0f172a !important; border-color: #1e293b !important; color: #cbd5e1 !important; }
+    
+    /* Textos Base */
+    html.dark-theme .text-gray-900, html.dark-theme .text-gray-800, html.dark-theme .text-gray-700 { color: #f8fafc !important; }
+    html.dark-theme .text-gray-600, html.dark-theme .text-gray-500, html.dark-theme .text-gray-400 { color: #94a3b8 !important; }
+    
+    /* Bordes Generales */
+    html.dark-theme .border-gray-300, html.dark-theme .border-gray-200, html.dark-theme .border-gray-100 { border-color: #334155 !important; }
+    
+    /* Botones, Inputs y Modales */
+    html.dark-theme input, html.dark-theme select { background-color: #0f172a !important; color: #f8fafc !important; border-color: #334155 !important; color-scheme: dark; }
+    html.dark-theme .bg-black\/60 { background-color: rgba(0,0,0,0.8) !important; }
+    html.dark-theme footer { border-color: #1e293b !important; background-color: #0f172a !important; }
+
+    /* Adaptación de Badges (Alerta/Peligro/Ok) para que no rompan los ojos en pantalla negra */
+    html.dark-theme .bg-red-50, html.dark-theme .bg-red-100 { background-color: rgba(69, 10, 10, 0.5) !important; border-color: #7f1d1d !important; color: #fca5a5 !important; }
+    html.dark-theme .text-red-700, html.dark-theme .text-red-600 { color: #fca5a5 !important; }
+    
+    html.dark-theme .bg-yellow-50, html.dark-theme .bg-yellow-100 { background-color: rgba(66, 32, 6, 0.5) !important; border-color: #713f12 !important; color: #fde047 !important; }
+    html.dark-theme .text-yellow-800, html.dark-theme .text-yellow-700 { color: #fde047 !important; }
+    
+    html.dark-theme .bg-green-50, html.dark-theme .bg-green-100 { background-color: rgba(5, 46, 22, 0.5) !important; border-color: #14532d !important; color: #86efac !important; }
+    html.dark-theme .text-green-800, html.dark-theme .text-green-700 { color: #86efac !important; }
+
+    html.dark-theme .bg-indigo-50, html.dark-theme .bg-indigo-100 { background-color: rgba(30, 27, 75, 0.6) !important; border-color: #3730a3 !important; color: #c7d2fe !important; }
+    html.dark-theme .text-indigo-900, html.dark-theme .text-indigo-800, html.dark-theme .text-indigo-600 { color: #c7d2fe !important; }
+
+    html.dark-theme .bg-blue-50, html.dark-theme .bg-blue-100 { background-color: rgba(30, 58, 138, 0.4) !important; border-color: #1e40af !important; color: #93c5fd !important; }
+    html.dark-theme .text-blue-900, html.dark-theme .text-blue-800, html.dark-theme .text-blue-600 { color: #93c5fd !important; }
   </style>
 </head>
 
@@ -93,12 +131,19 @@
       <p class="text-xs sm:text-sm font-normal text-gray-500 mt-1">Gestión de diagramas y alertas de actividad</p>
     </div>
     
-    <button onclick="cerrarSesion()" title="Cerrar Sesión" class="group flex items-center gap-2 bg-white border border-gray-200 text-gray-500 hover:text-red-600 hover:bg-red-50 hover:border-red-200 px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm shrink-0">
-      <svg class="w-4 h-4 transition-transform group-hover:-translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
-      </svg>
-      <span class="hidden sm:block uppercase tracking-wider">Cerrar Sesión</span>
-    </button>
+<div class="flex items-center gap-3">
+        <button onclick="toggleDarkMode()" title="Cambiar Tema" class="group flex items-center justify-center w-10 h-10 bg-white border border-gray-200 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 hover:border-indigo-200 rounded-xl transition-all shadow-sm shrink-0">
+            <svg id="icon-sun" class="w-5 h-5 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+            <svg id="icon-moon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
+        </button>
+        
+        <button onclick="cerrarSesion()" title="Cerrar Sesión" class="group flex items-center gap-2 bg-white border border-gray-200 text-gray-500 hover:text-red-600 hover:bg-red-50 hover:border-red-200 px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm shrink-0">
+          <svg class="w-4 h-4 transition-transform group-hover:-translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
+          </svg>
+          <span class="hidden sm:block uppercase tracking-wider">Cerrar Sesión</span>
+        </button>
+    </div>
   </header>
 
   <nav class="max-w-7xl mx-auto w-full px-4 sm:px-6 mb-4 mt-2">
@@ -344,6 +389,13 @@ window.sincronizarBackend = function() {
 // --- [TAG: INIT & AUTH FLOW] ---
 document.addEventListener('DOMContentLoaded', () => { 
     document.getElementById('nav-fecha-contexto').value = fechaGlobalContexto;
+    
+    // 👉 CARGAR MEMORIA DE MODO OSCURO
+    if (localStorage.getItem('eor_theme') === 'dark') {
+        document.documentElement.classList.add('dark-theme');
+        window.actualizarIconoTema(true);
+    }
+    
     verificarSesion();
 });
 
@@ -604,7 +656,7 @@ window.mapearVencimientos = function(patente, jsonVencimientos) {
             </div>
         </div>`;
     };
-        
+
     function getValDiaGlobal(diasObj, dateObj) {
         if (!diasObj) return '';
         let strDias = diasObj[getTabNameFromDate(dateObj)];
@@ -3245,6 +3297,23 @@ window.actualizarSinBlink = function(elementoId, nuevoHTML) {
     }
 };
 
+// --- LÓGICA DE DARK MODE ---
+    window.toggleDarkMode = function() {
+        const html = document.documentElement;
+        html.classList.toggle('dark-theme');
+        const isDark = html.classList.contains('dark-theme');
+        localStorage.setItem('eor_theme', isDark ? 'dark' : 'light');
+        window.actualizarIconoTema(isDark);
+    };
+
+    window.actualizarIconoTema = function(isDark) {
+        const moon = document.getElementById('icon-moon');
+        const sun = document.getElementById('icon-sun');
+        if (moon && sun) {
+            if (isDark) { moon.classList.add('hidden'); sun.classList.remove('hidden'); } 
+            else { sun.classList.add('hidden'); moon.classList.remove('hidden'); }
+        }
+    };
   </script>
 
 <script src="https://unpkg.com/morphdom@2.7.1/dist/morphdom-umd.min.js"></script>
