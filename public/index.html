@@ -466,17 +466,6 @@ window.mapearVencimientos = function(patente, jsonVencimientos) {
         ve: record.col_n    
     };
 };
-
-    // --- [TAG: UTILS Y CORE] ---
-
-   
-    // 👉 SOLUCIÓN: Función global elevada para que el caché no colapse
-    window.normalizarNombreTD = function(nom) {
-        return String(nom || "").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
-    };
-    function normalizarNombreTD(nom) {
-        return window.normalizarNombreTD(nom);
-    }
     
     window.parseFechaObs = function(fechaStr) {
         if (!fechaStr || fechaStr === '-') return null;
