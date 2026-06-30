@@ -236,13 +236,33 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
             console.log(`✅ Flota ensamblada en RAM: ${listaChoferesMaestros.length} choferes vinculados a sus unidades diarias.`);
         } catch (e) { console.error("❌ Error construyendo la Flota en RAM:", e); }
 
-        // ==========================================
-        // 🪪 MOTOR DE RASTREO MAESTRO (Planilla LEGAJOS vía IMPORTRANGE)
+// ==========================================
+        // 🪪 MOTOR DE RASTREO MAESTRO Y DNIS
         // ==========================================
         let dnisMap = {}; let telefonosMap = {};
+        
         try {
+            // 👉 1. FUENTE PRIMARIA: Pestaña 'dni' (Prioridad Absoluta)
+            const rowsDni = await fetchRango(ID_SPREADSHEET_MASTER, "'dni'!A1:D500");
+            if (rowsDni && rowsDni.length > 0) {
+                rowsDni.forEach(row => {
+                    let nomRaw = String(row[0] || "").trim();
+                    if (!nomRaw) return;
+                    let nomNorm = normalizar(nomRaw);
+                    
+                    // Columna A (índice 0) es Nombre, Columna C (índice 2) es DNI
+                    let dniStr = String(row[2] || "").replace(/\D/g, '');
+                    if (dniStr) {
+                        dnisMap[nomNorm] = { dni: String(parseInt(dniStr, 10)) };
+                    }
+                });
+                console.log(`✅ ${Object.keys(dnisMap).length} DNIs extraídos de la fuente primaria ('dni').`);
+            }
+        } catch(e) { console.error("❌ Error leyendo pestaña 'dni':", e); }
+
+        try {
+            // 👉 2. DATOS DE CONTACTO: Pestaña 'LEGAJOS' (Teléfonos, Emails, Fechas)
             const rowsLegajos = await fetchRango(ID_SPREADSHEET_MASTER, "'LEGAJOS'!A2:P350");
-            
             if (rowsLegajos && rowsLegajos.length > 0) {
                 rowsLegajos.forEach(row => {
                     if (!row || row.length < 2) return;
@@ -251,7 +271,7 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
 
                     let nomNorm = normalizar(nomRaw);
                     let legajoStr = String(row[0] || "").trim(); 
-                    let dniStr = String(row[2] || "").replace(/\D/g, '');
+                    let dniLegajoStr = String(row[2] || "").replace(/\D/g, '');
                     let telStr = String(row[3] || "").trim(); 
                     let emailStr = String(row[4] || "").trim(); 
                     let fechaAltaStr = String(row[10] || "").trim();
@@ -259,19 +279,24 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
                     let datosContacto = { legajo: legajoStr, telefono: telStr, email: emailStr, fechaAlta: fechaAltaStr };
                     telefonosMap[nomNorm] = datosContacto;
 
-                    if (dniStr) {
-                        let dniPuro = String(parseInt(dniStr, 10)); 
+                    // Si el chofer NO estaba en la pestaña 'dni', lo rescatamos de Legajos como plan B
+                    if (dniLegajoStr && !dnisMap[nomNorm]) {
+                        let dniPuro = String(parseInt(dniLegajoStr, 10)); 
                         dnisMap[nomNorm] = { dni: dniPuro }; 
-                        telefonosMap[dniPuro] = datosContacto;
+                    }
+                    
+                    // Vinculamos su teléfono al DNI definitivo para que el cruce de fotos y aptos sea perfecto
+                    if (dnisMap[nomNorm] && dnisMap[nomNorm].dni) {
+                        telefonosMap[dnisMap[nomNorm].dni] = datosContacto;
                     }
                 });
-                console.log(`✅ ${Object.keys(dnisMap).length} choferes extraídos de 'LEGAJOS' (vía IMPORTRANGE).`);
             } else {
                 console.warn("⚠️ No se encontraron datos en la pestaña 'LEGAJOS' del Master.");
             }
         } catch (e) { console.error("❌ Error en Motor de Rastreo de Legajos:", e); }
 
         try {
+            // 👉 3. RESPALDO FINAL: Documentaciones externas
             const ID_SHEET_HABILITACIONES = '1hPDno09tMBtKh7aIdsvzEYcyOY7leYj2B6XnniD0aXg'; const ID_SHEET_DOCUMENTOS = '1pnYXKDSv70Vq78Rchxus5FHMKdgXdbfltVsEg6vArjo';
             const [resDocsTab, resHabsTab] = await Promise.all([ fetchRango(ID_SHEET_DOCUMENTOS, "'PERIODICOS'!A1:E300"), fetchRango(ID_SHEET_HABILITACIONES, "'VENCIMIENTOS'!A1:C300") ]);
             const extraerDni = (c) => { let l = String(c).replace(/\D/g, ''); return l.length === 11 ? String(parseInt(l.substring(2, 10), 10)) : (l.length === 10 ? String(parseInt(l.substring(2, 9), 10)) : String(parseInt(l, 10))); };
@@ -280,7 +305,6 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
         } catch (e) {}
 
         resDiagGAS.dnis = dnisMap; resDiagGAS.telefonos = telefonosMap;
-
         // ==========================================
         // 🩺 EXTRACCIÓN DE APTOS MÉDICOS (Dinámico Diario)
         // ==========================================
