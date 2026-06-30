@@ -441,24 +441,27 @@ document.addEventListener('click', (e) => {
 
 window.mapearVencimientos = function(patente, jsonVencimientos) {
     if (!patente || !jsonVencimientos || !Array.isArray(jsonVencimientos)) return null;
+    
     const patenteLimpia = String(patente).replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    
     const record = jsonVencimientos.find(item => {
         const patenteItem = String(item.col_b || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
         return patenteItem === patenteLimpia;
     });
 
     if (!record) return null;
-    return {
-        vtv_tr: record.col_g,  
-        vtv_semi: record.col_h,  
-        mass_tr: record.col_j, 
-        mass_semi: record.col_k, 
-        esp_es: record.col_l,  
-        vi: record.col_m,   
-        ve: record.col_n    
-    };
-};
     
+    // 👉 CORRECCIÓN: Alineación exacta con la disposición real de la planilla 'Vencimientos.'
+    return {
+        mass_tr: record.col_g,   // Columna G: MASS TR
+        vtv_tr: record.col_h,    // Columna H: VTV TR
+        mass_semi: record.col_j, // Columna J: MAS SEMI
+        vtv_semi: record.col_k,  // Columna K: VTV SEMI
+        esp_es: record.col_l,    // Columna L: Esp-Es
+        vi: record.col_m,        // Columna M: VI
+        ve: record.col_n         // Columna N: VE
+    };
+};    
     window.parseFechaObs = function(fechaStr) {
         if (!fechaStr || fechaStr === '-') return null;
         const partes = fechaStr.trim().split(' ');
