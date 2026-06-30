@@ -112,19 +112,96 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
         };
 
         let listaChoferesMaestros = [];
+        
+        // ==========================================
+        // 🚚 1. CONSTRUCCIÓN DE LA FLOTA EN RAM (Reemplazo del JSON H1)
+        // ==========================================
         try {
-            const rowsH1 = await fetchRango(ID_SPREADSHEET_MASTER, "'choferes y unidades'!H1");
-            if (rowsH1 && rowsH1.length > 0 && rowsH1[0][0]) {
-                let jsonRaw = String(rowsH1[0][0]).trim();
-                let parsedChoferes = JSON.parse(jsonRaw);
-                parsedChoferes.forEach(c => {
-                    if(!c.nombre) return;
-                    let nombreReal = String(c.nombre).trim(); let norm = normalizar(nombreReal);
-                    resDiagGAS.flota[norm] = { tractor: c.tractor || '', semi: c.semi || '', servicio: c.servicio || '', n_ute: c.n_ute || '', td: c.td || '-', hex1: c.hex1 || '', hex2: c.hex2 || '' };
-                    if (!listaChoferesMaestros.some(x => x.norm === norm)) { listaChoferesMaestros.push({ nombre: nombreReal, norm: norm }); }
-                });
+            let hoy = new Date();
+            let anio = hoy.getFullYear();
+            let mesStr = String(hoy.getMonth() + 1).padStart(2, '0');
+            let nombreHojaActual = mesesAbrev[hoy.getMonth()] + "-" + String(anio).slice(-2);
+
+            // A) Leer el diagrama actual para obtener todos los choferes y sus SERVICIOS (Columna C)
+            const rowsDiagActual = await fetchRango(ID_SPREADSHEET_DIAGRAMAS, `'${nombreHojaActual}'!A6:C255`);
+            rowsDiagActual.forEach(row => {
+                let cellNombre = row[1]; // Columna B
+                let cellServicio = row[2]; // Columna C
+                if (cellNombre && cellNombre !== "APELLIDO Y NOMBRE" && cellNombre !== "Personal Activo") {
+                    let norm = normalizar(cellNombre);
+                    if (!resDiagGAS.flota[norm]) {
+                        resDiagGAS.flota[norm] = { tractor: '', semi: '', servicio: cellServicio || 'S/A', n_ute: '', td: '-', hex1: '', hex2: '' };
+                        listaChoferesMaestros.push({ nombre: String(cellNombre).trim(), norm: norm });
+                    }
+                }
+            });
+
+            // B) Leer 'Mov.Unidades y Choferes' para obtener el TRACTOR, SEMI y N_UTE del día de HOY
+            const rowsMov = await fetchRango(ID_SHEET_MOVIMIENTOS, "'Mov.Unidades y Choferes'!A1:ZZ300");
+            if (rowsMov.length > 0) {
+                let headers = rowsMov[0];
+                let targetD = hoy.getDate(); 
+                let targetM = hoy.getMonth(); 
+                let targetY = hoy.getFullYear();
+                const mesesLargo = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+                
+                let regexFechaTexto = new RegExp(`\\b0?${targetD}\\s+${mesesLargo[targetM]}\\s+${targetY}\\b`, 'i');
+                let colFecha = -1;
+
+                for (let c = 0; c < headers.length; c++) {
+                    let strVal = String(headers[c] || "").toLowerCase().trim();
+                    if (regexFechaTexto.test(strVal)) { colFecha = c; break; }
+                }
+
+                if (colFecha !== -1 && colFecha >= 3) {
+                    let colNombreActivos = colFecha - 3;
+                    for (let i = 2; i < rowsMov.length; i++) {
+                        let nombreMovOriginal = String(rowsMov[i][colNombreActivos] || "").trim();
+                        if (!nombreMovOriginal || nombreMovOriginal === "1") continue;
+                        if (!/[a-zA-ZáéíóúÁÉÍÓÚñÑ]/.test(nombreMovOriginal)) continue;
+
+                        let norm = normalizar(nombreMovOriginal);
+                        
+                        if (resDiagGAS.flota[norm]) {
+                            resDiagGAS.flota[norm].n_ute = String(rowsMov[i][2] || "").trim(); // Columna C (N° UTE)
+                            resDiagGAS.flota[norm].tractor = String(rowsMov[i][4] || "").trim(); // Columna E (Tractor)
+                            resDiagGAS.flota[norm].semi = String(rowsMov[i][5] || "").trim(); // Columna F (Semi)
+                        } else {
+                            resDiagGAS.flota[norm] = { 
+                                tractor: String(rowsMov[i][4] || "").trim(), 
+                                semi: String(rowsMov[i][5] || "").trim(), 
+                                servicio: 'S/A', 
+                                n_ute: String(rowsMov[i][2] || "").trim(), 
+                                td: '-', hex1: '', hex2: '' 
+                            };
+                            listaChoferesMaestros.push({ nombre: nombreMovOriginal, norm: norm });
+                        }
+                    }
+                } else {
+                    console.warn("⚠️ No se encontró la columna de HOY en Mov.Unidades y Choferes.");
+                }
             }
-        } catch(e) {}
+
+            // C) Leer 'Tabla de viajes' para obtener TD y HEX (Colores)
+            const rowsTV = await fetchRango(ID_SHEET_MOVIMIENTOS, "'Tabla de viajes'!D2:G200");
+            let mapaTD = {};
+            rowsTV.forEach(row => {
+                let tractor = String(row[0] || "").trim(); // Columna D (Tractor)
+                let td = String(row[1] || "").trim();      // Columna E (TD)
+                let hex = String(row[3] || "").trim();     // Columna G (HEXA)
+                if (tractor) { mapaTD[tractor] = { td: td, hex: hex }; }
+            });
+            
+            for (let key in resDiagGAS.flota) {
+                let tr = resDiagGAS.flota[key].tractor;
+                if (tr && mapaTD[tr]) {
+                    resDiagGAS.flota[key].td = mapaTD[tr].td;
+                    resDiagGAS.flota[key].hex1 = mapaTD[tr].hex;
+                    resDiagGAS.flota[key].hex2 = mapaTD[tr].hex;
+                }
+            }
+            console.log(`✅ Flota ensamblada en RAM: ${listaChoferesMaestros.length} choferes vinculados a sus unidades diarias.`);
+        } catch (e) { console.error("❌ Error construyendo la Flota en RAM:", e); }
 
         // ==========================================
         // 🪪 MOTOR DE RASTREO MAESTRO (Planilla LEGAJOS vía IMPORTRANGE)
