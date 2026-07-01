@@ -3648,21 +3648,17 @@ window.procesarNuevaFoto = function(inputElement, dniChofer, safeId) {
 // 🌱 DETECTOR DE PERÍODO DE PRUEBA (6 MESES)
 // ==========================================
 window.calcularMesesPrueba = function(chofer) {
-    // 👉 CORRECCIÓN: Usamos las variables globales propias del Front-End
-    if (!dnisGlobales || !telefonosGlobales) return 999;
+    if (typeof dnisGlobales === 'undefined' || typeof telefonosGlobales === 'undefined') return 999;
     
     let nomNorm = String(chofer.nom || '').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
     
     let datosDni = dnisGlobales[nomNorm];
     let dni = datosDni ? (datosDni.dni || datosDni) : null;
     
-    let datosContacto = (dni && telefonosGlobales[dni]) 
-        ? telefonosGlobales[dni] 
-        : telefonosGlobales[nomNorm];
+    let datosContacto = (dni && telefonosGlobales[dni]) ? telefonosGlobales[dni] : telefonosGlobales[nomNorm];
         
     if (!datosContacto || !datosContacto.fechaAlta || datosContacto.fechaAlta === '-') return 999; 
     
-    // Convertir fecha (Soporta formatos "3 Dec 2024" y "03/12/2024")
     let d = new Date(datosContacto.fechaAlta);
     if (isNaN(d.getTime())) {
         let p = datosContacto.fechaAlta.split('/');
@@ -3672,14 +3668,12 @@ window.calcularMesesPrueba = function(chofer) {
     
     let evaluarDesde = window.fechaGlobalContexto ? new Date(window.fechaGlobalContexto + "T12:00:00") : new Date();
     let mesesDiff = (evaluarDesde.getFullYear() - d.getFullYear()) * 12 + (evaluarDesde.getMonth() - d.getMonth());
-    
-    // Ajuste por días exactos
     if (evaluarDesde.getDate() < d.getDate()) mesesDiff--; 
     
     return mesesDiff;
 };
 
-// 👉 BADGE SUTIL (Solo para Vista Diaria)
+// 👉 BADGE DE BAJO CONTRASTE
 window.obtenerBadgePrueba = function(chofer) {
     let meses = window.calcularMesesPrueba(chofer);
     if (meses >= 0 && meses < 6) {
@@ -3688,7 +3682,7 @@ window.obtenerBadgePrueba = function(chofer) {
     return '';
 };
 
-// 👉 PROGRESS BAR (6 Slots - Para Vista Individual)
+// 👉 PROGRESS BAR PARA VISTA INDIVIDUAL
 window.obtenerProgressBarPrueba = function(chofer) {
     let meses = window.calcularMesesPrueba(chofer);
     if (meses < 0 || meses >= 6 || meses === 999) return ''; 
@@ -3697,16 +3691,10 @@ window.obtenerProgressBarPrueba = function(chofer) {
     <div title="Período de prueba: ${meses} meses completados" class="flex flex-col items-center justify-center bg-white px-3 py-1 rounded-xl border border-slate-200 shrink-0 shadow-sm h-[40px] xl:h-[42px]">
         <span class="text-[8px] font-bold text-slate-400 uppercase tracking-widest mb-1 leading-none">Período de Prueba</span>
         <div class="flex gap-1">`;
-    
-    // Llenado de slots (Pastillas grises oscuras = llenas, grises claras = vacías)
     for(let i=0; i<6; i++) {
-        if (i < meses) {
-            html += `<div class="w-3 h-1.5 rounded-full bg-slate-400 shadow-inner"></div>`;
-        } else {
-            html += `<div class="w-3 h-1.5 rounded-full bg-slate-100 border border-slate-200"></div>`;
-        }
+        if (i < meses) html += `<div class="w-3 h-1.5 rounded-full bg-slate-400 shadow-inner"></div>`;
+        else html += `<div class="w-3 h-1.5 rounded-full bg-slate-100 border border-slate-200"></div>`;
     }
-    
     html += `</div></div>`;
     return html;
 };
