@@ -535,3 +535,36 @@ app.post('/api/proxy', async (req, res) => {
 
     } catch (error) { console.error(error); res.status(500).json({ success: false, error: "Fallo general en Proxy" }); }
 });
+
+// ==========================================
+// 📸 MÓDULO DE FOTOS (SUBIDA A IMGBB Y GOOGLE SHEETS)
+// ==========================================
+app.post('/api/subir-foto', async (req, res) => {
+    try {
+        const { dni, imagenBase64 } = req.body;
+        const IMGBB_API_KEY = process.env.IMGBB_API_KEY;
+        const base64Data = imagenBase64.replace(/^data:image\/\w+;base64,/, "");
+        const formData = new URLSearchParams(); formData.append("image", base64Data);
+        const imgbbResponse = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, { method: 'POST', body: formData });
+        const imgbbData = await imgbbResponse.json();
+        const linkOficial = imgbbData.data.url; 
+
+        const urlPestañaFotos = `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_MASTER}/values/'fotos'!A:B`;
+        const resFotos = await serviceAccountAuth.request({ url: urlPestañaFotos });
+        const rowsFotos = resFotos.data.values || [];
+        let rowIndex = -1; let dniPuro = String(dni).replace(/\D/g, '');
+        for (let i = 0; i < rowsFotos.length; i++) { if (String(rowsFotos[i][0]).replace(/\D/g, '') === dniPuro) { rowIndex = i + 1; break; } }
+
+        if (rowIndex !== -1) { await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_MASTER}/values/'fotos'!B${rowIndex}?valueInputOption=USER_ENTERED`, method: 'PUT', data: { values: [[linkOficial]] } }); } 
+        else { await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_MASTER}/values/'fotos'!A:B:append?valueInputOption=USER_ENTERED`, method: 'POST', data: { values: [[dniPuro, linkOficial]] } }); }
+
+        if (!cacheDatosGlobales.diagramas.fotosImgur) cacheDatosGlobales.diagramas.fotosImgur = {};
+        cacheDatosGlobales.diagramas.fotosImgur[dniPuro] = linkOficial;
+        io.emit('datos_actualizados', cacheDatosGlobales);
+        res.json({ success: true, link: linkOficial, mensaje: "Foto vinculada." });
+    } catch (error) { res.status(500).json({ success: false, error: "Error en el servidor procesando la imagen." }); }
+});
+
+// 👉 ESTO ES LO QUE MANTIENE EL SERVIDOR ENCENDIDO
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => console.log(`🚀 Servidor Node Activo en puerto ${PORT}`));
