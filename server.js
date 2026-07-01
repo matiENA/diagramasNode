@@ -20,9 +20,6 @@ app.use(cors({ origin: '*', methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
 app.options('*', cors());
 app.use(express.json({ limit: '10mb' }));
 
-// ==========================================
-// 1. CONFIGURACIÓN E INSTANCIAS (SIN INTERMEDIARIOS)
-// ==========================================
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
@@ -73,9 +70,6 @@ async function flujoEncoladoGlobal(esArranque = false) {
 }
 setTimeout(() => { flujoEncoladoGlobal(true); }, 3000); 
 
-// ==========================================
-// 🧠 EL CEREBRO: CONSTRUCCIÓN NATIVA
-// ==========================================
 async function actualizarCacheDesdeGoogle(esArranque = false) {
     try {
         const normalizar = (n) => String(n || '').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
@@ -186,7 +180,6 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
                 if (row[0] && row[1] && String(row[1]).includes('http')) { let n = String(row[0]).replace(/\D/g, ''); if (n.length >= 10) n = n.substring(2, 10); resDiagGAS.fotosImgur[String(parseInt(n, 10))] = String(row[1]).trim(); }
             });
 
-            // 📥 NUEVO LECTOR DIRECTO DE HABILITACIONES Y DOCUMENTOS
             try {
                 const [rowsDoc, rowsHab] = await Promise.all([ fetchRango(ID_SHEET_DOCUMENTOS, "'PERIODICOS'!A:I"), fetchRango(ID_SHEET_HABILITACIONES, "'VENCIMIENTOS'!A:E") ]);
                 const fRev = (s) => { if (!s) return null; let p = String(s).split('/'); return p.length === 3 ? `${p[2]}-${p[1]}-${p[0]}` : null; };
@@ -194,7 +187,7 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
 
                 rowsDoc.forEach(r => { let n = normalizar(r[1]); let v = fRev(r[8]); if (n && v) resDiagGAS.documentos[n] = { ven: v, estado: calcEst(r[8]) }; });
                 rowsHab.forEach(r => { let n = normalizar(r[1]); let c = fRev(r[3]); let l = fRev(r[4]); if (n) { if (c) resDiagGAS.certificados[n] = { ven: c, estado: calcEst(r[3]) }; if (l) resDiagGAS.habilitaciones[n] = { ven: l, estado: calcEst(r[4]) }; } });
-            } catch(e) { console.error("Error en Lectura Directa Docs:", e); }
+            } catch(e) { console.error("Error Lectura Docs:", e); }
 
             let hoy = new Date(); let offsetsMeses = [-1, 0, 1, 2, 3]; 
             for (let i of offsetsMeses) {
@@ -222,7 +215,6 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
                 cacheDatosGlobales.diagramas.observaciones = resDiagGAS.observaciones; 
                 cacheDatosGlobales.diagramas.aptosMedicos = resDiagGAS.aptosMedicos; 
                 cacheDatosGlobales.diagramas.nuevaSeccionViajes = nuevaSeccionViajes; 
-                // Documentos y Habilitaciones persisten de manera intacta en la RAM
             }
         }
 
@@ -230,7 +222,7 @@ async function actualizarCacheDesdeGoogle(esArranque = false) {
         cacheDatosGlobales.ultimaActualizacion = new Date().toISOString();
         io.emit('datos_actualizados', cacheDatosGlobales);
         
-    } catch (error) { console.error("❌ Error en RAM:", error); } finally {
+    } catch (error) { console.error("❌ Error RAM:", error); } finally {
         if (esArranque && !cacheDatosGlobales.diagramas) {
             cacheDatosGlobales.diagramas = { diagramas: [], nuevaSeccionViajes: {}, documentos: {}, habilitaciones: {}, certificados: {}, dnis: {}, telefonos: {}, observaciones: {}, aptosMedicos: {}, vencimientosObj: [], fotosImgur: {} };
             necesitaArranqueProfundo = true; setTimeout(() => { flujoEncoladoGlobal(true); }, 15000); 
@@ -245,7 +237,7 @@ app.get('/api/datos', (req, res) => {
 });
 
 // ==========================================
-// 🛡️ API PROXY: ESCRITURAS DIRECTAS Y ACTUALIZACIÓN AL INSTANTE
+// 🛡️ API PROXY: ESCRITURA CON PARSEO E INYECCIÓN INSTANTÁNEA
 // ==========================================
 app.post('/api/proxy', async (req, res) => {
     try {
@@ -259,26 +251,23 @@ app.post('/api/proxy', async (req, res) => {
             } catch(e) { return res.json({ success: false, error: "Error Auth" }); }
         }
 
-        // 1. OBSERVACIONES 
         if (body && (body.action === 'guardarObservacion' || body.action === 'guardarNuevaObservacion')) {
             let nBuscado = normalizar(body.chofer);
             if (cacheDatosGlobales.diagramas) {
                 if(!cacheDatosGlobales.diagramas.observaciones[nBuscado]) cacheDatosGlobales.diagramas.observaciones[nBuscado] = [];
                 cacheDatosGlobales.diagramas.observaciones[nBuscado].push({ admin: body.usuario || body.admin || 'Sistema', fecha: body.fecha, unidad: body.unidad || "-", evento: body.evento, obsEvento: body.obsEvento || "", estado: body.estado || "-", obsEstado: body.obsEstado || "" });
-                io.emit('datos_actualizados', cacheDatosGlobales); // 🔥 Actualización UI Instante
+                io.emit('datos_actualizados', cacheDatosGlobales); 
             }
             const docObs = new GoogleSpreadsheet(ID_SHEET_OBSERVACIONES, serviceAccountAuth);
             await docObs.loadInfo(); const sheetMov = docObs.sheetsByTitle['Movimientos'];
             if (sheetMov) { await sheetMov.addRow([ body.usuario || body.admin || 'Sistema', body.chofer, body.fecha, body.unidad || "-", body.evento, body.obsEvento || "", body.estado || "-", body.obsEstado || "", "","","","","","","","" ]); huboCambios = true; }
         }
 
-        // 2. DOCUMENTOS (Nativo y sin intermediario)
         if (body && body.action === 'guardarDocumentos') {
             let nBuscado = normalizar(body.nombre);
             let dniBuscado = cacheDatosGlobales.diagramas?.dnis?.[nBuscado]?.dni || "";
             const calcularEstadoISO = (fechaStr) => { if (!fechaStr) return 'OK'; let p = fechaStr.split('-'); let d = Math.ceil((new Date(p[0], p[1] - 1, p[2]) - new Date()) / 86400000); return d < 0 ? 'VENCIDO' : (d <= 30 ? 'POR_VENCER' : 'VIGENTE'); };
 
-            // 🔥 Actualización UI Instante
             if (cacheDatosGlobales.diagramas) {
                 if (!cacheDatosGlobales.diagramas.documentos) cacheDatosGlobales.diagramas.documentos = {};
                 if (!cacheDatosGlobales.diagramas.habilitaciones) cacheDatosGlobales.diagramas.habilitaciones = {};
@@ -289,7 +278,6 @@ app.post('/api/proxy', async (req, res) => {
                 io.emit('datos_actualizados', cacheDatosGlobales); 
             }
 
-            // Escritura en Excel Background
             if (body.licVen || body.certVen) {
                 try {
                     const rowsHab = (await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_HABILITACIONES}/values/'VENCIMIENTOS'!A:C` })).data.values || [];
@@ -316,7 +304,6 @@ app.post('/api/proxy', async (req, res) => {
             huboCambios = true;
         }
 
-        // 3. CAMBIO DE DIAGRAMA / ESTADOS
         if (body && body.action === 'actualizarEstado') {
             let nBuscado = normalizar(body.nombre); let cur = new Date(body.startIso + "T12:00:00"); let fFin = new Date(body.endIso + "T12:00:00");
             let idxEst = 0; let updatesBySheet = {};
@@ -327,14 +314,12 @@ app.post('/api/proxy', async (req, res) => {
                 let val = Array.isArray(body.est) ? body.est[idxEst] : body.est; if (val === 'BORRAR') val = '-';
                 updatesBySheet[tName][cur.getDate()] = val;
                 
-                // 🔥 Actualización UI Instante
                 let isoStr = cur.toISOString().split('T')[0];
                 if (cacheDatosGlobales.diagramas?.diagramas) { let ch = cacheDatosGlobales.diagramas.diagramas.find(c => normalizar(c.nom) === nBuscado); if (ch) { if (!ch._diasIso) ch._diasIso = {}; ch._diasIso[isoStr] = val; } }
                 cur.setDate(cur.getDate() + 1); idxEst++;
             }
             io.emit('datos_actualizados', cacheDatosGlobales);
 
-            // Escritura en Excel Background
             for (let tab in updatesBySheet) {
                 try {
                     const rowsTab = (await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_DIAGRAMAS}/values/'${tab}'!A:C` })).data.values || [];
@@ -350,12 +335,10 @@ app.post('/api/proxy', async (req, res) => {
             huboCambios = true;
         }
 
-        // 4. HOJA DE RUTA
         if (body && body.action === 'guardarHojaRutaPlanilla') {
             let nBuscado = normalizar(body.nombre); let targetStr = `${String(new Date(body.fecha + "T12:00:00").getDate()).padStart(2,'0')}/${String(new Date(body.fecha + "T12:00:00").getMonth()+1).padStart(2,'0')}/${String(new Date(body.fecha + "T12:00:00").getFullYear()).slice(-2)}`;
             let strHojas = (body.hojas || []).join(', ');
 
-            // 🔥 Actualización UI Instante
             if (cacheDatosGlobales.diagramas) {
                 if(!cacheDatosGlobales.diagramas.nuevaSeccionViajes[nBuscado]) cacheDatosGlobales.diagramas.nuevaSeccionViajes[nBuscado] = {};
                 if(!cacheDatosGlobales.diagramas.nuevaSeccionViajes[nBuscado][body.fecha]) cacheDatosGlobales.diagramas.nuevaSeccionViajes[nBuscado][body.fecha] = { dominio: body.tractor || '', km: 0, campo: 0, hoja_ruta: [] };
@@ -364,7 +347,6 @@ app.post('/api/proxy', async (req, res) => {
                 io.emit('datos_actualizados', cacheDatosGlobales);
             }
 
-            // Escritura Background
             const rowsBC = (await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_KILOMETROS}/values/'KM'!B:C` })).data.values || [];
             let rIdx = -1;
             for (let i = 1; i < rowsBC.length; i++) {
@@ -387,7 +369,6 @@ app.post('/api/proxy', async (req, res) => {
 });
 
 app.post('/api/subir-foto', async (req, res) => {
-    // ... (Tu código de ImgBB sin tocar) ...
     try { const { dni, imagenBase64 } = req.body; const imgbbData = await (await fetch(`https://api.imgbb.com/1/upload?key=${process.env.IMGBB_API_KEY}`, { method: 'POST', body: new URLSearchParams({ image: imagenBase64.replace(/^data:image\/\w+;base64,/, "") }) })).json(); const linkOficial = imgbbData.data.url; const rowsFotos = (await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_MASTER}/values/'fotos'!A:B` })).data.values || []; let rIdx = -1; let dniP = String(dni).replace(/\D/g, ''); for (let i = 0; i < rowsFotos.length; i++) { if (String(rowsFotos[i][0]).replace(/\D/g, '') === dniP) { rIdx = i + 1; break; } } if (rIdx !== -1) { await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_MASTER}/values/'fotos'!B${rIdx}?valueInputOption=USER_ENTERED`, method: 'PUT', data: { values: [[linkOficial]] } }); } else { await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_MASTER}/values/'fotos'!A:B:append?valueInputOption=USER_ENTERED`, method: 'POST', data: { values: [[dniP, linkOficial]] } }); } if (!cacheDatosGlobales.diagramas.fotosImgur) cacheDatosGlobales.diagramas.fotosImgur = {}; cacheDatosGlobales.diagramas.fotosImgur[dniP] = linkOficial; io.emit('datos_actualizados', cacheDatosGlobales); res.json({ success: true, link: linkOficial, mensaje: "Foto vinculada." }); } catch (error) { res.status(500).json({ success: false, error: "Error en imagen." }); }
 });
 
