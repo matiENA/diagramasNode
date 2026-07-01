@@ -356,31 +356,182 @@ app.get('/api/datos', (req, res) => {
     res.json({ success: true, diagramas: cacheDatosGlobales.diagramas, tds: cacheDatosGlobales.tds, timestamp: cacheDatosGlobales.ultimaActualizacion });
 });
 
-app.post('/api/subir-foto', async (req, res) => {
+// ==========================================
+// 🛡️ API PROXY: LOGIN Y GUARDADO DE DATOS
+// ==========================================
+app.post('/api/proxy', async (req, res) => {
     try {
-        const { dni, imagenBase64 } = req.body;
-        const IMGBB_API_KEY = process.env.IMGBB_API_KEY;
-        const base64Data = imagenBase64.replace(/^data:image\/\w+;base64,/, "");
-        const formData = new URLSearchParams(); formData.append("image", base64Data);
-        const imgbbResponse = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, { method: 'POST', body: formData });
-        const imgbbData = await imgbbResponse.json();
-        const linkOficial = imgbbData.data.url; 
+        const body = req.body; let huboCambios = false;
+        const normalizar = (n) => String(n || '').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
 
-        const urlPestañaFotos = `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_MASTER}/values/'fotos'!A:B`;
-        const resFotos = await serviceAccountAuth.request({ url: urlPestañaFotos });
-        const rowsFotos = resFotos.data.values || [];
-        let rowIndex = -1; let dniPuro = String(dni).replace(/\D/g, '');
-        for (let i = 0; i < rowsFotos.length; i++) { if (String(rowsFotos[i][0]).replace(/\D/g, '') === dniPuro) { rowIndex = i + 1; break; } }
+        // 1. LOGIN
+        if (body && body.action === 'login') {
+            try {
+                const { data: user } = await supabase.from('usuarios_auth').select('id, usuario, rol').eq('usuario', body.usuario).eq('password', body.password).single();
+                if (user) { return res.json({ success: true, token: 'auth_' + user.id + '_' + Date.now(), rol: user.rol }); } 
+                else { return res.json({ success: false, error: "Usuario o contraseña incorrectos." }); }
+            } catch(e) { return res.json({ success: false, error: "Error conectando al servidor de Auth." }); }
+        }
 
-        if (rowIndex !== -1) { await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_MASTER}/values/'fotos'!B${rowIndex}?valueInputOption=USER_ENTERED`, method: 'PUT', data: { values: [[linkOficial]] } }); } 
-        else { await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_MASTER}/values/'fotos'!A:B:append?valueInputOption=USER_ENTERED`, method: 'POST', data: { values: [[dniPuro, linkOficial]] } }); }
+        // 2. OBSERVACIONES
+        if (body && (body.action === 'guardarObservacion' || body.action === 'guardarNuevaObservacion')) {
+            const docObs = new GoogleSpreadsheet(ID_SHEET_OBSERVACIONES, serviceAccountAuth);
+            await docObs.loadInfo(); const sheetMov = docObs.sheetsByTitle['Movimientos'];
+            if (sheetMov) {
+                const nuevaFila = [ body.usuario || body.admin || 'Sistema', body.chofer, body.fecha, body.unidad || "-", body.evento, body.obsEvento || "", body.estado || "-", body.obsEstado || "", "","","","","","","","" ];
+                await sheetMov.addRow(nuevaFila); 
+                huboCambios = true;
+            }
+        }
 
-        if (!cacheDatosGlobales.diagramas.fotosImgur) cacheDatosGlobales.diagramas.fotosImgur = {};
-        cacheDatosGlobales.diagramas.fotosImgur[dniPuro] = linkOficial;
-        io.emit('datos_actualizados', cacheDatosGlobales);
-        res.json({ success: true, link: linkOficial, mensaje: "Foto vinculada." });
-    } catch (error) { res.status(500).json({ success: false, error: "Error en el servidor procesando la imagen." }); }
+        // 3. DOCUMENTOS Y HABILITACIONES
+        if (body && body.action === 'guardarDocumentos') {
+            let nBuscado = normalizar(body.nombre);
+            let dniBuscado = cacheDatosGlobales.diagramas && cacheDatosGlobales.diagramas.dnis && cacheDatosGlobales.diagramas.dnis[nBuscado] ? cacheDatosGlobales.diagramas.dnis[nBuscado].dni : "";
+
+            if (body.licVen || body.certVen) {
+                try {
+                    const ID_SHEET_HABILITACIONES = '1hPDno09tMBtKh7aIdsvzEYcyOY7leYj2B6XnniD0aXg';
+                    const resHab = await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_HABILITACIONES}/values/'VENCIMIENTOS'!A:C` });
+                    const rowsHab = resHab.data.values || [];
+                    let rowIndexHab = -1;
+                    
+                    for (let i = 0; i < rowsHab.length; i++) {
+                        let nSheet = normalizar(rowsHab[i][1]); let dniSheet = String(rowsHab[i][2] || "").replace(/\D/g, '');
+                        if ((dniBuscado && dniSheet === dniBuscado) || nSheet === nBuscado) { rowIndexHab = i + 1; break; }
+                    }
+                    
+                    if (rowIndexHab !== -1) {
+                        let reqs = [];
+                        if (body.licVen) {
+                            let p = body.licVen.split('-'); let fechaArg = `${p[2]}/${p[1]}/${p[0]}`; 
+                            reqs.push(serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_HABILITACIONES}/values/'VENCIMIENTOS'!E${rowIndexHab}?valueInputOption=USER_ENTERED`, method: 'PUT', data: { values: [[fechaArg]] } }));
+                        }
+                        if (body.certVen) {
+                            let p = body.certVen.split('-'); let fechaArg = `${p[2]}/${p[1]}/${p[0]}`; 
+                            reqs.push(serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_HABILITACIONES}/values/'VENCIMIENTOS'!D${rowIndexHab}?valueInputOption=USER_ENTERED`, method: 'PUT', data: { values: [[fechaArg]] } }));
+                        }
+                        await Promise.all(reqs); 
+                    }
+                } catch(e) {}
+            }
+
+            if (body.exVen) {
+                try {
+                    const ID_SHEET_DOCUMENTOS = '1pnYXKDSv70Vq78Rchxus5FHMKdgXdbfltVsEg6vArjo';
+                    const resDoc = await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_DOCUMENTOS}/values/'PERIODICOS'!A:E` });
+                    const rowsDoc = resDoc.data.values || [];
+                    let rowIndexDoc = -1;
+
+                    const extraerDni = (cuil) => {
+                        let l = String(cuil).replace(/\D/g, '');
+                        if (!l) return "";
+                        if (l.length === 11) return String(parseInt(l.substring(2, 10), 10));
+                        if (l.length === 10) return String(parseInt(l.substring(2, 9), 10));
+                        return String(parseInt(l, 10));
+                    };
+
+                    for (let i = 0; i < rowsDoc.length; i++) {
+                        let nSheet = normalizar(rowsDoc[i][1]); let cuilSheet = rowsDoc[i][4]; let dniSheet = extraerDni(cuilSheet);
+                        if ((dniBuscado && dniSheet === dniBuscado) || nSheet === nBuscado) { rowIndexDoc = i + 1; break; }
+                    }
+
+                    if (rowIndexDoc !== -1) {
+                        let p = body.exVen.split('-'); let fechaArg = `${p[2]}/${p[1]}/${p[0]}`;
+                        await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_DOCUMENTOS}/values/'PERIODICOS'!I${rowIndexDoc}?valueInputOption=USER_ENTERED`, method: 'PUT', data: { values: [[fechaArg]] } });
+                    }
+                } catch(e) {}
+            }
+
+            if (!cacheDatosGlobales.diagramas.documentos) cacheDatosGlobales.diagramas.documentos = {};
+            if (!cacheDatosGlobales.diagramas.habilitaciones) cacheDatosGlobales.diagramas.habilitaciones = {};
+            if (!cacheDatosGlobales.diagramas.certificados) cacheDatosGlobales.diagramas.certificados = {};
+
+            const calcularEstado = (fechaStr) => {
+                if (!fechaStr) return 'OK';
+                let partes = fechaStr.split('-'); let v = new Date(partes[0], partes[1] - 1, partes[2]);
+                let diff = Math.ceil((v - new Date()) / 86400000);
+                return diff < 0 ? 'VENCIDO' : (diff <= 30 ? 'POR_VENCER' : 'VIGENTE');
+            };
+
+            if (body.exVen) cacheDatosGlobales.diagramas.documentos[nBuscado] = { ven: body.exVen, estado: calcularEstado(body.exVen) };
+            if (body.licVen) cacheDatosGlobales.diagramas.habilitaciones[nBuscado] = { ven: body.licVen, estado: calcularEstado(body.licVen) };
+            if (body.certVen) cacheDatosGlobales.diagramas.certificados[nBuscado] = { ven: body.certVen, estado: calcularEstado(body.certVen) };
+
+            const guardarCacheRow = async (fila, dataObj) => {
+                let jsonStr = JSON.stringify(dataObj); let chunks = [];
+                for (let i = 0; i < jsonStr.length; i += 45000) chunks.push("'" + jsonStr.substring(i, i + 45000));
+                try {
+                    await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_MASTER}/values/'API_CACHE_BASICO'!A${fila}:Z${fila}:clear`, method: 'POST' });
+                    await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_MASTER}/values/'API_CACHE_BASICO'!A${fila}?valueInputOption=USER_ENTERED`, method: 'PUT', data: { values: [chunks] } });
+                } catch(e) {}
+            };
+
+            let promesasCache = [];
+            if (body.exVen) promesasCache.push(guardarCacheRow(2, cacheDatosGlobales.diagramas.documentos));
+            if (body.licVen) promesasCache.push(guardarCacheRow(3, cacheDatosGlobales.diagramas.habilitaciones));
+            if (body.certVen) promesasCache.push(guardarCacheRow(5, cacheDatosGlobales.diagramas.certificados));
+            await Promise.all(promesasCache);
+            huboCambios = true;
+        }
+
+        // 4. HOJA DE RUTA
+        if (body && body.action === 'guardarHojaRutaPlanilla') {
+            let stringHojas = (body.hojas || []).join(', ');
+            let nBuscado = normalizar(body.nombre);
+            
+            let dTarget = new Date(body.fecha + "T12:00:00");
+            let targetStr = `${String(dTarget.getDate()).padStart(2,'0')}/${String(dTarget.getMonth()+1).padStart(2,'0')}/${String(dTarget.getFullYear()).slice(-2)}`;
+            
+            const urlScan = `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_KILOMETROS}/values/'KM'!B:C`;
+            const resScan = await serviceAccountAuth.request({ url: urlScan });
+            const rowsBC = resScan.data.values || [];
+            
+            let rowIndex = -1;
+            for (let i = 1; i < rowsBC.length; i++) {
+                let fFilaRaw = String(rowsBC[i][0] || '').trim();
+                let nFila = normalizar(rowsBC[i][1]);
+                
+                if (nFila === nBuscado) {
+                    let partesFecha = fFilaRaw.split(' ')[0].split(/[\/\-]/);
+                    let coincide = false;
+                    
+                    if (partesFecha.length >= 3) {
+                        let diaFila = String(parseInt(partesFecha[0], 10)).padStart(2, '0');
+                        let mesFila = String(parseInt(partesFecha[1], 10)).padStart(2, '0');
+                        let anioFila = partesFecha[2].length === 4 ? partesFecha[2].slice(-2) : partesFecha[2];
+                        
+                        if (partesFecha[0].length === 4) {
+                            diaFila = String(parseInt(partesFecha[2], 10)).padStart(2, '0');
+                            mesFila = String(parseInt(partesFecha[1], 10)).padStart(2, '0');
+                            anioFila = partesFecha[0].slice(-2);
+                        }
+                        
+                        let filaNormalizada = `${diaFila}/${mesFila}/${anioFila}`;
+                        if (filaNormalizada === targetStr) coincide = true;
+                    } else {
+                        if (fFilaRaw.includes(targetStr) || fFilaRaw.startsWith(body.fecha)) coincide = true;
+                    }
+
+                    if (coincide) { rowIndex = i + 1; break; }
+                }
+            }
+
+            if (rowIndex !== -1) {
+                const updateUrl = `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_KILOMETROS}/values/'KM'!T${rowIndex}?valueInputOption=USER_ENTERED`;
+                await serviceAccountAuth.request({ url: updateUrl, method: 'PUT', data: { values: [[stringHojas]] } });
+            } else {
+                const docKm = new GoogleSpreadsheet(ID_SHEET_KILOMETROS, serviceAccountAuth);
+                await docKm.loadInfo(); const sheetKm = docKm.sheetsByTitle['KM'] || docKm.sheetsByIndex[0];
+                let nuevaFila = new Array(20).fill("");
+                nuevaFila[0] = body.tractor || ""; nuevaFila[1] = targetStr; nuevaFila[2] = body.nombre; nuevaFila[19] = stringHojas;
+                await sheetKm.addRow(nuevaFila);
+            }
+            huboCambios = true;
+        }
+
+        if (body && body.action !== 'login' && huboCambios) { flujoEncoladoGlobal(false); }
+        res.json({ success: true, message: "Operación completada" });
+
+    } catch (error) { console.error(error); res.status(500).json({ success: false, error: "Fallo general en Proxy" }); }
 });
-
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`🚀 Servidor Node Activo en puerto ${PORT}`));
