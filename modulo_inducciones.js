@@ -3,17 +3,18 @@
 // =======================================================
 
 window.renderizarVistaInducciones = function(container) {
-    if (!window.datosGlobales || window.datosGlobales.length === 0) {
+    // 👉 CORRECCIÓN CRÍTICA: Quitamos el "window." de datosGlobales y fechaGlobalContexto
+    if (typeof datosGlobales === 'undefined' || datosGlobales.length === 0) {
         container.innerHTML = '<div class="p-10 text-center text-gray-500 font-bold">No hay datos cargados en el sistema.</div>';
         return;
     }
 
     // 1. Escanear el calendario buscando el estado 'IND' (Inducción)
     let agrupacionesIND = {};
-    let hoyFiltro = new Date(window.fechaGlobalContexto + "T12:00:00");
+    let hoyFiltro = new Date(fechaGlobalContexto + "T12:00:00");
     hoyFiltro.setHours(0, 0, 0, 0);
 
-    window.datosGlobales.forEach(chofer => {
+    datosGlobales.forEach(chofer => {
         if (!chofer._diasIso) return;
         
         for (let isoDate in chofer._diasIso) {
@@ -21,7 +22,7 @@ window.renderizarVistaInducciones = function(container) {
             
             // Detectamos si el día tiene la marca de Inducción
             if (estadoRaw === 'IND' || estadoRaw.includes('IND')) {
-                // Filtramos opcionalmente para que muestre desde hace 5 días en adelante (no todo el año pasado)
+                // Filtramos opcionalmente para que muestre desde hace 5 días en adelante
                 let dEval = new Date(isoDate + "T12:00:00");
                 let limitePasado = new Date(hoyFiltro);
                 limitePasado.setDate(limitePasado.getDate() - 5);
@@ -51,6 +52,7 @@ window.renderizarVistaInducciones = function(container) {
                 </h2>
                 <p class="text-xs text-teal-100 mt-1">Choferes programados con estado (IND) en el Diagrama</p>
             </div>
+            <span class="px-3 py-1 bg-white/20 rounded-lg text-sm font-black border border-white/30 backdrop-blur-sm">${fechasOrdenadas.length} Fechas Activas</span>
         </div>
         <div class="p-4 sm:p-6 bg-slate-50/50 min-h-[400px]">
     `;
@@ -59,7 +61,7 @@ window.renderizarVistaInducciones = function(container) {
         html += `
         <div class="flex flex-col items-center justify-center p-12 opacity-60">
             <span class="text-4xl mb-3">📭</span>
-            <p class="text-gray-500 font-bold tracking-wider uppercase text-sm">No hay inducciones programadas</p>
+            <p class="text-gray-500 font-bold tracking-wider uppercase text-sm">No hay inducciones programadas próximamente</p>
         </div>`;
     } else {
         const opcionesFecha = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
@@ -71,7 +73,7 @@ window.renderizarVistaInducciones = function(container) {
             fechaAmigable = fechaAmigable.charAt(0).toUpperCase() + fechaAmigable.slice(1);
 
             // Resaltar si es HOY
-            let esHoy = isoDate === window.fechaGlobalContexto;
+            let esHoy = isoDate === fechaGlobalContexto;
             let badgeStyle = esHoy 
                 ? 'bg-teal-500 text-white border-teal-600 shadow-md animate-pulse' 
                 : 'bg-teal-100 text-teal-800 border-teal-200 shadow-sm';
@@ -93,7 +95,7 @@ window.renderizarVistaInducciones = function(container) {
             agrupacionesIND[isoDate].forEach(c => {
                 html += `
                     <div onclick="cambiarVistaPrincipal('individual'); window.mostrarDetalleConductor('${c._safeId}')" 
-                         class="group bg-white p-3 rounded-xl border border-gray-100 shadow-sm hover:shadow-md hover:border-teal-300 cursor-pointer transition-all flex justify-between items-center relative overflow-hidden w-full max-w-2xl">
+                         class="group bg-white p-3 rounded-xl border border-gray-100 shadow-sm hover:shadow-md hover:border-teal-400 cursor-pointer transition-all flex justify-between items-center relative overflow-hidden w-full max-w-2xl">
                         
                         <div class="absolute left-0 top-0 bottom-0 w-1.5 bg-teal-400 opacity-0 group-hover:opacity-100 transition-opacity"></div>
                         
@@ -108,7 +110,7 @@ window.renderizarVistaInducciones = function(container) {
                         </div>
                         
                         <div class="shrink-0 pl-3">
-                            <span class="px-2 py-1 bg-gray-50 text-gray-400 border border-gray-200 rounded text-[9px] font-bold flex items-center gap-1 group-hover:bg-teal-50 group-hover:text-teal-600 group-hover:border-teal-200 transition-colors">
+                            <span class="px-2 py-1 bg-gray-50 text-gray-400 border border-gray-200 rounded text-[9px] font-bold flex items-center gap-1 group-hover:bg-teal-50 group-hover:text-teal-700 group-hover:border-teal-200 transition-colors shadow-sm">
                                 Ver Ficha <svg class="w-3 h-3 transform group-hover:translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
                             </span>
                         </div>
