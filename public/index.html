@@ -3648,17 +3648,19 @@ window.procesarNuevaFoto = function(inputElement, dniChofer, safeId) {
 // 🌱 DETECTOR DE PERÍODO DE PRUEBA (6 MESES)
 // ==========================================
 window.calcularMesesPrueba = function(chofer) {
-    if (!window.cacheDatosGlobales || !window.cacheDatosGlobales.diagramas || !window.cacheDatosGlobales.diagramas.telefonos) return 999;
+    // 👉 CORRECCIÓN: Usamos las variables globales propias del Front-End
+    if (!dnisGlobales || !telefonosGlobales) return 999;
     
     let nomNorm = String(chofer.nom || '').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
-    let dni = (window.cacheDatosGlobales.diagramas.dnis && window.cacheDatosGlobales.diagramas.dnis[nomNorm]) 
-        ? window.cacheDatosGlobales.diagramas.dnis[nomNorm].dni : null;
     
-    let datosContacto = (dni && window.cacheDatosGlobales.diagramas.telefonos[dni]) 
-        ? window.cacheDatosGlobales.diagramas.telefonos[dni] 
-        : window.cacheDatosGlobales.diagramas.telefonos[nomNorm];
+    let datosDni = dnisGlobales[nomNorm];
+    let dni = datosDni ? (datosDni.dni || datosDni) : null;
+    
+    let datosContacto = (dni && telefonosGlobales[dni]) 
+        ? telefonosGlobales[dni] 
+        : telefonosGlobales[nomNorm];
         
-    if (!datosContacto || !datosContacto.fechaAlta) return 999; 
+    if (!datosContacto || !datosContacto.fechaAlta || datosContacto.fechaAlta === '-') return 999; 
     
     // Convertir fecha (Soporta formatos "3 Dec 2024" y "03/12/2024")
     let d = new Date(datosContacto.fechaAlta);
@@ -3670,6 +3672,8 @@ window.calcularMesesPrueba = function(chofer) {
     
     let evaluarDesde = window.fechaGlobalContexto ? new Date(window.fechaGlobalContexto + "T12:00:00") : new Date();
     let mesesDiff = (evaluarDesde.getFullYear() - d.getFullYear()) * 12 + (evaluarDesde.getMonth() - d.getMonth());
+    
+    // Ajuste por días exactos
     if (evaluarDesde.getDate() < d.getDate()) mesesDiff--; 
     
     return mesesDiff;
@@ -3706,7 +3710,8 @@ window.obtenerProgressBarPrueba = function(chofer) {
     html += `</div></div>`;
     return html;
 };
-  </script>
+
+</script>
   <script src="modulo_inducciones.js"></script>
 </body>
 </html>
