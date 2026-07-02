@@ -1,0 +1,44 @@
+# ==========================================
+# 📝 1. MIS ANOTACIONES Y BORRADORES
+# ==========================================
+# Ignora cualquier carpeta dedicada a tus apuntes:
+/notas/
+/anotaciones/
+/borradores/
+
+# Ignora archivos específicos sueltos en cualquier parte del proyecto:
+TODO.md
+apuntes.txt
+ideas.txt
+
+# Ignora por extensión (puedes crear archivos como "prueba.draft" o "test.notes"):
+*.draft
+*.notes
+*.temp
+
+# ==========================================
+# 🔐 2. SEGURIDAD Y CREDENCIALES (CRÍTICO)
+# ==========================================
+# Evita que tus claves de Supabase y Google Service Account se filtren:
+.env
+.env.*
+*.pem
+*.key
+
+# ==========================================
+# 🚀 3. DEPENDENCIAS DE NODE.JS
+# ==========================================
+node_modules/
+npm-debug.log
+yarn-error.log
+package-lock.json
+
+# ==========================================
+# 💻 4. EDITORES Y SISTEMAS OPERATIVOS
+# ==========================================
+# Configuraciones locales de VS Code (opcional, pero recomendado si tienes notas ahí)
+.vscode/
+
+# Archivos basura del sistema operativo
+.DS_Store
+Thumbs.db
