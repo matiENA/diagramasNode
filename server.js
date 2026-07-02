@@ -90,15 +90,10 @@ async function actualizarCacheDesdeGoogle() {
 
         let listaChoferesMaestros = [];
         try {
-            // 👉 FECHA EXACTA ARGENTINA (Motor Anti-Desfase UTC)
-            const formatter = new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', year: 'numeric', month: 'numeric', day: 'numeric' });
-            const parts = formatter.formatToParts(new Date());
-            const targetD = parseInt(parts.find(p => p.type === 'day').value, 10);
-            const targetM = parseInt(parts.find(p => p.type === 'month').value, 10) - 1;
-            const targetY = parseInt(parts.find(p => p.type === 'year').value, 10);
-
-            let anio = targetY; 
-            let nombreHojaActual = mesesAbrev[targetM] + "-" + String(anio).slice(-2);
+            // 👉 FECHA EXACTA ARGENTINA
+            let hoyAr = new Date(new Date().toLocaleString("en-US", {timeZone: "America/Argentina/Buenos_Aires"}));
+            let anio = hoyAr.getFullYear(); 
+            let nombreHojaActual = mesesAbrev[hoyAr.getMonth()] + "-" + String(anio).slice(-2);
             
             (await fetchRango(ID_SPREADSHEET_DIAGRAMAS, `'${nombreHojaActual}'!A6:C1000`)).forEach(row => {
                 if (row[1] && !["APELLIDO Y NOMBRE", "Personal Activo"].includes(row[1])) {
@@ -111,45 +106,58 @@ async function actualizarCacheDesdeGoogle() {
             const rowsMov = await fetchRango(ID_SHEET_MOVIMIENTOS, `'${nombrePestañaMov}'!A1:ZZ1000`);
             
             if (rowsMov.length > 0) {
-                let targetD_pad = String(targetD).padStart(2, '0');
-                let targetM_pad = String(targetM + 1).padStart(2, '0');
-                let targetY_short = String(targetY).slice(-2);
-                
-                let regexFechas = [
-                    new RegExp(`\\b0?${targetD}[\\s/\\-de]+${mesesLargo[targetM]}\\b`, 'i'),
-                    new RegExp(`\\b0?${targetD}[\\s/\\-]+${mesesAbrev[targetM]}\\b`, 'i'),
-                    new RegExp(`\\b${targetD_pad}/${targetM_pad}/${targetY}\\b`),
-                    new RegExp(`\\b${targetD}/${targetM+1}/${targetY}\\b`),
-                    new RegExp(`\\b${targetD_pad}/${targetM_pad}/${targetY_short}\\b`),
-                    new RegExp(`\\b${targetD}/${targetM+1}/${targetY_short}\\b`),
-                    new RegExp(`\\b${targetD_pad}/${targetM_pad}\\b`),
-                    new RegExp(`\\b${targetD}/${targetM+1}\\b`)
-                ];
+                // 👉 BÚSQUEDA INTELIGENTE DE FECHAS (Hoy, Ayer, Anteayer)
+                let dateOptions = [0, -1, -2, -3].map(offset => {
+                    let d = new Date(hoyAr);
+                    d.setDate(d.getDate() + offset);
+                    let tD = d.getDate(); let tM = d.getMonth(); let tY = d.getFullYear();
+                    let tD_pad = String(tD).padStart(2, '0'); let tM_pad = String(tM + 1).padStart(2, '0'); let tY_short = String(tY).slice(-2);
+                    
+                    return [
+                        new RegExp(`\\b0?${tD}[\\s/\\-de]+${mesesLargo[tM]}\\b`, 'i'),
+                        new RegExp(`\\b0?${tD}[\\s/\\-]+${mesesAbrev[tM]}\\b`, 'i'),
+                        new RegExp(`\\b${tD_pad}/${tM_pad}/${tY}\\b`),
+                        new RegExp(`\\b${tD}/${tM+1}/${tY}\\b`),
+                        new RegExp(`\\b${tD_pad}/${tM_pad}/${tY_short}\\b`),
+                        new RegExp(`\\b${tD}/${tM+1}/${tY_short}\\b`)
+                    ];
+                });
 
                 let colFecha = -1;
+                let colNom = -1;
                 
-                // Buscar la columna de la fecha en las primeras 5 filas para asegurar agarrar el header
-                for (let r = 0; r < Math.min(5, rowsMov.length); r++) {
-                    for (let c = 0; c < rowsMov[r].length; c++) {
-                        let val = String(rowsMov[r][c] || "").toLowerCase().trim();
-                        if (regexFechas.some(rx => rx.test(val))) { 
-                            colFecha = c; 
-                            break; 
+                // Buscar en las primeras 4 filas por la fecha más reciente disponible
+                for (let dayRegexes of dateOptions) {
+                    for (let r = 0; r < Math.min(4, rowsMov.length); r++) {
+                        for (let c = 0; c < rowsMov[r].length; c++) {
+                            let val = String(rowsMov[r][c] || "").toLowerCase().trim();
+                            if (dayRegexes.some(rx => rx.test(val))) { 
+                                colFecha = c; 
+                                break; 
+                            }
                         }
+                        if (colFecha !== -1) break;
                     }
                     if (colFecha !== -1) break;
                 }
 
-                // 👉 REGLA ESTRICTA COMO GAS: 3 Columnas hacia la izquierda
                 if (colFecha >= 3) {
-                    let colNom = colFecha - 3; 
+                    // REGLA ESTRICTA: 3 Columnas a la izquierda de la fecha
+                    colNom = colFecha - 3; 
+                } else {
+                    // Fallback a prueba de fallos: La PRIMERA columna de "Chofer" que encuentre de Izquierda a Derecha
+                    for (let c = 0; c < rowsMov[0].length; c++) { 
+                        if (String(rowsMov[0][c] || "").toLowerCase().trim().includes("chofer")) { colNom = c; break; } 
+                    } 
+                }
 
+                if (colNom !== -1) {
                     for (let i = 2; i < rowsMov.length; i++) {
                         let n_ute = String(rowsMov[i][2] || "").trim();
                         let tractor = String(rowsMov[i][4] || "").trim();
                         let semi = String(rowsMov[i][5] || "").trim();
 
-                        // 👉 REGLA ESTRICTA: Hasta donde hay patentes
+                        // REGLA: Si no hay tractor, salta la fila (Ej: "METANOL") y sigue buscando abajo
                         if (!tractor) continue;
 
                         let nomRaw = String(rowsMov[i][colNom] || "").trim();
@@ -247,10 +255,10 @@ async function actualizarCacheDesdeGoogle() {
             rowsHab.forEach(r => { let n = normalizar(r[1]); let c = fRev(r[3]); let l = fRev(r[4]); if (n) { if (c) resDiagGAS.certificados[n] = { ven: c, estado: calcEst(r[3]) }; if (l) resDiagGAS.habilitaciones[n] = { ven: l, estado: calcEst(r[4]) }; } });
         } catch(e) { console.error("Error Lectura Docs:", e); }
 
-        let hoyAr = new Date(new Date().toLocaleString("en-US", {timeZone: "America/Argentina/Buenos_Aires"}));
+        let hoyAr2 = new Date(new Date().toLocaleString("en-US", {timeZone: "America/Argentina/Buenos_Aires"}));
         let offsetsMeses = [-1, 0, 1, 2, 3]; 
         for (let i of offsetsMeses) {
-            let d = new Date(hoyAr.getFullYear(), hoyAr.getMonth() + i, 1); let anio = d.getFullYear(); let mesStr = String(d.getMonth() + 1).padStart(2, '0');
+            let d = new Date(hoyAr2.getFullYear(), hoyAr2.getMonth() + i, 1); let anio = d.getFullYear(); let mesStr = String(d.getMonth() + 1).padStart(2, '0');
             let nombreHoja = mesesAbrev[d.getMonth()] + "-" + String(anio).slice(-2); hojasInfo.push({ nombre: nombreHoja, anio, mesStr });
             (await fetchRango(ID_SPREADSHEET_DIAGRAMAS, `'${nombreHoja}'!A6:AL1000`)).forEach(row => {
                 let n = row[1]; if (!n || n === "APELLIDO Y NOMBRE" || n === "Personal Activo") return; let nomNorm = normalizar(n); if (!diasLegacyIso[nomNorm]) diasLegacyIso[nomNorm] = {};
