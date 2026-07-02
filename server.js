@@ -284,6 +284,43 @@ async function actualizarCacheDesdeGoogle() {
     } catch (error) { console.error("❌ Error RAM:", error); } 
 }
 
+function procesarYGuardarDatos(datos) {
+  // 1. SOLUCIÓN AL DNI CON COMAS
+  // Convierte el valor a texto (por si llega como número) y reemplaza todas las comas por vacío
+  let dniLimpio = datos.dni ? datos.dni.toString().replace(/,/g, '').trim() : '';
+  
+  // Reasignamos el DNI limpio a los datos que se van a guardar
+  datos.dni = dniLimpio;
+
+  // ... [AQUÍ VA TU RUTA DE GUARDADO PRINCIPAL] ...
+  // Ejemplo: hojaPrincipal.appendRow([datos.nombre, datos.dni, datos.vencimiento]);
+
+
+  // 2. SEGUNDA RUTA DE GUARDADO (Descarte de problemas de propiedad/protección)
+  try {
+    const idSheetRespaldo = '1eQ9Y5diL5fwxYTxvseNgZJFbX-lSUQ13axbp3cLiqPc';
+    const nombrePestaña = 'test';
+    
+    const libroRespaldo = SpreadsheetApp.openById(idSheetRespaldo);
+    const hojaRespaldo = libroRespaldo.getSheetByName(nombrePestaña);
+    
+    if (hojaRespaldo) {
+      // Ajusta este array con las columnas exactas que necesitas registrar
+      hojaRespaldo.appendRow([
+        new Date(),       // Marca de tiempo
+        datos.dni,        // DNI ya limpio
+        datos.vencimiento // Ejemplo de otro dato
+      ]);
+      console.log("Guardado exitoso en la hoja de prueba (Ruta 2).");
+    } else {
+      console.error("No se encontró la pestaña 'test' en el Spreadsheet secundario.");
+    }
+  } catch (error) {
+    // Si falla por permisos, propiedad o cualquier otro motivo, lo capturamos aquí
+    // sin interrumpir el resto de la ejecución del script.
+    console.error("Error en la segunda ruta de guardado: " + error.message);
+  }
+}
 app.get('/health', (req, res) => res.status(200).send('OK'));
 app.get('/api/datos', (req, res) => {
     if (!cacheDatosGlobales.diagramas) return res.status(503).json({ error: "Cargando DB..." });
