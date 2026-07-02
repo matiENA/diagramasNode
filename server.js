@@ -88,9 +88,11 @@ async function actualizarCacheDesdeGoogle() {
 
         let listaChoferesMaestros = [];
         try {
-            let hoy = new Date(); let anio = hoy.getFullYear(); let nombreHojaActual = mesesAbrev[hoy.getMonth()] + "-" + String(anio).slice(-2);
+            // 👉 SOLUCIÓN 1: Forzar Zona Horaria Argentina (UTC-3)
+            let hoy = new Date(new Date().toLocaleString("en-US", {timeZone: "America/Argentina/Buenos_Aires"}));
+            let anio = hoy.getFullYear(); 
+            let nombreHojaActual = mesesAbrev[hoy.getMonth()] + "-" + String(anio).slice(-2);
             
-            // 👉 AMPLIADO a 1000
             (await fetchRango(ID_SPREADSHEET_DIAGRAMAS, `'${nombreHojaActual}'!A6:C1000`)).forEach(row => {
                 if (row[1] && !["APELLIDO Y NOMBRE", "Personal Activo"].includes(row[1])) {
                     let norm = normalizar(row[1]);
@@ -99,31 +101,78 @@ async function actualizarCacheDesdeGoogle() {
             });
 
             let nombrePestañaMov = await getTabName(ID_SHEET_MOVIMIENTOS, "Mov.Unidades", "Mov.Unidades y Choferes");
-            
-            // 👉 AMPLIADO a 1000
             const rowsMov = await fetchRango(ID_SHEET_MOVIMIENTOS, `'${nombrePestañaMov}'!A1:ZZ1000`);
+            
             if (rowsMov.length > 0) {
+                let headers = rowsMov[0];
                 let targetD = hoy.getDate(), targetM = hoy.getMonth(), targetY = hoy.getFullYear();
-                let regexFecha = new RegExp(`\\b0?${targetD}[\\s/]+${["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"][targetM]}[\\s/]+${targetY}\\b`, 'i');
-                let colFecha = -1, colNom = -1;
-                for (let c = 0; c < rowsMov[0].length; c++) { let val = String(rowsMov[0][c] || "").toLowerCase().trim(); if (regexFecha.test(val) || val.includes(`${targetD}/${targetM+1}/${targetY}`)) { colFecha = c; break; } }
-                if (colFecha !== -1 && colFecha >= 3) colNom = colFecha - 3; else { for (let c = rowsMov[0].length - 1; c >= 3; c--) { if (String(rowsMov[0][c] || "").toLowerCase().trim() === "chofer") { colNom = c; break; } } }
+                let targetD_pad = String(targetD).padStart(2, '0');
+                let targetM_pad = String(targetM + 1).padStart(2, '0');
+                let targetY_short = String(targetY).slice(-2);
+                
+                // 👉 SOLUCIÓN 2: Multi-Formatos de Fecha
+                let regexFechas = [
+                    new RegExp(`\\b0?${targetD}[\\s/\\-de]+${["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"][targetM]}\\b`, 'i'),
+                    new RegExp(`\\b0?${targetD}[\\s/\\-]+${mesesAbrev[targetM]}\\b`, 'i'),
+                    new RegExp(`\\b${targetD_pad}/${targetM_pad}/${targetY}\\b`),
+                    new RegExp(`\\b${targetD}/${targetM+1}/${targetY}\\b`),
+                    new RegExp(`\\b${targetD_pad}/${targetM_pad}/${targetY_short}\\b`),
+                    new RegExp(`\\b${targetD}/${targetM+1}/${targetY_short}\\b`),
+                    new RegExp(`\\b${targetD_pad}/${targetM_pad}\\b`),
+                    new RegExp(`\\b${targetD}/${targetM+1}\\b`)
+                ];
 
+                let colFecha = -1, colNom = -1;
+                
+                // Búsqueda de la Fecha (Hacia atrás, para agarrar el día actual que suele estar más a la derecha)
+                for (let c = headers.length - 1; c >= 3; c--) { 
+                    let val = String(headers[c] || "").toLowerCase().trim(); 
+                    if (regexFechas.some(rx => rx.test(val))) { colFecha = c; break; } 
+                }
+
+                if (colFecha !== -1 && colFecha >= 3) { 
+                    colNom = colFecha - 3; 
+                } else { 
+                    // Fallback 1: Buscar la palabra "chofer" en los títulos
+                    for (let c = headers.length - 1; c >= 3; c--) { 
+                        if (String(headers[c] || "").toLowerCase().trim().includes("chofer")) { colNom = c; break; } 
+                    } 
+                }
+
+                // 👉 SOLUCIÓN 3: Auto-Calibración de Columnas (Si fallan los títulos, lee los datos)
+                if (colNom === -1 && listaChoferesMaestros.length > 0) {
+                    let knownNames = listaChoferesMaestros.slice(0, 8).map(c => c.norm);
+                    for (let c = headers.length - 1; c >= 3; c--) {
+                        let found = false;
+                        for (let i = 2; i < Math.min(20, rowsMov.length); i++) {
+                            if (knownNames.includes(normalizar(rowsMov[i][c]))) {
+                                colNom = c; found = true; break;
+                            }
+                        }
+                        if (found) break;
+                    }
+                }
+
+                // Ahora sí, extraemos los vehículos sin fallar
                 if (colNom !== -1) {
                     for (let i = 2; i < rowsMov.length; i++) {
                         let nomRaw = String(rowsMov[i][colNom] || "").trim();
                         if (!nomRaw || nomRaw === "1" || !/[a-zA-Záéíóú]/.test(nomRaw)) continue;
                         let norm = normalizar(nomRaw);
-                        if (resDiagGAS.flota[norm]) { resDiagGAS.flota[norm].n_ute = String(rowsMov[i][2] || "").trim(); resDiagGAS.flota[norm].tractor = String(rowsMov[i][4] || "").trim(); resDiagGAS.flota[norm].semi = String(rowsMov[i][5] || "").trim(); } 
-                        else { resDiagGAS.flota[norm] = { tractor: String(rowsMov[i][4] || "").trim(), semi: String(rowsMov[i][5] || "").trim(), servicio: 'S/A', n_ute: String(rowsMov[i][2] || "").trim(), td: '-', hex1: '', hex2: '' }; listaChoferesMaestros.push({ nombre: nomRaw, norm }); }
+                        if (resDiagGAS.flota[norm]) { 
+                            resDiagGAS.flota[norm].n_ute = String(rowsMov[i][2] || "").trim(); 
+                            resDiagGAS.flota[norm].tractor = String(rowsMov[i][4] || "").trim(); 
+                            resDiagGAS.flota[norm].semi = String(rowsMov[i][5] || "").trim(); 
+                        } else { 
+                            resDiagGAS.flota[norm] = { tractor: String(rowsMov[i][4] || "").trim(), semi: String(rowsMov[i][5] || "").trim(), servicio: 'S/A', n_ute: String(rowsMov[i][2] || "").trim(), td: '-', hex1: '', hex2: '' }; 
+                            listaChoferesMaestros.push({ nombre: nomRaw, norm }); 
+                        }
                     }
                 }
             }
 
             let nombrePestañaViajes = await getTabName(ID_SHEET_MOVIMIENTOS, "Tabla de viajes", "Tabla de viajes");
             let mapaTD = {};
-            
-            // 👉 AMPLIADO a 1000
             (await fetchRango(ID_SHEET_MOVIMIENTOS, `'${nombrePestañaViajes}'!D2:G1000`)).forEach(row => { if (String(row[0] || "").trim()) mapaTD[String(row[0] || "").trim()] = { td: String(row[1] || "").trim(), hex: String(row[3] || "").trim() }; });
             
             for (let key in resDiagGAS.flota) { let tr = resDiagGAS.flota[key].tractor; if (tr && mapaTD[tr]) { resDiagGAS.flota[key].td = mapaTD[tr].td; resDiagGAS.flota[key].hex1 = mapaTD[tr].hex; resDiagGAS.flota[key].hex2 = mapaTD[tr].hex; } }
