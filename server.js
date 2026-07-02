@@ -90,10 +90,15 @@ async function actualizarCacheDesdeGoogle() {
 
         let listaChoferesMaestros = [];
         try {
-            // 👉 ZONA HORARIA DE ARGENTINA (Evita desfasajes de servidor)
-            let hoy = new Date(new Date().toLocaleString("en-US", {timeZone: "America/Argentina/Buenos_Aires"}));
-            let anio = hoy.getFullYear(); 
-            let nombreHojaActual = mesesAbrev[hoy.getMonth()] + "-" + String(anio).slice(-2);
+            // 👉 FECHA EXACTA ARGENTINA (Motor Anti-Desfase UTC)
+            const formatter = new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', year: 'numeric', month: 'numeric', day: 'numeric' });
+            const parts = formatter.formatToParts(new Date());
+            const targetD = parseInt(parts.find(p => p.type === 'day').value, 10);
+            const targetM = parseInt(parts.find(p => p.type === 'month').value, 10) - 1;
+            const targetY = parseInt(parts.find(p => p.type === 'year').value, 10);
+
+            let anio = targetY; 
+            let nombreHojaActual = mesesAbrev[targetM] + "-" + String(anio).slice(-2);
             
             (await fetchRango(ID_SPREADSHEET_DIAGRAMAS, `'${nombreHojaActual}'!A6:C1000`)).forEach(row => {
                 if (row[1] && !["APELLIDO Y NOMBRE", "Personal Activo"].includes(row[1])) {
@@ -106,7 +111,6 @@ async function actualizarCacheDesdeGoogle() {
             const rowsMov = await fetchRango(ID_SHEET_MOVIMIENTOS, `'${nombrePestañaMov}'!A1:ZZ1000`);
             
             if (rowsMov.length > 0) {
-                let targetD = hoy.getDate(), targetM = hoy.getMonth(), targetY = hoy.getFullYear();
                 let targetD_pad = String(targetD).padStart(2, '0');
                 let targetM_pad = String(targetM + 1).padStart(2, '0');
                 let targetY_short = String(targetY).slice(-2);
@@ -124,8 +128,8 @@ async function actualizarCacheDesdeGoogle() {
 
                 let colFecha = -1;
                 
-                // Buscar la columna de la fecha en las primeras 3 filas
-                for (let r = 0; r < Math.min(3, rowsMov.length); r++) {
+                // Buscar la columna de la fecha en las primeras 5 filas para asegurar agarrar el header
+                for (let r = 0; r < Math.min(5, rowsMov.length); r++) {
                     for (let c = 0; c < rowsMov[r].length; c++) {
                         let val = String(rowsMov[r][c] || "").toLowerCase().trim();
                         if (regexFechas.some(rx => rx.test(val))) { 
@@ -136,7 +140,7 @@ async function actualizarCacheDesdeGoogle() {
                     if (colFecha !== -1) break;
                 }
 
-                // 👉 LÓGICA "COMO GAS": 3 columnas a la izquierda
+                // 👉 REGLA ESTRICTA COMO GAS: 3 Columnas hacia la izquierda
                 if (colFecha >= 3) {
                     let colNom = colFecha - 3; 
 
@@ -145,7 +149,7 @@ async function actualizarCacheDesdeGoogle() {
                         let tractor = String(rowsMov[i][4] || "").trim();
                         let semi = String(rowsMov[i][5] || "").trim();
 
-                        // 👉 LÓGICA "Hasta donde hay patentes"
+                        // 👉 REGLA ESTRICTA: Hasta donde hay patentes
                         if (!tractor) continue;
 
                         let nomRaw = String(rowsMov[i][colNom] || "").trim();
@@ -169,7 +173,7 @@ async function actualizarCacheDesdeGoogle() {
             (await fetchRango(ID_SHEET_MOVIMIENTOS, `'${nombrePestañaViajes}'!D2:G1000`)).forEach(row => { if (String(row[0] || "").trim()) mapaTD[String(row[0] || "").trim()] = { td: String(row[1] || "").trim(), hex: String(row[3] || "").trim() }; });
             
             for (let key in resDiagGAS.flota) { let tr = resDiagGAS.flota[key].tractor; if (tr && mapaTD[tr]) { resDiagGAS.flota[key].td = mapaTD[tr].td; resDiagGAS.flota[key].hex1 = mapaTD[tr].hex; resDiagGAS.flota[key].hex2 = mapaTD[tr].hex; } }
-        } catch (e) {}
+        } catch (e) { console.error("Error procesando flota/diagramas:", e); }
 
         let dnisMap = {}; let telefonosMap = {};
         try {
@@ -181,7 +185,7 @@ async function actualizarCacheDesdeGoogle() {
                 if (dni && !dnisMap[norm]) dnisMap[norm] = { dni: String(parseInt(dni, 10)) };
                 if (dnisMap[norm]?.dni) telefonosMap[dnisMap[norm].dni] = datos;
             });
-        } catch (e) {}
+        } catch (e) { console.error("Error procesando dnis:", e); }
         resDiagGAS.dnis = dnisMap; resDiagGAS.telefonos = telefonosMap;
 
         try {
