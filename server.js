@@ -88,10 +88,12 @@ async function actualizarCacheDesdeGoogle() {
             documentos: {}, habilitaciones: {}, dnis: {}, certificados: {}, telefonos: {}, flota: {} 
         };
 
-        let listaChoferesMaestros = [];
+let listaChoferesMaestros = [];
         try {
             let hoy = new Date(); let anio = hoy.getFullYear(); let nombreHojaActual = mesesAbrev[hoy.getMonth()] + "-" + String(anio).slice(-2);
-            (await fetchRango(ID_SPREADSHEET_DIAGRAMAS, `'${nombreHojaActual}'!A6:C255`)).forEach(row => {
+            
+            // 👉 AMPLIADO: De C255 a C1000
+            (await fetchRango(ID_SPREADSHEET_DIAGRAMAS, `'${nombreHojaActual}'!A6:C1000`)).forEach(row => {
                 if (row[1] && !["APELLIDO Y NOMBRE", "Personal Activo"].includes(row[1])) {
                     let norm = normalizar(row[1]);
                     if (!resDiagGAS.flota[norm]) { resDiagGAS.flota[norm] = { tractor: '', semi: '', servicio: row[2] || 'S/A', n_ute: '', td: '-', hex1: '', hex2: '' }; listaChoferesMaestros.push({ nombre: String(row[1]).trim(), norm }); }
@@ -99,7 +101,9 @@ async function actualizarCacheDesdeGoogle() {
             });
 
             let nombrePestañaMov = await getTabName(ID_SHEET_MOVIMIENTOS, "Mov.Unidades", "Mov.Unidades y Choferes");
-            const rowsMov = await fetchRango(ID_SHEET_MOVIMIENTOS, `'${nombrePestañaMov}'!A1:ZZ300`);
+            
+            // 👉 AMPLIADO: De ZZ300 a ZZ1000
+            const rowsMov = await fetchRango(ID_SHEET_MOVIMIENTOS, `'${nombrePestañaMov}'!A1:ZZ1000`);
             if (rowsMov.length > 0) {
                 let targetD = hoy.getDate(), targetM = hoy.getMonth(), targetY = hoy.getFullYear();
                 let regexFecha = new RegExp(`\\b0?${targetD}[\\s/]+${["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"][targetM]}[\\s/]+${targetY}\\b`, 'i');
@@ -120,22 +124,13 @@ async function actualizarCacheDesdeGoogle() {
 
             let nombrePestañaViajes = await getTabName(ID_SHEET_MOVIMIENTOS, "Tabla de viajes", "Tabla de viajes");
             let mapaTD = {};
-            (await fetchRango(ID_SHEET_MOVIMIENTOS, `'${nombrePestañaViajes}'!D2:G200`)).forEach(row => { if (String(row[0] || "").trim()) mapaTD[String(row[0] || "").trim()] = { td: String(row[1] || "").trim(), hex: String(row[3] || "").trim() }; });
+            
+            // 👉 AMPLIADO: De G200 a G1000 (Aquí lee las patentes)
+            (await fetchRango(ID_SHEET_MOVIMIENTOS, `'${nombrePestañaViajes}'!D2:G1000`)).forEach(row => { if (String(row[0] || "").trim()) mapaTD[String(row[0] || "").trim()] = { td: String(row[1] || "").trim(), hex: String(row[3] || "").trim() }; });
+            
             for (let key in resDiagGAS.flota) { let tr = resDiagGAS.flota[key].tractor; if (tr && mapaTD[tr]) { resDiagGAS.flota[key].td = mapaTD[tr].td; resDiagGAS.flota[key].hex1 = mapaTD[tr].hex; resDiagGAS.flota[key].hex2 = mapaTD[tr].hex; } }
         } catch (e) {}
-
-        let dnisMap = {}; let telefonosMap = {};
-        try {
-            (await fetchRango(ID_SPREADSHEET_MASTER, "'dni'!A1:D500")).forEach(row => { let n = String(row[0] || "").trim(); let dni = String(row[2] || "").replace(/\D/g, ''); if (n && dni) dnisMap[normalizar(n)] = { dni: String(parseInt(dni, 10)) }; });
-            (await fetchRango(ID_SPREADSHEET_MASTER, "'LEGAJOS'!A2:P350")).forEach(row => {
-                let n = String(row[1] || "").trim(); if (!n || n.toLowerCase().includes("baja")) return; let norm = normalizar(n);
-                let datos = { legajo: String(row[0] || "").trim(), telefono: String(row[3] || "").trim(), email: String(row[4] || "").trim(), fechaAlta: String(row[10] || "").trim() };
-                telefonosMap[norm] = datos; let dni = String(row[2] || "").replace(/\D/g, '');
-                if (dni && !dnisMap[norm]) dnisMap[norm] = { dni: String(parseInt(dni, 10)) };
-                if (dnisMap[norm]?.dni) telefonosMap[dnisMap[norm].dni] = datos;
-            });
-        } catch (e) {}
-        resDiagGAS.dnis = dnisMap; resDiagGAS.telefonos = telefonosMap;
+                resDiagGAS.dnis = dnisMap; resDiagGAS.telefonos = telefonosMap;
 
         try {
             const rowsAptos = await fetchRango(ID_SHEET_APTOS_MEDICOS, "'Seguimiento Avalados Mensual'!A1:DZ500");
@@ -180,7 +175,7 @@ async function actualizarCacheDesdeGoogle() {
         } catch(e) {}
 
         let nombrePestañaVenc = await getTabName(ID_SHEET_MOVIMIENTOS, "Vencimiento", "Vencimientos.");
-        resDiagGAS.vencimientosObj = (await fetchRango(ID_SHEET_MOVIMIENTOS, `'${nombrePestañaVenc}'!A2:N300`)).map(row => (!row[1] ? null : { col_b: row[1] || "", col_g: row[6] || "", col_h: row[7] || "", col_j: row[9] || "", col_k: row[10] || "", col_l: row[11] || "", col_m: row[12] || "", col_n: row[13] || "" })).filter(Boolean);
+        resDiagGAS.vencimientosObj = (await fetchRango(ID_SHEET_MOVIMIENTOS, `'${nombrePestañaVenc}'!A2:N1000`)).map(row => (!row[1] ? null : { col_b: row[1] || "", col_g: row[6] || "", col_h: row[7] || "", col_j: row[9] || "", col_k: row[10] || "", col_l: row[11] || "", col_m: row[12] || "", col_n: row[13] || "" })).filter(Boolean);
 
         resDiagGAS.fotosImgur = {};
         (await fetchRango(ID_SPREADSHEET_MASTER, "'fotos'!A:B")).forEach(row => { 
@@ -200,7 +195,7 @@ async function actualizarCacheDesdeGoogle() {
         for (let i of offsetsMeses) {
             let d = new Date(hoy.getFullYear(), hoy.getMonth() + i, 1); let anio = d.getFullYear(); let mesStr = String(d.getMonth() + 1).padStart(2, '0');
             let nombreHoja = mesesAbrev[d.getMonth()] + "-" + String(anio).slice(-2); hojasInfo.push({ nombre: nombreHoja, anio, mesStr });
-            (await fetchRango(ID_SPREADSHEET_DIAGRAMAS, `'${nombreHoja}'!A6:AL255`)).forEach(row => {
+            (await fetchRango(ID_SPREADSHEET_DIAGRAMAS, `'${nombreHoja}'!A6:AL1000`)).forEach(row => {
                 let n = row[1]; if (!n || n === "APELLIDO Y NOMBRE" || n === "Personal Activo") return; let nomNorm = normalizar(n); if (!diasLegacyIso[nomNorm]) diasLegacyIso[nomNorm] = {};
                 for (let dia = 1; dia <= 31; dia++) { let est = row[dia + 3]; if (est && est !== '-') diasLegacyIso[nomNorm][`${anio}-${mesStr}-${String(dia).padStart(2, '0')}`] = String(est).toUpperCase().trim(); }
             });
