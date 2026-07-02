@@ -2498,6 +2498,20 @@ function getHTMLRestante(chofer, doc, hab, cert, apto, badgeExam, badgeLic, badg
     let dEst = evaluarEstadoDoc(doc.ven, fBaseObj);
     let hEst = evaluarEstadoDoc(hab.ven, fBaseObj);
     let cEst = evaluarEstadoDoc(cert.ven, fBaseObj);
+
+    // 👉 CAMBIO 1: Agrega esta función para forzar los ceros (Padding)
+const formatearParaInputDate = (fechaStr) => {
+    if (!fechaStr || fechaStr === '-' || String(fechaStr).trim() === '') return '';
+    let f = String(fechaStr).trim();
+    if (f.includes('/')) {
+        let p = f.split('/');
+        if (p.length === 3) return `${p[2].length === 2 ? '20'+p[2] : p[2]}-${p[1].padStart(2, '0')}-${p[0].padStart(2, '0')}`;
+    } else if (f.includes('-')) {
+        let p = f.split('-');
+        if (p.length === 3) return `${p[0]}-${p[1].padStart(2, '0')}-${p[2].padStart(2, '0')}`;
+    }
+    return f;
+};
     
     let badgeDocsGeneral = '';
     if (dEst === 'VENCIDO' || hEst === 'VENCIDO' || cEst === 'VENCIDO') {
@@ -2524,10 +2538,10 @@ function getHTMLRestante(chofer, doc, hab, cert, apto, badgeExam, badgeLic, badg
                 <div class="p-5">
                     <div class="bg-gray-50 p-4 rounded-xl border border-gray-200 shadow-sm">
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            <div><div class="flex justify-between items-center mb-3"><span class="font-black text-gray-800 text-xs uppercase tracking-widest">Periódico</span>${badgeExam}</div><div><label class="block text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Vencimiento</label><input type="date" id="doc-exam-ven" value="${doc.ven}" class="w-full bg-white border border-gray-300 text-xs font-bold rounded-lg p-2 focus:ring-primary outline-none shadow-sm"></div></div>
-                            <div><div class="flex justify-between items-center mb-3"><span class="font-black text-gray-800 text-xs uppercase tracking-widest">LICENCIA</span>${badgeLic}</div><div><label class="block text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Vencimiento</label><input type="date" id="doc-lic-ven" value="${hab.ven}" class="w-full bg-white border border-gray-300 text-xs font-bold rounded-lg p-2 focus:ring-primary outline-none shadow-sm"></div></div>
-                            <div><div class="flex justify-between items-center mb-3"><span class="font-black text-gray-800 text-xs uppercase tracking-widest">CERTIFICADO M.P</span>${badgeCert}</div><div><label class="block text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Vencimiento</label><input type="date" id="doc-cert-ven" value="${cert.ven}" class="w-full bg-white border border-gray-300 text-xs font-bold rounded-lg p-2 focus:ring-primary outline-none shadow-sm"></div></div>
-                        </div>
+    <div><div class="flex justify-between items-center mb-3"><span class="font-black text-gray-800 text-xs uppercase tracking-widest">Periódico</span>${badgeExam}</div><div><label class="block text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Vencimiento</label><input type="date" id="doc-exam-ven" value="${formatearParaInputDate(doc.ven)}" class="w-full bg-white border border-gray-300 text-xs font-bold rounded-lg p-2 focus:ring-primary outline-none shadow-sm"></div></div>
+    <div><div class="flex justify-between items-center mb-3"><span class="font-black text-gray-800 text-xs uppercase tracking-widest">LICENCIA</span>${badgeLic}</div><div><label class="block text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Vencimiento</label><input type="date" id="doc-lic-ven" value="${formatearParaInputDate(hab.ven)}" class="w-full bg-white border border-gray-300 text-xs font-bold rounded-lg p-2 focus:ring-primary outline-none shadow-sm"></div></div>
+    <div><div class="flex justify-between items-center mb-3"><span class="font-black text-gray-800 text-xs uppercase tracking-widest">CERTIFICADO M.P</span>${badgeCert}</div><div><label class="block text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Vencimiento</label><input type="date" id="doc-cert-ven" value="${formatearParaInputDate(cert.ven)}" class="w-full bg-white border border-gray-300 text-xs font-bold rounded-lg p-2 focus:ring-primary outline-none shadow-sm"></div></div>
+</div>
                         <div class="mt-6 flex justify-end"><button id="btn-guardar-docs" onclick="guardarDocs('${chofer.nom}')" class="w-full md:w-auto px-6 py-2.5 bg-blue-50 text-primary border border-blue-200 text-xs font-black uppercase tracking-wider rounded-xl hover:bg-blue-100 transition-colors shadow-sm flex justify-center items-center gap-2 h-[42px]">💾 Guardar Vencimientos</button></div>
                     </div>
                 </div>
