@@ -37,7 +37,9 @@ const ID_SHEET_APTOS_MEDICOS = '1oJmN8hurfHfNnGBYUFcBdlrIj2VUzeIyq0ZTWxTpYNI';
 const ID_SHEET_KILOMETROS = '1Wr-_P4mDvldif_cAx08sp7yT8uTUrajI2HQAJF6tnGM';
 const ID_SHEET_HABILITACIONES = '1hPDno09tMBtKh7aIdsvzEYcyOY7leYj2B6XnniD0aXg';
 const ID_SHEET_DOCUMENTOS = '1pnYXKDSv70Vq78Rchxus5FHMKdgXdbfltVsEg6vArjo';
-const ID_SHEET_MOVIMIENTOS = process.env.MES_MOVIMIENTOS_ID || '1hhJKwp9xOOHL_zZSJMbrJh5fwfsIPre155UTWhKWI44'; 
+
+// 👉 NUEVO ID JULIO 2026 ACTUALIZADO
+const ID_SHEET_MOVIMIENTOS = process.env.MES_MOVIMIENTOS_ID || '1ArSUOVJU0cNXk4lvc2CncBEC3e_fBXd7ICMvC_6HexQ'; 
 
 const mesesAbrev = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 const mesesLargo = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
@@ -55,7 +57,9 @@ async function fetchRango(spreadsheetId, rango, reintentos = 3) {
 async function getTabName(spreadsheetId, keyword, defaultName) {
     try {
         const resMeta = await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}` });
-        const found = (resMeta.data.sheets || []).find(s => s.properties.title.toLowerCase().includes(keyword.toLowerCase()));
+        const found = (resMeta.data.sheets || []).find(s => {
+            return s.properties.title.toLowerCase().replace(/\s+/g, '').includes(keyword.toLowerCase().replace(/\s+/g, ''));
+        });
         return found ? found.properties.title : defaultName;
     } catch(e) { return defaultName; }
 }
@@ -90,7 +94,6 @@ async function actualizarCacheDesdeGoogle() {
 
         let listaChoferesMaestros = [];
         try {
-            // 👉 FECHA EXACTA ARGENTINA
             let hoyAr = new Date(new Date().toLocaleString("en-US", {timeZone: "America/Argentina/Buenos_Aires"}));
             let anio = hoyAr.getFullYear(); 
             let nombreHojaActual = mesesAbrev[hoyAr.getMonth()] + "-" + String(anio).slice(-2);
@@ -106,80 +109,68 @@ async function actualizarCacheDesdeGoogle() {
             const rowsMov = await fetchRango(ID_SHEET_MOVIMIENTOS, `'${nombrePestañaMov}'!A1:ZZ1000`);
             
             if (rowsMov.length > 0) {
-                let targetD = hoyAr.getDate(), targetM = hoyAr.getMonth(), targetY = hoyAr.getFullYear();
-                let targetD_pad = String(targetD).padStart(2, '0');
-                let targetM_pad = String(targetM + 1).padStart(2, '0');
-                let targetY_short = String(targetY).slice(-2);
-                
-                let regexFechas = [
-                    new RegExp(`\\b0?${targetD}[\\s/\\-de]+${mesesLargo[targetM]}\\b`, 'i'),
-                    new RegExp(`\\b0?${targetD}[\\s/\\-]+${mesesAbrev[targetM]}\\b`, 'i'),
-                    new RegExp(`\\b${targetD_pad}/${targetM_pad}/${targetY}\\b`),
-                    new RegExp(`\\b${targetD}/${targetM+1}/${targetY}\\b`),
-                    new RegExp(`\\b${targetD_pad}/${targetM_pad}/${targetY_short}\\b`),
-                    new RegExp(`\\b${targetD}/${targetM+1}/${targetY_short}\\b`),
-                    new RegExp(`\\b${targetD_pad}/${targetM_pad}\\b`),
-                    new RegExp(`\\b${targetD}/${targetM+1}\\b`)
-                ];
-
-                // 👉 NUEVO MOTOR ANCLADO: Busca la palabra "Chofer" en las 2 primeras filas
-                let choferCols = [];
-                for (let r = 0; r < Math.min(2, rowsMov.length); r++) {
-                    for (let c = 0; c < rowsMov[r].length; c++) {
-                        let val = String(rowsMov[r][c] || "").toLowerCase().trim();
-                        if (val.includes("chofer")) {
-                            if (!choferCols.includes(c)) choferCols.push(c);
-                        }
-                    }
-                }
-
-                // Ordenar de izquierda a derecha
-                choferCols.sort((a, b) => a - b);
-
+                let colFecha = -1;
                 let colNom = -1;
 
-                // Buscar cuál de esas columnas "Chofer" corresponde a la fecha de hoy
-                for (let c of choferCols) {
-                    let colFecha = c + 3; // La fecha siempre está 3 columnas a la derecha
-                    let valFecha = "";
-                    if (rowsMov[0] && rowsMov[0][colFecha]) valFecha += String(rowsMov[0][colFecha]) + " ";
-                    if (rowsMov[1] && rowsMov[1][colFecha]) valFecha += String(rowsMov[1][colFecha]);
-                    valFecha = valFecha.toLowerCase();
+                // 👉 MOTOR DE DÍA ESTRICTO: Busca la fecha de hoy, si no la encuentra busca la de ayer (Por si aún no cargaron la grilla de hoy)
+                for (let offset = 0; offset >= -3; offset--) {
+                    let d = new Date(hoyAr);
+                    d.setDate(d.getDate() + offset);
+                    let tD = d.getDate(); let tM = d.getMonth(); let tY = d.getFullYear();
+                    let tD_pad = String(tD).padStart(2, '0'); let tM_pad = String(tM + 1).padStart(2, '0'); let tY_short = String(tY).slice(-2);
                     
-                    if (regexFechas.some(rx => rx.test(valFecha))) {
-                        colNom = c;
-                        break;
+                    let regexFechas = [
+                        new RegExp(`\\b0?${tD}[\\s/\\-de]+${mesesLargo[tM]}\\b`, 'i'),
+                        new RegExp(`\\b0?${tD}[\\s/\\-]+${mesesAbrev[tM]}\\b`, 'i'),
+                        new RegExp(`\\b${tD_pad}/${tM_pad}/${tY}\\b`),
+                        new RegExp(`\\b${tD}/${tM+1}/${tY}\\b`),
+                        new RegExp(`\\b${tD_pad}/${tM_pad}/${tY_short}\\b`),
+                        new RegExp(`\\b${tD}/${tM+1}/${tY_short}\\b`)
+                    ];
+
+                    for (let r = 0; r < Math.min(5, rowsMov.length); r++) {
+                        for (let c = 3; c < rowsMov[r].length; c++) {
+                            let val = String(rowsMov[r][c] || "").toLowerCase().trim();
+                            if (regexFechas.some(rx => rx.test(val))) { 
+                                colFecha = c; 
+                                // REGLA DE ORO DE GAS: Nombre del chofer siempre 3 columnas a la izquierda
+                                colNom = c - 3; 
+                                break; 
+                            }
+                        }
+                        if (colFecha !== -1) break;
                     }
+                    // Si encontró el día, rompe el ciclo y usa esa columna
+                    if (colFecha !== -1) break; 
                 }
 
-                // Fallback de seguridad: Si no encuentra la de hoy, toma el último día cargado
-                if (colNom === -1 && choferCols.length > 0) {
-                    colNom = choferCols[choferCols.length - 1];
-                }
+                // Extracción de Vehículos iterando HASTA DONDE HAYA PATENTES
+                if (colNom !== -1) {
+                    for (let i = 2; i < rowsMov.length; i++) {
+                        let n_ute = String(rowsMov[i][2] || "").trim();
+                        let tractor = String(rowsMov[i][4] || "").trim();
+                        let semi = String(rowsMov[i][5] || "").trim();
 
-                // Si por alguna razón borran todos los títulos, asume la columna AB (27)
-                if (colNom === -1) colNom = 27;
+                        // Si la fila no tiene patente (ej: "METANOL", "LIVIANOS"), SALTA a la siguiente, no corta el escaneo.
+                        if (!tractor) continue;
 
-                // Extraer vehículos 
-                for (let i = 2; i < rowsMov.length; i++) {
-                    let n_ute = String(rowsMov[i][2] || "").trim();
-                    let tractor = String(rowsMov[i][4] || "").trim();
-                    let semi = String(rowsMov[i][5] || "").trim();
+                        let nomRaw = String(rowsMov[i][colNom] || "").trim();
+                        
+                        // Si la celda está vacía o tiene un "1", la salta, pero sigue bajando
+                        if (!nomRaw || nomRaw === "1" || !/[a-zA-Záéíóú]/.test(nomRaw)) continue;
 
-                    if (!tractor) continue; // Salta filas vacías o subtítulos como "METANOL"
-
-                    let nomRaw = String(rowsMov[i][colNom] || "").trim();
-                    if (!nomRaw || nomRaw === "1" || !/[a-zA-Záéíóú]/.test(nomRaw)) continue;
-
-                    let norm = normalizar(nomRaw);
-                    if (resDiagGAS.flota[norm]) { 
-                        resDiagGAS.flota[norm].n_ute = n_ute; 
-                        resDiagGAS.flota[norm].tractor = tractor; 
-                        resDiagGAS.flota[norm].semi = semi; 
-                    } else { 
-                        resDiagGAS.flota[norm] = { tractor: tractor, semi: semi, servicio: 'S/A', n_ute: n_ute, td: '-', hex1: '', hex2: '' }; 
-                        listaChoferesMaestros.push({ nombre: nomRaw, norm }); 
+                        let norm = normalizar(nomRaw);
+                        if (resDiagGAS.flota[norm]) { 
+                            resDiagGAS.flota[norm].n_ute = n_ute; 
+                            resDiagGAS.flota[norm].tractor = tractor; 
+                            resDiagGAS.flota[norm].semi = semi; 
+                        } else { 
+                            resDiagGAS.flota[norm] = { tractor: tractor, semi: semi, servicio: 'S/A', n_ute: n_ute, td: '-', hex1: '', hex2: '' }; 
+                            listaChoferesMaestros.push({ nombre: nomRaw, norm }); 
+                        }
                     }
+                } else {
+                    console.log("⚠️ No se encontró la columna de la fecha en Mov.Unidades.");
                 }
             }
 
