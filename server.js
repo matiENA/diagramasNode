@@ -106,72 +106,79 @@ async function actualizarCacheDesdeGoogle() {
             const rowsMov = await fetchRango(ID_SHEET_MOVIMIENTOS, `'${nombrePestañaMov}'!A1:ZZ1000`);
             
             if (rowsMov.length > 0) {
-                // 👉 BÚSQUEDA INTELIGENTE DE FECHAS (Hoy, Ayer, Anteayer)
-                let dateOptions = [0, -1, -2, -3].map(offset => {
-                    let d = new Date(hoyAr);
-                    d.setDate(d.getDate() + offset);
-                    let tD = d.getDate(); let tM = d.getMonth(); let tY = d.getFullYear();
-                    let tD_pad = String(tD).padStart(2, '0'); let tM_pad = String(tM + 1).padStart(2, '0'); let tY_short = String(tY).slice(-2);
-                    
-                    return [
-                        new RegExp(`\\b0?${tD}[\\s/\\-de]+${mesesLargo[tM]}\\b`, 'i'),
-                        new RegExp(`\\b0?${tD}[\\s/\\-]+${mesesAbrev[tM]}\\b`, 'i'),
-                        new RegExp(`\\b${tD_pad}/${tM_pad}/${tY}\\b`),
-                        new RegExp(`\\b${tD}/${tM+1}/${tY}\\b`),
-                        new RegExp(`\\b${tD_pad}/${tM_pad}/${tY_short}\\b`),
-                        new RegExp(`\\b${tD}/${tM+1}/${tY_short}\\b`)
-                    ];
-                });
-
-                let colFecha = -1;
-                let colNom = -1;
+                let targetD = hoyAr.getDate(), targetM = hoyAr.getMonth(), targetY = hoyAr.getFullYear();
+                let targetD_pad = String(targetD).padStart(2, '0');
+                let targetM_pad = String(targetM + 1).padStart(2, '0');
+                let targetY_short = String(targetY).slice(-2);
                 
-                // Buscar en las primeras 4 filas por la fecha más reciente disponible
-                for (let dayRegexes of dateOptions) {
-                    for (let r = 0; r < Math.min(4, rowsMov.length); r++) {
-                        for (let c = 0; c < rowsMov[r].length; c++) {
-                            let val = String(rowsMov[r][c] || "").toLowerCase().trim();
-                            if (dayRegexes.some(rx => rx.test(val))) { 
-                                colFecha = c; 
-                                break; 
-                            }
+                let regexFechas = [
+                    new RegExp(`\\b0?${targetD}[\\s/\\-de]+${mesesLargo[targetM]}\\b`, 'i'),
+                    new RegExp(`\\b0?${targetD}[\\s/\\-]+${mesesAbrev[targetM]}\\b`, 'i'),
+                    new RegExp(`\\b${targetD_pad}/${targetM_pad}/${targetY}\\b`),
+                    new RegExp(`\\b${targetD}/${targetM+1}/${targetY}\\b`),
+                    new RegExp(`\\b${targetD_pad}/${targetM_pad}/${targetY_short}\\b`),
+                    new RegExp(`\\b${targetD}/${targetM+1}/${targetY_short}\\b`),
+                    new RegExp(`\\b${targetD_pad}/${targetM_pad}\\b`),
+                    new RegExp(`\\b${targetD}/${targetM+1}\\b`)
+                ];
+
+                // 👉 NUEVO MOTOR ANCLADO: Busca la palabra "Chofer" en las 2 primeras filas
+                let choferCols = [];
+                for (let r = 0; r < Math.min(2, rowsMov.length); r++) {
+                    for (let c = 0; c < rowsMov[r].length; c++) {
+                        let val = String(rowsMov[r][c] || "").toLowerCase().trim();
+                        if (val.includes("chofer")) {
+                            if (!choferCols.includes(c)) choferCols.push(c);
                         }
-                        if (colFecha !== -1) break;
                     }
-                    if (colFecha !== -1) break;
                 }
 
-                if (colFecha >= 3) {
-                    // REGLA ESTRICTA: 3 Columnas a la izquierda de la fecha
-                    colNom = colFecha - 3; 
-                } else {
-                    // Fallback a prueba de fallos: La PRIMERA columna de "Chofer" que encuentre de Izquierda a Derecha
-                    for (let c = 0; c < rowsMov[0].length; c++) { 
-                        if (String(rowsMov[0][c] || "").toLowerCase().trim().includes("chofer")) { colNom = c; break; } 
-                    } 
+                // Ordenar de izquierda a derecha
+                choferCols.sort((a, b) => a - b);
+
+                let colNom = -1;
+
+                // Buscar cuál de esas columnas "Chofer" corresponde a la fecha de hoy
+                for (let c of choferCols) {
+                    let colFecha = c + 3; // La fecha siempre está 3 columnas a la derecha
+                    let valFecha = "";
+                    if (rowsMov[0] && rowsMov[0][colFecha]) valFecha += String(rowsMov[0][colFecha]) + " ";
+                    if (rowsMov[1] && rowsMov[1][colFecha]) valFecha += String(rowsMov[1][colFecha]);
+                    valFecha = valFecha.toLowerCase();
+                    
+                    if (regexFechas.some(rx => rx.test(valFecha))) {
+                        colNom = c;
+                        break;
+                    }
                 }
 
-                if (colNom !== -1) {
-                    for (let i = 2; i < rowsMov.length; i++) {
-                        let n_ute = String(rowsMov[i][2] || "").trim();
-                        let tractor = String(rowsMov[i][4] || "").trim();
-                        let semi = String(rowsMov[i][5] || "").trim();
+                // Fallback de seguridad: Si no encuentra la de hoy, toma el último día cargado
+                if (colNom === -1 && choferCols.length > 0) {
+                    colNom = choferCols[choferCols.length - 1];
+                }
 
-                        // REGLA: Si no hay tractor, salta la fila (Ej: "METANOL") y sigue buscando abajo
-                        if (!tractor) continue;
+                // Si por alguna razón borran todos los títulos, asume la columna AB (27)
+                if (colNom === -1) colNom = 27;
 
-                        let nomRaw = String(rowsMov[i][colNom] || "").trim();
-                        if (!nomRaw || nomRaw === "1" || !/[a-zA-Záéíóú]/.test(nomRaw)) continue;
+                // Extraer vehículos 
+                for (let i = 2; i < rowsMov.length; i++) {
+                    let n_ute = String(rowsMov[i][2] || "").trim();
+                    let tractor = String(rowsMov[i][4] || "").trim();
+                    let semi = String(rowsMov[i][5] || "").trim();
 
-                        let norm = normalizar(nomRaw);
-                        if (resDiagGAS.flota[norm]) { 
-                            resDiagGAS.flota[norm].n_ute = n_ute; 
-                            resDiagGAS.flota[norm].tractor = tractor; 
-                            resDiagGAS.flota[norm].semi = semi; 
-                        } else { 
-                            resDiagGAS.flota[norm] = { tractor: tractor, semi: semi, servicio: 'S/A', n_ute: n_ute, td: '-', hex1: '', hex2: '' }; 
-                            listaChoferesMaestros.push({ nombre: nomRaw, norm }); 
-                        }
+                    if (!tractor) continue; // Salta filas vacías o subtítulos como "METANOL"
+
+                    let nomRaw = String(rowsMov[i][colNom] || "").trim();
+                    if (!nomRaw || nomRaw === "1" || !/[a-zA-Záéíóú]/.test(nomRaw)) continue;
+
+                    let norm = normalizar(nomRaw);
+                    if (resDiagGAS.flota[norm]) { 
+                        resDiagGAS.flota[norm].n_ute = n_ute; 
+                        resDiagGAS.flota[norm].tractor = tractor; 
+                        resDiagGAS.flota[norm].semi = semi; 
+                    } else { 
+                        resDiagGAS.flota[norm] = { tractor: tractor, semi: semi, servicio: 'S/A', n_ute: n_ute, td: '-', hex1: '', hex2: '' }; 
+                        listaChoferesMaestros.push({ nombre: nomRaw, norm }); 
                     }
                 }
             }
