@@ -66,10 +66,8 @@ async function flujoEncoladoGlobal() {
     finally { ejecutandoGlobal = false; if (pendienteGlobal) { pendienteGlobal = false; flujoEncoladoGlobal(); } }
 }
 
-// Arranque inicial a los 3 segundos
 setTimeout(() => { flujoEncoladoGlobal(); }, 3000); 
 
-// Sincronización silenciosa cada 15 minutos (Previene el colapso de la API de Google)
 setInterval(() => { 
     console.log("⏱️ Escaneo periódico (15 min): Comprobando cambios externos en Google Sheets...");
     flujoEncoladoGlobal(); 
@@ -88,11 +86,11 @@ async function actualizarCacheDesdeGoogle() {
             documentos: {}, habilitaciones: {}, dnis: {}, certificados: {}, telefonos: {}, flota: {} 
         };
 
-let listaChoferesMaestros = [];
+        let listaChoferesMaestros = [];
         try {
             let hoy = new Date(); let anio = hoy.getFullYear(); let nombreHojaActual = mesesAbrev[hoy.getMonth()] + "-" + String(anio).slice(-2);
             
-            // 👉 AMPLIADO: De C255 a C1000
+            // 👉 AMPLIADO a 1000
             (await fetchRango(ID_SPREADSHEET_DIAGRAMAS, `'${nombreHojaActual}'!A6:C1000`)).forEach(row => {
                 if (row[1] && !["APELLIDO Y NOMBRE", "Personal Activo"].includes(row[1])) {
                     let norm = normalizar(row[1]);
@@ -102,7 +100,7 @@ let listaChoferesMaestros = [];
 
             let nombrePestañaMov = await getTabName(ID_SHEET_MOVIMIENTOS, "Mov.Unidades", "Mov.Unidades y Choferes");
             
-            // 👉 AMPLIADO: De ZZ300 a ZZ1000
+            // 👉 AMPLIADO a 1000
             const rowsMov = await fetchRango(ID_SHEET_MOVIMIENTOS, `'${nombrePestañaMov}'!A1:ZZ1000`);
             if (rowsMov.length > 0) {
                 let targetD = hoy.getDate(), targetM = hoy.getMonth(), targetY = hoy.getFullYear();
@@ -125,12 +123,25 @@ let listaChoferesMaestros = [];
             let nombrePestañaViajes = await getTabName(ID_SHEET_MOVIMIENTOS, "Tabla de viajes", "Tabla de viajes");
             let mapaTD = {};
             
-            // 👉 AMPLIADO: De G200 a G1000 (Aquí lee las patentes)
+            // 👉 AMPLIADO a 1000
             (await fetchRango(ID_SHEET_MOVIMIENTOS, `'${nombrePestañaViajes}'!D2:G1000`)).forEach(row => { if (String(row[0] || "").trim()) mapaTD[String(row[0] || "").trim()] = { td: String(row[1] || "").trim(), hex: String(row[3] || "").trim() }; });
             
             for (let key in resDiagGAS.flota) { let tr = resDiagGAS.flota[key].tractor; if (tr && mapaTD[tr]) { resDiagGAS.flota[key].td = mapaTD[tr].td; resDiagGAS.flota[key].hex1 = mapaTD[tr].hex; resDiagGAS.flota[key].hex2 = mapaTD[tr].hex; } }
         } catch (e) {}
-                resDiagGAS.dnis = dnisMap; resDiagGAS.telefonos = telefonosMap;
+
+        // 👉 RESTAURADO EL BLOQUE BORRADO (DNIs y Teléfonos)
+        let dnisMap = {}; let telefonosMap = {};
+        try {
+            (await fetchRango(ID_SPREADSHEET_MASTER, "'dni'!A1:D500")).forEach(row => { let n = String(row[0] || "").trim(); let dni = String(row[2] || "").replace(/\D/g, ''); if (n && dni) dnisMap[normalizar(n)] = { dni: String(parseInt(dni, 10)) }; });
+            (await fetchRango(ID_SPREADSHEET_MASTER, "'LEGAJOS'!A2:P350")).forEach(row => {
+                let n = String(row[1] || "").trim(); if (!n || n.toLowerCase().includes("baja")) return; let norm = normalizar(n);
+                let datos = { legajo: String(row[0] || "").trim(), telefono: String(row[3] || "").trim(), email: String(row[4] || "").trim(), fechaAlta: String(row[10] || "").trim() };
+                telefonosMap[norm] = datos; let dni = String(row[2] || "").replace(/\D/g, '');
+                if (dni && !dnisMap[norm]) dnisMap[norm] = { dni: String(parseInt(dni, 10)) };
+                if (dnisMap[norm]?.dni) telefonosMap[dnisMap[norm].dni] = datos;
+            });
+        } catch (e) {}
+        resDiagGAS.dnis = dnisMap; resDiagGAS.telefonos = telefonosMap;
 
         try {
             const rowsAptos = await fetchRango(ID_SHEET_APTOS_MEDICOS, "'Seguimiento Avalados Mensual'!A1:DZ500");
@@ -228,7 +239,7 @@ app.get('/api/datos', (req, res) => {
 });
 
 // ==========================================
-// 🛡️ API PROXY: ESCRITURA DIRECTA (SIN REDESCARGA FORZADA)
+// 🛡️ API PROXY: ESCRITURA DIRECTA
 // ==========================================
 app.post('/api/proxy', async (req, res) => {
     try {
@@ -350,7 +361,6 @@ app.post('/api/proxy', async (req, res) => {
             else { const docKm = new GoogleSpreadsheet(ID_SHEET_KILOMETROS, serviceAccountAuth); await docKm.loadInfo(); await (docKm.sheetsByTitle['KM'] || docKm.sheetsByIndex[0]).addRow([body.tractor || "", targetStr, body.nombre, "","","","","","","","","","","","","","","","", strHojas]); }
         }
 
-        // Ya NO mandamos flujoEncoladoGlobal(false). La API de Google descansa.
         res.json({ success: true, message: "OK" });
 
     } catch (error) { res.status(500).json({ success: false, error: "Error en Proxy" }); }
