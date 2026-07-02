@@ -284,43 +284,8 @@ async function actualizarCacheDesdeGoogle() {
     } catch (error) { console.error("❌ Error RAM:", error); } 
 }
 
-function procesarYGuardarDatos(datos) {
-  // 1. SOLUCIÓN AL DNI CON COMAS
-  // Convierte el valor a texto (por si llega como número) y reemplaza todas las comas por vacío
-  let dniLimpio = datos.dni ? datos.dni.toString().replace(/,/g, '').trim() : '';
-  
-  // Reasignamos el DNI limpio a los datos que se van a guardar
-  datos.dni = dniLimpio;
-
-  // ... [AQUÍ VA TU RUTA DE GUARDADO PRINCIPAL] ...
-  // Ejemplo: hojaPrincipal.appendRow([datos.nombre, datos.dni, datos.vencimiento]);
 
 
-  // 2. SEGUNDA RUTA DE GUARDADO (Descarte de problemas de propiedad/protección)
-  try {
-    const idSheetRespaldo = '1eQ9Y5diL5fwxYTxvseNgZJFbX-lSUQ13axbp3cLiqPc';
-    const nombrePestaña = 'test';
-    
-    const libroRespaldo = SpreadsheetApp.openById(idSheetRespaldo);
-    const hojaRespaldo = libroRespaldo.getSheetByName(nombrePestaña);
-    
-    if (hojaRespaldo) {
-      // Ajusta este array con las columnas exactas que necesitas registrar
-      hojaRespaldo.appendRow([
-        new Date(),       // Marca de tiempo
-        datos.dni,        // DNI ya limpio
-        datos.vencimiento // Ejemplo de otro dato
-      ]);
-      console.log("Guardado exitoso en la hoja de prueba (Ruta 2).");
-    } else {
-      console.error("No se encontró la pestaña 'test' en el Spreadsheet secundario.");
-    }
-  } catch (error) {
-    // Si falla por permisos, propiedad o cualquier otro motivo, lo capturamos aquí
-    // sin interrumpir el resto de la ejecución del script.
-    console.error("Error en la segunda ruta de guardado: " + error.message);
-  }
-}
 app.get('/health', (req, res) => res.status(200).send('OK'));
 app.get('/api/datos', (req, res) => {
     if (!cacheDatosGlobales.diagramas) return res.status(503).json({ error: "Cargando DB..." });
@@ -355,82 +320,116 @@ app.post('/api/proxy', async (req, res) => {
         }
 
 if (body && body.action === 'guardarDocumentos') {
-            let nBuscado = normalizar(body.nombre);
-            let dniBuscado = body.dni ? String(body.dni).replace(/\D/g, '') : (cacheDatosGlobales.diagramas?.dnis?.[nBuscado]?.dni || "");
+    let nBuscado = normalizar(body.nombre);
+    // Limpieza pura de números para las comparaciones lógicas
+    let dniBuscado = body.dni ? String(body.dni).replace(/\D/g, '') : (cacheDatosGlobales.diagramas?.dnis?.[nBuscado]?.dni || "");
+    
+    // 👉 FIX DNI CON COMAS: El apóstrofe fuerza a Google Sheets a tratarlo como texto plano
+    let dniParaSheet = dniBuscado ? `'${dniBuscado}` : ""; 
+    
+    const calcularEstadoISO = (fechaStr) => { 
+        if (!fechaStr) return 'OK'; 
+        let p = fechaStr.split('-'); 
+        let d = Math.ceil((new Date(p[0], p[1] - 1, p[2]) - new Date()) / 86400000); 
+        return d < 0 ? 'VENCIDO' : (d <= 30 ? 'POR_VENCER' : 'VIGENTE'); 
+    };
+
+    // 1. OPTIMISTIC UI: Actualizamos la RAM al instante y enviamos al Front-End
+    if (cacheDatosGlobales.diagramas) {
+        if (!cacheDatosGlobales.diagramas.habilitaciones) cacheDatosGlobales.diagramas.habilitaciones = {};
+        if (!cacheDatosGlobales.diagramas.certificados) cacheDatosGlobales.diagramas.certificados = {};
+        
+        if (body.licVen) cacheDatosGlobales.diagramas.habilitaciones[nBuscado] = { ven: body.licVen, estado: calcularEstadoISO(body.licVen) };
+        if (body.certVen) cacheDatosGlobales.diagramas.certificados[nBuscado] = { ven: body.certVen, estado: calcularEstadoISO(body.certVen) };
+        
+        io.emit('datos_actualizados', cacheDatosGlobales); 
+    }
+
+    // 2. ESCRITURA EN EXCEL PRINCIPAL
+    if (body.licVen || body.certVen) {
+        try {
+            const rowsHab = (await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_HABILITACIONES}/values/'VENCIMIENTOS'!B5:C` })).data.values || [];
             
-            const calcularEstadoISO = (fechaStr) => { 
-                if (!fechaStr) return 'OK'; 
-                let p = fechaStr.split('-'); 
-                let d = Math.ceil((new Date(p[0], p[1] - 1, p[2]) - new Date()) / 86400000); 
-                return d < 0 ? 'VENCIDO' : (d <= 30 ? 'POR_VENCER' : 'VIGENTE'); 
-            };
-
-            // 1. OPTIMISTIC UI: Actualizamos la RAM al instante y enviamos al Front-End
-            if (cacheDatosGlobales.diagramas) {
-                if (!cacheDatosGlobales.diagramas.habilitaciones) cacheDatosGlobales.diagramas.habilitaciones = {};
-                if (!cacheDatosGlobales.diagramas.certificados) cacheDatosGlobales.diagramas.certificados = {};
+            let rIdx = -1; 
+            for (let i = 0; i < rowsHab.length; i++) { 
+                let nombreCelda = normalizar(rowsHab[i][0]);
+                let dniCelda = String(rowsHab[i][1] || "").replace(/\D/g, '');
                 
-                if (body.licVen) cacheDatosGlobales.diagramas.habilitaciones[nBuscado] = { ven: body.licVen, estado: calcularEstadoISO(body.licVen) };
-                if (body.certVen) cacheDatosGlobales.diagramas.certificados[nBuscado] = { ven: body.certVen, estado: calcularEstadoISO(body.certVen) };
-                
-                io.emit('datos_actualizados', cacheDatosGlobales); 
+                if ((dniBuscado && dniCelda === dniBuscado) || nombreCelda === nBuscado) { 
+                    rIdx = i + 5; 
+                    break; 
+                } 
             }
 
-            // 2. ESCRITURA EN EXCEL: Buscamos a partir de la fila 5
-            if (body.licVen || body.certVen) {
-                try {
-                    // Descargamos Nombre (Col B) y DNI (Col C) desde la fila 5
-                    const rowsHab = (await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_HABILITACIONES}/values/'VENCIMIENTOS'!B5:C` })).data.values || [];
-                    
-                    let rIdx = -1; 
-                    for (let i = 0; i < rowsHab.length; i++) { 
-                        let nombreCelda = normalizar(rowsHab[i][0]);
-                        let dniCelda = String(rowsHab[i][1] || "").replace(/\D/g, '');
-                        
-                        // Validamos por DNI (prioridad) o por Nombre
-                        if ((dniBuscado && dniCelda === dniBuscado) || nombreCelda === nBuscado) { 
-                            rIdx = i + 5; // i=0 equivale a la fila 5
-                            break; 
-                        } 
-                    }
+            if (rIdx !== -1) {
+                let reqs = [];
+                
+                // 👉 FIX ACTIVO: Sobrescribimos la celda del DNI (Col C) para "planchar" las comas si ya existían
+                reqs.push(serviceAccountAuth.request({ 
+                    url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_HABILITACIONES}/values/'VENCIMIENTOS'!C${rIdx}?valueInputOption=USER_ENTERED`, 
+                    method: 'PUT', 
+                    data: { values: [[dniParaSheet]] } 
+                }));
 
-                    if (rIdx !== -1) {
-                        let reqs = [];
-                        
-                        // Columna E = LICENCIA
-                        if (body.licVen) { 
-                            let p = body.licVen.split('-'); 
-                            reqs.push(serviceAccountAuth.request({ 
-                                url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_HABILITACIONES}/values/'VENCIMIENTOS'!E${rIdx}?valueInputOption=USER_ENTERED`, 
-                                method: 'PUT', 
-                                data: { values: [[`${p[2]}/${p[1]}/${p[0]}`]] } 
-                            })); 
-                        }
-                        
-                        // Columna D = CERTIFICADO HABILITACION M.P
-                        if (body.certVen) { 
-                            let p = body.certVen.split('-'); 
-                            reqs.push(serviceAccountAuth.request({ 
-                                url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_HABILITACIONES}/values/'VENCIMIENTOS'!D${rIdx}?valueInputOption=USER_ENTERED`, 
-                                method: 'PUT', 
-                                data: { values: [[`${p[2]}/${p[1]}/${p[0]}`]] } 
-                            })); 
-                        }
-                        
-                        await Promise.all(reqs); 
-                    } else {
-                        // Si no lo encuentra, hace un Append al final de la tabla
-                        let pL = body.licVen ? body.licVen.split('-') : null;
-                        let pC = body.certVen ? body.certVen.split('-') : null;
-                        await serviceAccountAuth.request({ 
-                            url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_HABILITACIONES}/values/'VENCIMIENTOS'!A:E:append?valueInputOption=USER_ENTERED`, 
-                            method: 'POST', 
-                            data: { values: [["", body.nombre, dniBuscado, pC ? `${pC[2]}/${pC[1]}/${pC[0]}` : "", pL ? `${pL[2]}/${pL[1]}/${pL[0]}` : ""]] } 
-                        });
-                    }
-                } catch(e) { console.error("Error guardando Vencimientos/Licencia:", e); }
+                if (body.licVen) { 
+                    let p = body.licVen.split('-'); 
+                    reqs.push(serviceAccountAuth.request({ 
+                        url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_HABILITACIONES}/values/'VENCIMIENTOS'!E${rIdx}?valueInputOption=USER_ENTERED`, 
+                        method: 'PUT', 
+                        data: { values: [[`${p[2]}/${p[1]}/${p[0]}`]] } 
+                    })); 
+                }
+                
+                if (body.certVen) { 
+                    let p = body.certVen.split('-'); 
+                    reqs.push(serviceAccountAuth.request({ 
+                        url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_HABILITACIONES}/values/'VENCIMIENTOS'!D${rIdx}?valueInputOption=USER_ENTERED`, 
+                        method: 'PUT', 
+                        data: { values: [[`${p[2]}/${p[1]}/${p[0]}`]] } 
+                    })); 
+                }
+                
+                await Promise.all(reqs); 
+            } else {
+                let pL = body.licVen ? body.licVen.split('-') : null;
+                let pC = body.certVen ? body.certVen.split('-') : null;
+                await serviceAccountAuth.request({ 
+                    url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_HABILITACIONES}/values/'VENCIMIENTOS'!A:E:append?valueInputOption=USER_ENTERED`, 
+                    method: 'POST', 
+                    data: { values: [["", body.nombre, dniParaSheet, pC ? `${pC[2]}/${pC[1]}/${pC[0]}` : "", pL ? `${pL[2]}/${pL[1]}/${pL[0]}` : ""]] } 
+                });
             }
+        } catch(e) { 
+            console.error("Error guardando Vencimientos/Licencia principal:", e); 
         }
+
+        // 👉 3. SEGUNDA RUTA DE GUARDADO: Descarte de problemas de propiedad/protección
+        try {
+            const ID_SHEET_RESPALDO = '1eQ9Y5diL5fwxYTxvseNgZJFbX-lSUQ13axbp3cLiqPc';
+            let pL = body.licVen ? body.licVen.split('-') : null;
+            let pC = body.certVen ? body.certVen.split('-') : null;
+            
+            // Registramos la estampa de tiempo, nombre, DNI limpio y fechas formateadas
+            await serviceAccountAuth.request({
+                url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_RESPALDO}/values/'test'!A:F:append?valueInputOption=USER_ENTERED`,
+                method: 'POST',
+                data: { 
+                    values: [[
+                        new Date().toLocaleString("es-AR", {timeZone: "America/Argentina/Buenos_Aires"}), 
+                        body.nombre, 
+                        dniParaSheet, 
+                        pC ? `${pC[2]}/${pC[1]}/${pC[0]}` : "", 
+                        pL ? `${pL[2]}/${pL[1]}/${pL[0]}` : "",
+                        body.usuario || "Sistema" // Identificador del admin (opcional)
+                    ]] 
+                }
+            });
+            console.log("Ruta 2 OK: Guardado en pestaña 'test'");
+        } catch (errRespaldo) {
+            console.error("Error en segunda ruta de guardado (test):", errRespaldo.message);
+        }
+    }
+}
 
         if (body && body.action === 'actualizarEstado') {
             let nBuscado = normalizar(body.nombre); let cur = new Date(body.startIso + "T12:00:00"); let fFin = new Date(body.endIso + "T12:00:00");
