@@ -112,7 +112,7 @@ async function actualizarCacheDesdeGoogle() {
                 let colFecha = -1;
                 let colNom = -1;
 
-                // 👉 MOTOR DE DÍA ESTRICTO: Busca la fecha de hoy, si no la encuentra busca la de ayer (Por si aún no cargaron la grilla de hoy)
+// 👉 MOTOR DE DÍA ESTRICTO: Busca la fecha de hoy, si no la encuentra busca la de ayer
                 for (let offset = 0; offset >= -3; offset--) {
                     let d = new Date(hoyAr);
                     d.setDate(d.getDate() + offset);
@@ -133,30 +133,43 @@ async function actualizarCacheDesdeGoogle() {
                             let val = String(rowsMov[r][c] || "").toLowerCase().trim();
                             if (regexFechas.some(rx => rx.test(val))) { 
                                 colFecha = c; 
-                                // REGLA DE ORO DE GAS: Nombre del chofer siempre 3 columnas a la izquierda
-                                colNom = c - 3; 
+                                
+                                // 🚀 NUEVO RADAR DINÁMICO: Escaneamos hacia la izquierda buscando el encabezado "Chofer"
+                                for (let searchCol = colFecha; searchCol >= 0; searchCol--) {
+                                    let encontrado = false;
+                                    // Revisamos las primeras 6 filas de esa columna buscando la palabra
+                                    for (let searchRow = 0; searchRow < 6; searchRow++) {
+                                        let cellVal = String(rowsMov[searchRow]?.[searchCol] || "").toLowerCase().trim();
+                                        if (cellVal === "chofer" || cellVal === "choferes" || cellVal.includes("apellido y nombre")) {
+                                            colNom = searchCol;
+                                            encontrado = true;
+                                            break;
+                                        }
+                                    }
+                                    if (encontrado) break;
+                                }
+                                
+                                // Fallback de seguridad (por si alguien borró el encabezado accidentalmente)
+                                if (colNom === -1) colNom = c - 3; 
                                 break; 
                             }
                         }
                         if (colFecha !== -1) break;
                     }
-                    // Si encontró el día, rompe el ciclo y usa esa columna
                     if (colFecha !== -1) break; 
                 }
 
-                // Extracción de Vehículos iterando HASTA DONDE HAYA PATENTES
+                // Extracción de Vehículos iterando HASTA DONDE HAYA PATENTES (Las columnas C, E y F se mantienen intocables)
                 if (colNom !== -1) {
                     for (let i = 2; i < rowsMov.length; i++) {
-                        let n_ute = String(rowsMov[i][2] || "").trim();
-                        let tractor = String(rowsMov[i][4] || "").trim();
-                        let semi = String(rowsMov[i][5] || "").trim();
+                        let n_ute = String(rowsMov[i][2] || "").trim(); // Col C
+                        let tractor = String(rowsMov[i][4] || "").trim(); // Col E
+                        let semi = String(rowsMov[i][5] || "").trim(); // Col F
 
-                        // Si la fila no tiene patente (ej: "METANOL", "LIVIANOS"), SALTA a la siguiente, no corta el escaneo.
                         if (!tractor) continue;
 
                         let nomRaw = String(rowsMov[i][colNom] || "").trim();
                         
-                        // Si la celda está vacía o tiene un "1", la salta, pero sigue bajando
                         if (!nomRaw || nomRaw === "1" || !/[a-zA-Záéíóú]/.test(nomRaw)) continue;
 
                         let norm = normalizar(nomRaw);
@@ -171,8 +184,7 @@ async function actualizarCacheDesdeGoogle() {
                     }
                 } else {
                     console.log("⚠️ No se encontró la columna de la fecha en Mov.Unidades.");
-                }
-            }
+                }            }
 
             let nombrePestañaViajes = await getTabName(ID_SHEET_MOVIMIENTOS, "Tabla de viajes", "Tabla de viajes");
             let mapaTD = {};
