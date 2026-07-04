@@ -37,8 +37,6 @@ const ID_SHEET_APTOS_MEDICOS = '1oJmN8hurfHfNnGBYUFcBdlrIj2VUzeIyq0ZTWxTpYNI';
 const ID_SHEET_KILOMETROS = '1Wr-_P4mDvldif_cAx08sp7yT8uTUrajI2HQAJF6tnGM';
 const ID_SHEET_HABILITACIONES = '1hPDno09tMBtKh7aIdsvzEYcyOY7leYj2B6XnniD0aXg';
 const ID_SHEET_DOCUMENTOS = '1pnYXKDSv70Vq78Rchxus5FHMKdgXdbfltVsEg6vArjo';
-
-// 👉 NUEVO ID JULIO 2026 ACTUALIZADO
 const ID_SHEET_MOVIMIENTOS = process.env.MES_MOVIMIENTOS_ID || '1ArSUOVJU0cNXk4lvc2CncBEC3e_fBXd7ICMvC_6HexQ'; 
 
 const mesesAbrev = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
@@ -97,7 +95,6 @@ async function actualizarCacheDesdeGoogle() {
         // ==========================================
         let choferesRouter = {};
         try {
-            // Leemos desde la Columna A hasta la G
             const rowsDB = await fetchRango(ID_SPREADSHEET_MASTER, "'DB_CHOFERES'!A2:G1000");
             rowsDB.forEach(row => {
                 let id = String(row[0] || "").trim();
@@ -105,10 +102,10 @@ async function actualizarCacheDesdeGoogle() {
                 
                 choferesRouter[id] = {
                     id: id,
-                    nombre: String(row[1] || "").trim(),         // Col B: Nombre Oficial
-                    dni: String(row[2] || "").replace(/\D/g, ''),  // Col C: DNI para Vencimientos
-                    cuil: String(row[4] || "").replace(/\D/g, ''), // Col E: CUIL para Periódicos
-                    dniFallback: String(row[6] || "").replace(/\D/g, '') // Col G: DNI limpio (Fallback)
+                    nombre: String(row[1] || "").trim(),
+                    dni: String(row[2] || "").replace(/\D/g, ''),
+                    cuil: String(row[4] || "").replace(/\D/g, ''),
+                    dniFallback: String(row[6] || "").replace(/\D/g, '')
                 };
             });
             cacheDatosGlobales.choferesRouter = choferesRouter; 
@@ -134,7 +131,6 @@ async function actualizarCacheDesdeGoogle() {
                 let colFecha = -1;
                 let colNom = -1;
 
-// 👉 MOTOR DE DÍA ESTRICTO: Busca la fecha de hoy, si no la encuentra busca la de ayer
                 for (let offset = 0; offset >= -3; offset--) {
                     let d = new Date(hoyAr);
                     d.setDate(d.getDate() + offset);
@@ -156,10 +152,8 @@ async function actualizarCacheDesdeGoogle() {
                             if (regexFechas.some(rx => rx.test(val))) { 
                                 colFecha = c; 
                                 
-                                // 🚀 NUEVO RADAR DINÁMICO: Escaneamos hacia la izquierda buscando el encabezado "Chofer"
                                 for (let searchCol = colFecha; searchCol >= 0; searchCol--) {
                                     let encontrado = false;
-                                    // Revisamos las primeras 6 filas de esa columna buscando la palabra
                                     for (let searchRow = 0; searchRow < 6; searchRow++) {
                                         let cellVal = String(rowsMov[searchRow]?.[searchCol] || "").toLowerCase().trim();
                                         if (cellVal === "chofer" || cellVal === "choferes" || cellVal.includes("apellido y nombre")) {
@@ -171,7 +165,6 @@ async function actualizarCacheDesdeGoogle() {
                                     if (encontrado) break;
                                 }
                                 
-                                // Fallback de seguridad (por si alguien borró el encabezado accidentalmente)
                                 if (colNom === -1) colNom = c - 3; 
                                 break; 
                             }
@@ -181,17 +174,15 @@ async function actualizarCacheDesdeGoogle() {
                     if (colFecha !== -1) break; 
                 }
 
-                // Extracción de Vehículos iterando HASTA DONDE HAYA PATENTES (Las columnas C, E y F se mantienen intocables)
                 if (colNom !== -1) {
                     for (let i = 2; i < rowsMov.length; i++) {
-                        let n_ute = String(rowsMov[i][2] || "").trim(); // Col C
-                        let tractor = String(rowsMov[i][4] || "").trim(); // Col E
-                        let semi = String(rowsMov[i][5] || "").trim(); // Col F
+                        let n_ute = String(rowsMov[i][2] || "").trim(); 
+                        let tractor = String(rowsMov[i][4] || "").trim(); 
+                        let semi = String(rowsMov[i][5] || "").trim(); 
 
                         if (!tractor) continue;
 
                         let nomRaw = String(rowsMov[i][colNom] || "").trim();
-                        
                         if (!nomRaw || nomRaw === "1" || !/[a-zA-Záéíóú]/.test(nomRaw)) continue;
 
                         let norm = normalizar(nomRaw);
@@ -206,7 +197,8 @@ async function actualizarCacheDesdeGoogle() {
                     }
                 } else {
                     console.log("⚠️ No se encontró la columna de la fecha en Mov.Unidades.");
-                }            }
+                }            
+            }
 
             let nombrePestañaViajes = await getTabName(ID_SHEET_MOVIMIENTOS, "Tabla de viajes", "Tabla de viajes");
             let mapaTD = {};
@@ -283,7 +275,36 @@ async function actualizarCacheDesdeGoogle() {
             const fRev = (s) => { if (!s) return null; let p = String(s).split('/'); return p.length === 3 ? `${p[2]}-${p[1]}-${p[0]}` : null; };
             const calcEst = (s) => { if (!s) return 'OK'; let p = String(s).split('/'); if(p.length !== 3) return 'OK'; let d = Math.ceil((new Date(p[2], p[1]-1, p[0]) - new Date()) / 86400000); return d < 0 ? 'VENCIDO' : (d <= 30 ? 'POR_VENCER' : 'VIGENTE'); };
 
-        rowsDoc.forEach(r => { let n = normalizar(r[1]); let v = fRev(r[8]); if (n && v) resDiagGAS.documentos[n] = { ven: v, estado: calcEst(r[8]) }; });        } catch(e) { console.error("Error Lectura Docs:", e); }
+            // 🚀 MAPAS DE TRADUCCIÓN INVERSA 
+            let traductorCuil = {};
+            let traductorDni = {};
+            if (cacheDatosGlobales.choferesRouter) {
+                for (let key in cacheDatosGlobales.choferesRouter) {
+                    let c = cacheDatosGlobales.choferesRouter[key];
+                    let nombreOficial = normalizar(c.nombre);
+                    if (c.cuil) traductorCuil[c.cuil] = nombreOficial;
+                    if (c.dni) traductorDni[c.dni] = nombreOficial;
+                }
+            }
+
+            rowsDoc.forEach(r => { 
+                let cuilCelda = String(r[4] || "").replace(/\D/g, ''); 
+                let n = traductorCuil[cuilCelda] || normalizar(r[1]); 
+                let v = fRev(r[8]); // Índice 8 = Col I
+                if (n && v) resDiagGAS.documentos[n] = { ven: v, estado: calcEst(r[8]) }; 
+            });
+
+            rowsHab.forEach(r => { 
+                let dniCelda = String(r[2] || "").replace(/\D/g, ''); 
+                let n = traductorDni[dniCelda] || normalizar(r[1]); 
+                let c = fRev(r[3]); // Índice 3 = Col D
+                let l = fRev(r[4]); // Índice 4 = Col E
+                if (n) { 
+                    if (c) resDiagGAS.certificados[n] = { ven: c, estado: calcEst(r[3]) }; 
+                    if (l) resDiagGAS.habilitaciones[n] = { ven: l, estado: calcEst(r[4]) }; 
+                } 
+            });
+        } catch(e) { console.error("Error Lectura Docs:", e); }
 
         let hoyAr2 = new Date(new Date().toLocaleString("en-US", {timeZone: "America/Argentina/Buenos_Aires"}));
         let offsetsMeses = [-1, 0, 1, 2, 3]; 
@@ -315,8 +336,6 @@ async function actualizarCacheDesdeGoogle() {
         
     } catch (error) { console.error("❌ Error RAM:", error); } 
 }
-
-
 
 app.get('/health', (req, res) => res.status(200).send('OK'));
 app.get('/api/datos', (req, res) => {
@@ -351,9 +370,9 @@ app.post('/api/proxy', async (req, res) => {
             if (sheetMov) { await sheetMov.addRow([ body.usuario || body.admin || 'Sistema', body.chofer, body.fecha, body.unidad || "-", body.evento, body.obsEvento || "", body.estado || "-", body.obsEstado || "", "","","","","","","","" ]); }
         }
 
-if (body && body.action === 'guardarDocumentos') {
+        if (body && body.action === 'guardarDocumentos') {
             
-            // 1. BUSCAMOS AL CHOFER EN EL ROUTER (Soporta ID o DNI viejo)
+            // 1. BUSCAMOS AL CHOFER EN EL ROUTER 
             let routerData = null;
             if (cacheDatosGlobales.choferesRouter) {
                 if (body.id && cacheDatosGlobales.choferesRouter[body.id]) {
@@ -369,7 +388,6 @@ if (body && body.action === 'guardarDocumentos') {
                 }
             }
 
-            // Si no lo encuentra en DB_CHOFERES, usa los datos crudos del body como salvavidas
             let nBuscado = routerData ? normalizar(routerData.nombre) : normalizar(body.nombre);
             let dniParaVencimientos = routerData ? routerData.dni : (body.dni ? String(body.dni).replace(/\D/g, '') : "");
             let cuilParaPeriodicos = routerData ? routerData.cuil : dniParaVencimientos;
@@ -381,7 +399,7 @@ if (body && body.action === 'guardarDocumentos') {
                 return d < 0 ? 'VENCIDO' : (d <= 30 ? 'POR_VENCER' : 'VIGENTE'); 
             };
 
-            // 2. OPTIMISTIC UI: Actualizamos RAM al instante
+            // 2. OPTIMISTIC UI
             if (cacheDatosGlobales.diagramas) {
                 if (!cacheDatosGlobales.diagramas.documentos) cacheDatosGlobales.diagramas.documentos = {};
                 if (!cacheDatosGlobales.diagramas.habilitaciones) cacheDatosGlobales.diagramas.habilitaciones = {};
@@ -396,7 +414,7 @@ if (body && body.action === 'guardarDocumentos') {
 
             let reqs = [];
 
-            // 3. ENRUTAMIENTO HACIA PERIÓDICOS (Buscando por CUIL - Columna E)
+            // 3. ENRUTAMIENTO HACIA PERIÓDICOS 
             if (body.exVen && cuilParaPeriodicos) {
                 try {
                     const rowsDoc = (await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_DOCUMENTOS}/values/'PERIODICOS'!E5:E1000` })).data.values || [];
@@ -414,12 +432,14 @@ if (body && body.action === 'guardarDocumentos') {
                     let fechaHardcodeada = `${p[2]}/${p[1]}/${p[0]}`;
 
                     if (rIdxDoc !== -1) {
-                reqs.push(serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_DOCUMENTOS}/values/'PERIODICOS'!I${rIdxDoc}?valueInputOption=USER_ENTERED`, method: 'PUT', data: { values: [[fechaHardcodeada]] } }));                        console.log(`⚠️ Chofer ${nBuscado} (CUIL: ${cuilParaPeriodicos}) no encontrado en Periódicos.`);
+                        reqs.push(serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_DOCUMENTOS}/values/'PERIODICOS'!I${rIdxDoc}?valueInputOption=USER_ENTERED`, method: 'PUT', data: { values: [[fechaHardcodeada]] } }));
+                    } else {
+                        console.log(`⚠️ Chofer ${nBuscado} (CUIL: ${cuilParaPeriodicos}) no encontrado en Periódicos.`);
                     }
                 } catch(e) { console.error("❌ Error guardando Vencimiento Periódico:", e); }
             }
 
-            // 4. ENRUTAMIENTO HACIA VENCIMIENTOS Y HABILITACIONES (Buscando por DNI - Columna C)
+            // 4. ENRUTAMIENTO HACIA VENCIMIENTOS Y HABILITACIONES 
             if ((body.licVen || body.certVen) && dniParaVencimientos) {
                 try {
                     const rowsHab = (await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_HABILITACIONES}/values/'VENCIMIENTOS'!C5:C1000` })).data.values || [];
@@ -447,7 +467,7 @@ if (body && body.action === 'guardarDocumentos') {
                 } catch(e) { console.error("❌ Error guardando Vencimientos/Licencia:", e); }
             }
 
-            // Ejecutamos las llamadas a la API de Google de forma concurrente
+            // Ejecutamos las llamadas concurrentes
             await Promise.all(reqs);
 
             res.json({ success: true, message: "OK" });
