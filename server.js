@@ -283,8 +283,7 @@ async function actualizarCacheDesdeGoogle() {
             const fRev = (s) => { if (!s) return null; let p = String(s).split('/'); return p.length === 3 ? `${p[2]}-${p[1]}-${p[0]}` : null; };
             const calcEst = (s) => { if (!s) return 'OK'; let p = String(s).split('/'); if(p.length !== 3) return 'OK'; let d = Math.ceil((new Date(p[2], p[1]-1, p[0]) - new Date()) / 86400000); return d < 0 ? 'VENCIDO' : (d <= 30 ? 'POR_VENCER' : 'VIGENTE'); };
 
-            rowsDoc.forEach(r => { let n = normalizar(r[1]); let v = fRev(r[7]); if (n && v) resDiagGAS.documentos[n] = { ven: v, estado: calcEst(r[7]) }; });            rowsHab.forEach(r => { let n = normalizar(r[1]); let c = fRev(r[3]); let l = fRev(r[4]); if (n) { if (c) resDiagGAS.certificados[n] = { ven: c, estado: calcEst(r[3]) }; if (l) resDiagGAS.habilitaciones[n] = { ven: l, estado: calcEst(r[4]) }; } });
-        } catch(e) { console.error("Error Lectura Docs:", e); }
+        rowsDoc.forEach(r => { let n = normalizar(r[1]); let v = fRev(r[8]); if (n && v) resDiagGAS.documentos[n] = { ven: v, estado: calcEst(r[8]) }; });        } catch(e) { console.error("Error Lectura Docs:", e); }
 
         let hoyAr2 = new Date(new Date().toLocaleString("en-US", {timeZone: "America/Argentina/Buenos_Aires"}));
         let offsetsMeses = [-1, 0, 1, 2, 3]; 
@@ -415,8 +414,7 @@ if (body && body.action === 'guardarDocumentos') {
                     let fechaHardcodeada = `${p[2]}/${p[1]}/${p[0]}`;
 
                     if (rIdxDoc !== -1) {
-                        reqs.push(serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_DOCUMENTOS}/values/'PERIODICOS'!H${rIdxDoc}?valueInputOption=USER_ENTERED`, method: 'PUT', data: { values: [[fechaHardcodeada]] } }));                    } else {
-                        console.log(`⚠️ Chofer ${nBuscado} (CUIL: ${cuilParaPeriodicos}) no encontrado en Periódicos.`);
+                reqs.push(serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_DOCUMENTOS}/values/'PERIODICOS'!I${rIdxDoc}?valueInputOption=USER_ENTERED`, method: 'PUT', data: { values: [[fechaHardcodeada]] } }));                        console.log(`⚠️ Chofer ${nBuscado} (CUIL: ${cuilParaPeriodicos}) no encontrado en Periódicos.`);
                     }
                 } catch(e) { console.error("❌ Error guardando Vencimiento Periódico:", e); }
             }
