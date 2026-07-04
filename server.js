@@ -467,10 +467,10 @@ app.post('/api/proxy', async (req, res) => {
                 } catch(e) { console.error("❌ Error guardando Vencimientos/Licencia:", e); }
             }
 
-            // Ejecutamos las llamadas concurrentes
+           // Ejecutamos las llamadas concurrentes
             await Promise.all(reqs);
 
-            res.json({ success: true, message: "OK" });
+            return res.json({ success: true, message: "OK" }); // ✅ Solucionado
         }
 
         if (body && body.action === 'actualizarEstado') {
