@@ -3773,34 +3773,40 @@ document.addEventListener("DOMContentLoaded", () => {
     const mobileMenu = document.getElementById('mobile-menu');
     const burgerIcon = document.getElementById('burger-icon');
     const closeIcon = document.getElementById('close-icon');
+    const btnSwitchVista = document.getElementById('btnSwitchVista');
 
-    // 1. Abrir/Cerrar menú al tocar la hamburguesa
-    burgerBtn.addEventListener('click', (e) => {
-        e.stopPropagation(); // Evita que el click se propague y cierre el menú inmediatamente
-        mobileMenu.classList.toggle('hidden');
-        burgerIcon.classList.toggle('hidden');
-        closeIcon.classList.toggle('hidden');
-    });
+    // 1. Abrir/Cerrar menú al tocar la hamburguesa (Protegido)
+    if (burgerBtn && mobileMenu) {
+        burgerBtn.addEventListener('click', (e) => {
+            e.stopPropagation(); 
+            mobileMenu.classList.toggle('hidden');
+            if (burgerIcon) burgerIcon.classList.toggle('hidden');
+            if (closeIcon) closeIcon.classList.toggle('hidden');
+        });
+    }
 
-    // 2. Cerrar el menú si se hace clic en cualquier otro lado de la pantalla
+    // 2. Cerrar el menú si se hace clic afuera (Protegido)
     document.addEventListener('click', (e) => {
-        if (!mobileMenu.contains(e.target) && !burgerBtn.contains(e.target)) {
-            mobileMenu.classList.add('hidden');
-            burgerIcon.classList.remove('hidden');
-            closeIcon.classList.add('hidden');
+        if (mobileMenu && !mobileMenu.classList.contains('hidden') && burgerBtn) {
+            if (!mobileMenu.contains(e.target) && !burgerBtn.contains(e.target)) {
+                mobileMenu.classList.add('hidden');
+                if (burgerIcon) burgerIcon.classList.remove('hidden');
+                if (closeIcon) closeIcon.classList.add('hidden');
+            }
         }
     });
 
-    // 3. Vincular el botón Switch (Asegúrate de que la función cambiarVista coincida con la que ya tienes)
-    document.getElementById('btnSwitchVista').addEventListener('click', () => {
-        // Llama a tu función original para cambiar la vista
-        cambiarVista(); 
-        
-        // Cierra el menú automáticamente después de hacer clic
-        mobileMenu.classList.add('hidden');
-        burgerIcon.classList.remove('hidden');
-        closeIcon.classList.add('hidden');
-    });
+    // 3. Vincular el botón Switch (Protegido)
+    if (btnSwitchVista) {
+        btnSwitchVista.addEventListener('click', () => {
+            if (typeof cambiarVista === 'function') cambiarVista(); 
+            if (mobileMenu) {
+                mobileMenu.classList.add('hidden');
+                if (burgerIcon) burgerIcon.classList.remove('hidden');
+                if (closeIcon) closeIcon.classList.add('hidden');
+            }
+        });
+    }
 });
 
 </script>
