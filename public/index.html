@@ -3277,44 +3277,161 @@ window.guardarParametros = function() {
         const fFin = document.getElementById('editor-fecha-fin').value;
         const est = document.getElementById('editor-estado').value;
 
-        if (!fInicio || !fFin || !est) return showToast("Complete todos los campos.", "error");
+        // Soporte opcional para hoja de ruta si el input existe en tu modal
+        const inputHR = document.getElementById('editor-hoja-ruta');
+        const nuevaHR = inputHR ? inputHR.value.trim() : "";
+
+        if (!fInicio || !fFin) return showToast("Las fechas son obligatorias.", "error");
+        if (!est && !nuevaHR) return showToast("Complete el estado o la Hoja de Ruta.", "error");
 
         const btn = document.getElementById('btn-guardar');
         const originalText = btn.innerHTML;
         btn.innerHTML = `<span class="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full"></span>`;
         btn.disabled = true;
 
-        // --- NUEVA LÓGICA DE SECUENCIA INTELIGENTE ---
-        let payloadEst = est;
-        if (est === 'OPERATIVO') {
-            let fStart = new Date(fInicio + "T12:00:00");
-            let fEnd = new Date(fFin + "T12:00:00");
-            
-            // Buscar el día inmediatamente anterior
-            let fAyer = new Date(fStart);
-            fAyer.setDate(fAyer.getDate() - 1);
-            let valAyer = getBaseState(getValDiaGlobal(chofer.dias, fAyer));
-            
-            // Si ayer era un número, lo sumamos. Si era F, V, etc, empezamos en 1.
-            let numAyer = parseInt(valAyer, 10);
-            let startNum = !isNaN(numAyer) ? numAyer + 1 : 1;
+        const usuarioLogueado = localStorage.getItem('usuarioActivo') || "Sesión Perdida";
+        let peticiones = [];
 
-            if (fInicio === fFin) {
-                // Si seleccionó un solo día, enviamos el número en texto (Ej: "5")
-                payloadEst = String(startNum);
-            } else {
-                // Si es un rango (ej: 3 días), enviamos un arreglo (Ej: ["5", "6", "7"])
-                payloadEst = [];
-                let cur = new Date(fStart);
-                let currentNum = startNum;
-                while(cur <= fEnd) {
-                    payloadEst.push(String(currentNum));
-                    currentNum++;
-                    cur.setDate(cur.getDate() + 1);
+        let fStart = new Date(fInicio + "T12:00:00");
+        let fEnd = new Date(fFin + "T12:00:00");
+
+        // ==============================================================
+        // 1. LÓGICA DE ESTADOS Y OPTIMISTIC UI
+        // ==============================================================
+        if (est) {
+            let payloadEst = est;
+            let startNum = 1;
+
+            if (est === 'OPERATIVO') {
+                let fAyer = new Date(fStart);
+                fAyer.setDate(fAyer.getDate() - 1);
+                let valAyer = getBaseState(getValDiaGlobal(chofer.dias, fAyer));
+                let numAyer = parseInt(valAyer, 10);
+                startNum = !isNaN(numAyer) ? numAyer + 1 : 1;
+
+                if (fInicio === fFin) {
+                    payloadEst = String(startNum);
+                } else {
+                    payloadEst = [];
+                    let cur = new Date(fStart);
+                    let currentNum = startNum;
+                    while(cur <= fEnd) {
+                        payloadEst.push(String(currentNum));
+                        currentNum++;
+                        cur.setDate(cur.getDate() + 1);
+                    }
                 }
             }
+
+            // 👉 INYECCIÓN INMEDIATA EN RAM (OPTIMISTIC UI)
+            const mesesAbrev = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+            let optCur = new Date(fStart);
+            let idxOpt = 0;
+            
+            while(optCur <= fEnd) {
+                let isoStr = optCur.toISOString().split('T')[0];
+                let tabName = mesesAbrev[optCur.getMonth()] + "-" + String(optCur.getFullYear()).slice(-2);
+                let optVal = Array.isArray(payloadEst) ? payloadEst[idxOpt] : payloadEst;
+                
+                if (optVal === 'BORRAR') optVal = '-'; 
+                
+                // Actualiza el diccionario absoluto
+                if (!chofer._diasIso) chofer._diasIso = {};
+                chofer._diasIso[isoStr] = optVal;
+
+                // Actualiza la tira separada por comas (para el renderizado de colores)
+                if (!chofer.dias) chofer.dias = {};
+                if (!chofer.dias[tabName]) chofer.dias[tabName] = new Array(31).fill('-').join(',');
+                
+                let tiraDias = chofer.dias[tabName].split(',');
+                tiraDias[optCur.getDate() - 1] = optVal;
+                chofer.dias[tabName] = tiraDias.join(',');
+
+                optCur.setDate(optCur.getDate() + 1);
+                idxOpt++;
+            }
+
+            peticiones.push(fetch(API_URL, {
+                method: 'POST',
+                // Asegurar Content-Type JSON para que express lo procese
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: 'actualizarEstado',
+                    nombre: chofer.nom,
+                    startIso: fInicio,
+                    endIso: fFin,
+                    est: payloadEst,
+                    usuario: usuarioLogueado
+                })
+            }));
         }
-        // ---------------------------------------------
+
+        // ==============================================================
+        // 2. LÓGICA DE HOJAS DE RUTA Y OPTIMISTIC UI
+        // ==============================================================
+        if (nuevaHR) {
+            let optCur = new Date(fStart);
+            let nLimpio = String(chofer.nom).trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
+            
+            while(optCur <= fEnd) {
+                let isoStr = optCur.toISOString().split('T')[0];
+                if (!viajesDetalleGlobal) window.viajesDetalleGlobal = {};
+                if (!viajesDetalleGlobal[nLimpio]) viajesDetalleGlobal[nLimpio] = {};
+                if (!viajesDetalleGlobal[nLimpio][isoStr]) viajesDetalleGlobal[nLimpio][isoStr] = { km:0, campo:0, hoja_ruta: [] };
+                
+                let hrActuales = viajesDetalleGlobal[nLimpio][isoStr].hoja_ruta || [];
+                if (!hrActuales.includes(nuevaHR)) hrActuales.push(nuevaHR);
+                viajesDetalleGlobal[nLimpio][isoStr].hoja_ruta = hrActuales;
+                
+                optCur.setDate(optCur.getDate() + 1);
+            }
+
+            peticiones.push(fetch(API_URL, {
+                method: 'POST',
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ 
+                    action: 'guardarHojaRutaRango', 
+                    nombre: chofer.nom, 
+                    startIso: fInicio, 
+                    endIso: fFin, 
+                    hojas: [nuevaHR], 
+                    tractor: chofer.tractor, 
+                    overwrite: false 
+                })
+            }));
+        }
+
+        // ==============================================================
+        // 3. ACTUALIZACIÓN VISUAL INSTANTÁNEA
+        // ==============================================================
+        cerrarEditor();
+        if(inputHR) inputHR.value = '';
+        filtrarTabla(); // 👈 El calendario lee la memoria RAM local y se pinta inmediatamente
+        
+        // Si tienes abierto el modal individual, refrescarlo también
+        if(typeof vistaActual !== 'undefined' && vistaActual === 'individual' && typeof mostrarDetalleConductor === 'function') {
+            mostrarDetalleConductor(safeId, true);
+        }
+
+        // ==============================================================
+        // 4. ESPERAR RESPUESTAS EN SEGUNDO PLANO
+        // ==============================================================
+        Promise.all(peticiones)
+        .then(responses => Promise.all(responses.map(r => r.json())))
+        .then(results => {
+            let error = results.find(r => !r.success);
+            if(error) {
+                showToast(error.error || "Error en el guardado", "error");
+            } else {
+                showToast("Cambios guardados en servidor.", "success");
+            }
+        })
+        .catch(err => showToast("Error de conexión: " + err.message, "error"))
+        .finally(() => {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        });
+    };
 
 // 👉 NUEVO: Recuperamos la identidad
         const usuarioLogueado = localStorage.getItem('usuarioActivo') || "Sesión Perdida";
@@ -3347,7 +3464,7 @@ window.guardarParametros = function() {
             btn.innerHTML = originalText;
             btn.disabled = false;
         });
-    };
+   
     function mostrarCargando(m) { document.getElementById('loader-global').style.display = m ? 'flex' : 'none'; document.getElementById('dashboard').style.opacity = m ? '0.3' : '1'; }
     function mostrarErrorGlobal(msg) { showToast("Error de conexión: " + msg, "error"); mostrarCargando(false); }
 
