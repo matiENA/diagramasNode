@@ -2411,20 +2411,25 @@ function ejecutarRenderLocalHR(safeId) {
     }
 }
 
-// Función de comunicación con Google Apps Script
-function enviarHRBackend(chofer, isoStr, valoresHR) {
+// ==============================================================
+// 🎯 ENRUTADOR UNIFICADO DE HOJAS DE RUTA (FRONTEND)
+// ==============================================================
+window.enviarHRBackend = function(chofer, isoStr, valoresHR) {
     const usuarioLogueado = localStorage.getItem('usuarioActivo') || "Sesión Perdida";
 
     fetch(API_URL, {
         method: 'POST',
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        // 🚨 CRÍTICO: Debe ser application/json para que Express lo lea
+        headers: { "Content-Type": "application/json" }, 
         body: JSON.stringify({ 
-            action: 'guardarHojaRutaPlanilla', 
+            action: 'guardarHojaRutaRango', // 👈 Acción unificada
             nombre: chofer.nom, 
-            fecha: isoStr,
+            startIso: isoStr,
+            endIso: isoStr,
             hojas: valoresHR,
+            tractor: chofer.tractor,
             usuario: usuarioLogueado,
-            tractor: chofer.tractor 
+            overwrite: true // 👈 Obliga a pisar la celda (vital para poder ELIMINAR)
         })
     }).then(r => r.json()).then(res => {
         if (!res.success) {
@@ -2433,9 +2438,10 @@ function enviarHRBackend(chofer, isoStr, valoresHR) {
             showToast("Planilla guardada correctamente.", "success");
         }
     }).catch(e => {
+        console.error(e);
         showToast("Error de red guardando Hoja de Ruta", "error");
     });
-}
+};
 
 
 function getHTMLRestante(chofer, doc, hab, cert, apto, badgeExam, badgeLic, badgeCert) {
