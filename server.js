@@ -505,32 +505,120 @@ app.post('/api/proxy', async (req, res) => {
             }
         }
 
-        if (body && body.action === 'guardarHojaRutaPlanilla') {
-            let nBuscado = normalizar(body.nombre); let targetStr = `${String(new Date(body.fecha + "T12:00:00").getDate()).padStart(2,'0')}/${String(new Date(body.fecha + "T12:00:00").getMonth()+1).padStart(2,'0')}/${String(new Date(body.fecha + "T12:00:00").getFullYear()).slice(-2)}`;
-            let strHojas = (body.hojas || []).join(', ');
+// ==============================================================
+        // 🚚 GUARDAR HOJA DE RUTA (RANGO O DÍA ÚNICO)
+        // ==============================================================
+        if (body && body.action === 'guardarHojaRutaRango') {
+            const normalizar = (n) => String(n || '').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
+            const nBuscado = normalizar(body.nombre);
+            
+            const curDate = new Date(body.startIso + "T12:00:00");
+            const endDate = new Date(body.endIso + "T12:00:00");
+            
+            const hojasEntrantes = Array.isArray(body.hojas) ? body.hojas : String(body.hojas || '').split(',').map(s => s.trim()).filter(Boolean);
+            const flagOverwrite = body.overwrite === true;
 
+            // ---------------------------------------------------------
+            // 1. INYECCIÓN EN RAM Y EMISIÓN INSTANTÁNEA (TIEMPO REAL)
+            // ---------------------------------------------------------
             if (cacheDatosGlobales.diagramas) {
-                if(!cacheDatosGlobales.diagramas.nuevaSeccionViajes[nBuscado]) cacheDatosGlobales.diagramas.nuevaSeccionViajes[nBuscado] = {};
-                if(!cacheDatosGlobales.diagramas.nuevaSeccionViajes[nBuscado][body.fecha]) cacheDatosGlobales.diagramas.nuevaSeccionViajes[nBuscado][body.fecha] = { dominio: body.tractor || '', km: 0, campo: 0, hoja_ruta: [] };
-                let target = cacheDatosGlobales.diagramas.nuevaSeccionViajes[nBuscado][body.fecha];
-                (body.hojas || []).filter(Boolean).forEach(h => { if (!target.hoja_ruta.includes(h)) target.hoja_ruta.push(h); });
+                if (!cacheDatosGlobales.diagramas.nuevaSeccionViajes[nBuscado]) {
+                    cacheDatosGlobales.diagramas.nuevaSeccionViajes[nBuscado] = {};
+                }
+
+                let tempCur = new Date(curDate);
+                while (tempCur <= endDate) {
+                    let isoStr = tempCur.toISOString().split('T')[0];
+
+                    if (!cacheDatosGlobales.diagramas.nuevaSeccionViajes[nBuscado][isoStr]) {
+                        cacheDatosGlobales.diagramas.nuevaSeccionViajes[nBuscado][isoStr] = { dominio: body.tractor || '', km: 0, campo: 0, hoja_ruta: [] };
+                    }
+
+                    let target = cacheDatosGlobales.diagramas.nuevaSeccionViajes[nBuscado][isoStr];
+                    
+                    if (flagOverwrite) {
+                        target.hoja_ruta = [...hojasEntrantes]; // Reemplazo absoluto (ideal para cuando borran con la "X")
+                    } else {
+                        // Modo aditivo (Modal de rango)
+                        hojasEntrantes.forEach(h => { if (!target.hoja_ruta.includes(h)) target.hoja_ruta.push(h); });
+                    }
+
+                    tempCur.setDate(tempCur.getDate() + 1);
+                }
+                
                 io.emit('datos_actualizados', cacheDatosGlobales);
             }
 
-            const rowsBC = (await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_KILOMETROS}/values/'KM'!B:C` })).data.values || [];
-            let rIdx = -1;
-            for (let i = 1; i < rowsBC.length; i++) {
-                if (normalizar(rowsBC[i][1]) === nBuscado) {
-                    let p = String(rowsBC[i][0] || '').trim().split(' ')[0].split(/[\/\-]/);
-                    if (p.length >= 3 && `${String(parseInt(p[p[0].length===4?2:0], 10)).padStart(2,'0')}/${String(parseInt(p[1], 10)).padStart(2,'0')}/${p[p[0].length===4?0:2].slice(-2)}` === targetStr) { rIdx = i + 1; break; }
-                    else if (String(rowsBC[i][0]).includes(targetStr) || String(rowsBC[i][0]).startsWith(body.fecha)) { rIdx = i + 1; break; }
+            // ---------------------------------------------------------
+            // 2. PERSISTENCIA EN GOOGLE SHEETS EN SEGUNDO PLANO
+            // ---------------------------------------------------------
+            const rowsKM = (await serviceAccountAuth.request({ 
+                url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_KILOMETROS}/values/'KM'!A:T` 
+            })).data.values || [];
+
+            let reqs = [];
+            const docKm = new GoogleSpreadsheet(ID_SHEET_KILOMETROS, serviceAccountAuth);
+            let sheetLoaded = false;
+
+            let loopDate = new Date(curDate);
+            while (loopDate <= endDate) {
+                let isoStr = loopDate.toISOString().split('T')[0];
+                let targetStrSheet = `${String(loopDate.getDate()).padStart(2, '0')}/${String(loopDate.getMonth() + 1).padStart(2, '0')}/${String(loopDate.getFullYear()).slice(-2)}`;
+                
+                let filaIndex = -1;
+                let hojasSheetExistentes = "";
+
+                // Buscar fila existente en Sheets
+                for (let i = 1; i < rowsKM.length; i++) {
+                    if (normalizar(rowsKM[i][2]) === nBuscado) {
+                        let fechaCelda = String(rowsKM[i][1] || '').trim();
+                        if (fechaCelda.includes(targetStrSheet) || fechaCelda.startsWith(isoStr)) {
+                            filaIndex = i + 1; // +1 porque Sheets API indexa desde 1
+                            hojasSheetExistentes = String(rowsKM[i][19] || "").trim(); // Columna T (índice 19)
+                            break;
+                        }
+                    }
                 }
+
+                // Definimos el String final a guardar en Sheets
+                let finalHojasStr = "";
+                if (flagOverwrite) {
+                    finalHojasStr = hojasEntrantes.join(', ');
+                } else {
+                    let arrExistentes = hojasSheetExistentes ? hojasSheetExistentes.split(',').map(s => s.trim()).filter(Boolean) : [];
+                    hojasEntrantes.forEach(h => { if (!arrExistentes.includes(h)) arrExistentes.push(h); });
+                    finalHojasStr = arrExistentes.join(', ');
+                }
+
+                if (filaIndex !== -1) {
+                    // Actualiza solo la celda de HR
+                    reqs.push(
+                        serviceAccountAuth.request({ 
+                            url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_KILOMETROS}/values/'KM'!T${filaIndex}?valueInputOption=USER_ENTERED`, 
+                            method: 'PUT', 
+                            data: { values: [[finalHojasStr]] } 
+                        })
+                    );
+                } else {
+                    // Si el día no existía en Sheets, agregamos una fila nueva
+                    if (!sheetLoaded) { await docKm.loadInfo(); sheetLoaded = true; }
+                    let sheetTarget = docKm.sheetsByTitle['KM'] || docKm.sheetsByIndex[0];
+                    await sheetTarget.addRow([
+                        body.tractor || "", targetStrSheet, body.nombre, "","","","","","","","","","","","","","","","", finalHojasStr
+                    ]);
+                }
+
+                loopDate.setDate(loopDate.getDate() + 1);
             }
 
-            if (rIdx !== -1) { await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_KILOMETROS}/values/'KM'!T${rIdx}?valueInputOption=USER_ENTERED`, method: 'PUT', data: { values: [[strHojas]] } }); } 
-            else { const docKm = new GoogleSpreadsheet(ID_SHEET_KILOMETROS, serviceAccountAuth); await docKm.loadInfo(); await (docKm.sheetsByTitle['KM'] || docKm.sheetsByIndex[0]).addRow([body.tractor || "", targetStr, body.nombre, "","","","","","","","","","","","","","","","", strHojas]); }
+            if (reqs.length > 0) {
+                await Promise.all(reqs).catch(e => console.error("Error Sheets Batch PUT:", e));
+            }
+            
+            return res.json({ success: true, message: "OK" });
         }
 
+        // Si la petición no entra en ningún if anterior
         res.json({ success: true, message: "OK" });
 
     } catch (error) { res.status(500).json({ success: false, error: "Error en Proxy" }); }
