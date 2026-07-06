@@ -5,6 +5,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
+const webhookRouter = require('./webhook');
 const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
@@ -337,6 +338,7 @@ async function actualizarCacheDesdeGoogle() {
     } catch (error) { console.error("❌ Error RAM:", error); } 
 }
 
+app.use('/api/webhook', webhookRouter(cacheDatosGlobales, io));
 app.get('/health', (req, res) => res.status(200).send('OK'));
 app.get('/api/datos', (req, res) => {
     if (!cacheDatosGlobales.diagramas) return res.status(503).json({ error: "Cargando DB..." });
