@@ -475,34 +475,65 @@ app.post('/api/proxy', async (req, res) => {
             return res.json({ success: true, message: "OK" }); // ✅ Solucionado
         }
 
+        // ==============================================================
+        // ✏️ ACTUALIZAR ESTADO DEL DIAGRAMA
+        // ==============================================================
         if (body && body.action === 'actualizarEstado') {
-            let nBuscado = normalizar(body.nombre); let cur = new Date(body.startIso + "T12:00:00"); let fFin = new Date(body.endIso + "T12:00:00");
+            let nBuscado = normalizar(body.nombre); 
+            let cur = new Date(body.startIso + "T12:00:00"); 
+            let fFin = new Date(body.endIso + "T12:00:00");
             let idxEst = 0; let updatesBySheet = {};
             
             while(cur <= fFin) {
                 let tName = mesesAbrev[cur.getMonth()] + "-" + String(cur.getFullYear()).slice(-2);
                 if (!updatesBySheet[tName]) updatesBySheet[tName] = {};
-                let val = Array.isArray(body.est) ? body.est[idxEst] : body.est; if (val === 'BORRAR') val = '-';
+                
+                let val = Array.isArray(body.est) ? body.est[idxEst] : body.est; 
+                if (val === 'BORRAR') val = ''; // 👈 CORRECCIÓN: Ahora borra de verdad, no pone '-'
+                
                 updatesBySheet[tName][cur.getDate()] = val;
                 
                 let isoStr = cur.toISOString().split('T')[0];
-                if (cacheDatosGlobales.diagramas?.diagramas) { let ch = cacheDatosGlobales.diagramas.diagramas.find(c => normalizar(c.nom) === nBuscado); if (ch) { if (!ch._diasIso) ch._diasIso = {}; ch._diasIso[isoStr] = val; } }
+                if (cacheDatosGlobales.diagramas?.diagramas) { 
+                    let ch = cacheDatosGlobales.diagramas.diagramas.find(c => normalizar(c.nom) === nBuscado); 
+                    if (ch) { 
+                        if (!ch._diasIso) ch._diasIso = {}; 
+                        ch._diasIso[isoStr] = val; 
+                    } 
+                }
                 cur.setDate(cur.getDate() + 1); idxEst++;
             }
+            
             io.emit('datos_actualizados', cacheDatosGlobales);
 
+            // ---------------------------------------------------------
+            // GUARDADO EN GOOGLE SHEETS
+            // ---------------------------------------------------------
             for (let tab in updatesBySheet) {
                 try {
                     const rowsTab = (await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_DIAGRAMAS}/values/'${tab}'!A:C` })).data.values || [];
-                    let rIdx = -1; for(let i=0; i<rowsTab.length; i++) { if(normalizar(rowsTab[i][1]) === nBuscado) { rIdx = i + 1; break; } }
-                    if (rIdx !== -1) {
-                        let rowData = (await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_DIAGRAMAS}/values/'${tab}'!D${rIdx}:AH${rIdx}` })).data.values?.[0] || new Array(31).fill('-');
-                        while(rowData.length < 31) rowData.push('-');
-                        for (let day in updatesBySheet[tab]) rowData[parseInt(day)-1] = updatesBySheet[tab][day];
-                        await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_DIAGRAMAS}/values/'${tab}'!D${rIdx}:AH${rIdx}?valueInputOption=USER_ENTERED`, method: 'PUT', data: { values: [rowData] } });
+                    let rIdx = -1; 
+                    for(let i=0; i<rowsTab.length; i++) { 
+                        if(normalizar(rowsTab[i][1]) === nBuscado) { rIdx = i + 1; break; } 
                     }
-                } catch(e) {}
+                    if (rIdx !== -1) {
+                        // 🚨 CORRECCIÓN: Rango E:AI para coincidir exactamente con los días del 1 al 31
+                        let rowData = (await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_DIAGRAMAS}/values/'${tab}'!E${rIdx}:AI${rIdx}` })).data.values?.[0] || [];
+                        
+                        // 🚨 CORRECCIÓN: Rellenar celdas fantasma con vacío (''), NO con guiones ('-')
+                        while(rowData.length < 31) rowData.push(''); 
+                        
+                        for (let day in updatesBySheet[tab]) {
+                            rowData[parseInt(day)-1] = updatesBySheet[tab][day];
+                        }
+                        
+                        // Enviar el array exacto que pisa de la Columna E a la AI
+                        await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_DIAGRAMAS}/values/'${tab}'!E${rIdx}:AI${rIdx}?valueInputOption=USER_ENTERED`, method: 'PUT', data: { values: [rowData] } });
+                    }
+                } catch(e) { console.error("Error escribiendo estado en Sheets:", e); }
             }
+            
+            return res.json({ success: true, message: "OK" });
         }
 
 // ==============================================================
