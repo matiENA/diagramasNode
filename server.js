@@ -475,7 +475,7 @@ app.post('/api/proxy', async (req, res) => {
             return res.json({ success: true, message: "OK" }); // ✅ Solucionado
         }
 
-        // ==============================================================
+// ==============================================================
         // ✏️ ACTUALIZAR ESTADO DEL DIAGRAMA
         // ==============================================================
         if (body && body.action === 'actualizarEstado') {
@@ -489,7 +489,7 @@ app.post('/api/proxy', async (req, res) => {
                 if (!updatesBySheet[tName]) updatesBySheet[tName] = {};
                 
                 let val = Array.isArray(body.est) ? body.est[idxEst] : body.est; 
-                if (val === 'BORRAR') val = ''; // 👈 CORRECCIÓN: Ahora borra de verdad, no pone '-'
+                if (val === 'BORRAR') val = ''; 
                 
                 updatesBySheet[tName][cur.getDate()] = val;
                 
@@ -497,8 +497,19 @@ app.post('/api/proxy', async (req, res) => {
                 if (cacheDatosGlobales.diagramas?.diagramas) { 
                     let ch = cacheDatosGlobales.diagramas.diagramas.find(c => normalizar(c.nom) === nBuscado); 
                     if (ch) { 
+                        // Actualiza Diccionario ISO
                         if (!ch._diasIso) ch._diasIso = {}; 
                         ch._diasIso[isoStr] = val; 
+                        
+                        // 👉 EL FIX: ACTUALIZAR LA CADENA SEPARADA POR COMAS EN RAM
+                        if (!ch.dias) ch.dias = {};
+                        if (!ch.dias[tName]) ch.dias[tName] = new Array(31).fill('-').join(',');
+                        
+                        let tiraDias = ch.dias[tName].split(',');
+                        let diaNum = cur.getDate();
+                        // El frontend lee '-' como vacío
+                        tiraDias[diaNum - 1] = val === '' ? '-' : val; 
+                        ch.dias[tName] = tiraDias.join(',');
                     } 
                 }
                 cur.setDate(cur.getDate() + 1); idxEst++;
@@ -507,7 +518,7 @@ app.post('/api/proxy', async (req, res) => {
             io.emit('datos_actualizados', cacheDatosGlobales);
 
             // ---------------------------------------------------------
-            // GUARDADO EN GOOGLE SHEETS
+            // GUARDADO EN GOOGLE SHEETS EN SEGUNDO PLANO
             // ---------------------------------------------------------
             for (let tab in updatesBySheet) {
                 try {
@@ -517,17 +528,15 @@ app.post('/api/proxy', async (req, res) => {
                         if(normalizar(rowsTab[i][1]) === nBuscado) { rIdx = i + 1; break; } 
                     }
                     if (rIdx !== -1) {
-                        // 🚨 CORRECCIÓN: Rango E:AI para coincidir exactamente con los días del 1 al 31
                         let rowData = (await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_DIAGRAMAS}/values/'${tab}'!E${rIdx}:AI${rIdx}` })).data.values?.[0] || [];
                         
-                        // 🚨 CORRECCIÓN: Rellenar celdas fantasma con vacío (''), NO con guiones ('-')
+                        // Rellenar celdas fantasma con vacío (''), NO con guiones ('-')
                         while(rowData.length < 31) rowData.push(''); 
                         
                         for (let day in updatesBySheet[tab]) {
                             rowData[parseInt(day)-1] = updatesBySheet[tab][day];
                         }
                         
-                        // Enviar el array exacto que pisa de la Columna E a la AI
                         await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_DIAGRAMAS}/values/'${tab}'!E${rIdx}:AI${rIdx}?valueInputOption=USER_ENTERED`, method: 'PUT', data: { values: [rowData] } });
                     }
                 } catch(e) { console.error("Error escribiendo estado en Sheets:", e); }
