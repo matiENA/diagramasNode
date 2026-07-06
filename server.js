@@ -537,7 +537,7 @@ app.post('/api/proxy', async (req, res) => {
                     let target = cacheDatosGlobales.diagramas.nuevaSeccionViajes[nBuscado][isoStr];
                     
                     if (flagOverwrite) {
-                        target.hoja_ruta = [...hojasEntrantes]; // Reemplazo absoluto (ideal para cuando borran con la "X")
+                        target.hoja_ruta = [...hojasEntrantes]; // Reemplazo absoluto (ideal para borrar)
                     } else {
                         // Modo aditivo (Modal de rango)
                         hojasEntrantes.forEach(h => { if (!target.hoja_ruta.includes(h)) target.hoja_ruta.push(h); });
@@ -550,7 +550,7 @@ app.post('/api/proxy', async (req, res) => {
             }
 
             // ---------------------------------------------------------
-            // 2. PERSISTENCIA EN GOOGLE SHEETS EN SEGUNDO PLANO
+            // 2. PERSISTENCIA EN GOOGLE SHEETS (SEGUNDO PLANO)
             // ---------------------------------------------------------
             const rowsKM = (await serviceAccountAuth.request({ 
                 url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_KILOMETROS}/values/'KM'!A:T` 
@@ -568,19 +568,31 @@ app.post('/api/proxy', async (req, res) => {
                 let filaIndex = -1;
                 let hojasSheetExistentes = "";
 
-                // Buscar fila existente en Sheets
+                // 👉 BÚSQUEDA EXACTA PARA EVITAR DUPLICAR FILAS
                 for (let i = 1; i < rowsKM.length; i++) {
                     if (normalizar(rowsKM[i][2]) === nBuscado) {
                         let fechaCelda = String(rowsKM[i][1] || '').trim();
-                        if (fechaCelda.includes(targetStrSheet) || fechaCelda.startsWith(isoStr)) {
-                            filaIndex = i + 1; // +1 porque Sheets API indexa desde 1
-                            hojasSheetExistentes = String(rowsKM[i][19] || "").trim(); // Columna T (índice 19)
-                            break;
+                        let celdaIso = "";
+                        
+                        // Parseo inteligente de la fecha de Google Sheets
+                        let partes = fechaCelda.split(' ')[0].split(/[\/\-]/);
+                        if (partes.length >= 3) {
+                            if (partes[0].length === 4) { // Si viene como YYYY-MM-DD
+                                celdaIso = `${partes[0]}-${partes[1].padStart(2, '0')}-${partes[2].padStart(2, '0')}`;
+                            } else { // Si viene como DD/MM/YY o DD/MM/YYYY
+                                let aa = partes[2].length === 2 ? "20" + partes[2] : partes[2];
+                                celdaIso = `${aa}-${partes[1].padStart(2, '0')}-${partes[0].padStart(2, '0')}`;
+                            }
+                        }
+
+                        if (celdaIso === isoStr || fechaCelda === isoStr) {
+                            filaIndex = i + 1; // Encontramos la fila exacta
+                            hojasSheetExistentes = String(rowsKM[i][19] || "").trim(); // Col T
+                            break; // Detenemos la búsqueda
                         }
                     }
                 }
 
-                // Definimos el String final a guardar en Sheets
                 let finalHojasStr = "";
                 if (flagOverwrite) {
                     finalHojasStr = hojasEntrantes.join(', ');
@@ -591,7 +603,7 @@ app.post('/api/proxy', async (req, res) => {
                 }
 
                 if (filaIndex !== -1) {
-                    // Actualiza solo la celda de HR
+                    // Inyecta en la celda exacta de la misma fila (Columna T)
                     reqs.push(
                         serviceAccountAuth.request({ 
                             url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_KILOMETROS}/values/'KM'!T${filaIndex}?valueInputOption=USER_ENTERED`, 
@@ -600,7 +612,7 @@ app.post('/api/proxy', async (req, res) => {
                         })
                     );
                 } else {
-                    // Si el día no existía en Sheets, agregamos una fila nueva
+                    // Crea fila nueva SOLO si el día no existía de ninguna forma
                     if (!sheetLoaded) { await docKm.loadInfo(); sheetLoaded = true; }
                     let sheetTarget = docKm.sheetsByTitle['KM'] || docKm.sheetsByIndex[0];
                     await sheetTarget.addRow([
