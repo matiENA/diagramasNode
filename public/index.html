@@ -1958,27 +1958,31 @@ window.mostrarDetalleConductor = function(safeId, mantenerSeleccion = false) {
                 </div>
                 
                 <div class="flex flex-wrap items-stretch gap-3 w-full xl:w-auto justify-start xl:justify-end">
-                    
-                    ${window.obtenerProgressBarPrueba ? window.obtenerProgressBarPrueba(chofer) : ''}
+    
+    ${typeof window.obtenerProgressBarPrueba === 'function' ? window.obtenerProgressBarPrueba(chofer) : ''}
 
-                    <div class="flex items-center gap-3 bg-gray-50 p-2.5 rounded-xl border border-gray-100 shrink-0 justify-center min-w-[150px]">
-                        <div class="text-center shrink-0 px-2"><span class="block text-2xl font-black text-gray-800 leading-none">${estadoDiaRaw || '-'}</span><span class="text-[9px] uppercase font-bold text-gray-400 tracking-wider">Día ${fBaseObj.getDate()}</span></div>
-                        ${separadorTopRight}
-                        ${(badgeFatiga || badgeUnidadHtml) ? `
-                        <div class="flex flex-col gap-1.5 flex-1 pr-1 items-center justify-center">
-                            ${badgeFatiga ? `<div>${badgeFatiga}</div>` : ''}
-                            ${badgeUnidadHtml ? `<div>${badgeUnidadHtml}</div>` : ''}
-                        </div>` : ''}
-                    </div>
-                    <div class="bg-[#fff9e6] p-2.5 rounded-xl border border-[#ffe599] flex flex-col justify-center items-center shadow-sm shrink-0 min-w-[100px]">
-                        <span class="text-[10px] font-black text-yellow-700 uppercase tracking-widest mb-0.5 text-center">Vacaciones</span>
-                        <div class="flex items-baseline gap-1">
-                            <span class="font-black text-yellow-900 text-2xl leading-none">${vacacionesAPI}</span>
-                            <span class="text-[10px] font-bold text-yellow-700">días</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
+   
+    <div id="badge-estado-individual-${chofer._safeId}" class="flex items-center gap-3 bg-gray-50 p-2.5 rounded-xl border border-gray-100 shrink-0 justify-center min-w-[150px] transition-all duration-300">
+        <div class="text-center shrink-0 px-2">
+            <span class="block text-2xl font-black text-gray-800 leading-none">${estadoDiaRaw || '-'}</span>
+            <span class="text-[9px] uppercase font-bold text-gray-400 tracking-wider">Día ${fBaseObj.getDate()}</span>
+        </div>
+        ${typeof separadorTopRight !== 'undefined' ? separadorTopRight : ''}
+        ${(typeof badgeFatiga !== 'undefined' && badgeFatiga) || (typeof badgeUnidadHtml !== 'undefined' && badgeUnidadHtml) ? `
+        <div class="flex flex-col gap-1.5 flex-1 pr-1 items-center justify-center">
+            ${badgeFatiga ? `<div>${badgeFatiga}</div>` : ''}
+            ${badgeUnidadHtml ? `<div>${badgeUnidadHtml}</div>` : ''}
+        </div>` : ''}
+    </div>
+    
+    <div class="bg-[#fff9e6] p-2.5 rounded-xl border border-[#ffe599] flex flex-col justify-center items-center shadow-sm shrink-0 min-w-[100px]">
+        <span class="text-[10px] font-black text-yellow-700 uppercase tracking-widest mb-0.5 text-center">Vacaciones</span>
+        <div class="flex items-baseline gap-1">
+            <span class="font-black text-yellow-900 text-2xl leading-none">${typeof vacacionesAPI !== 'undefined' ? vacacionesAPI : 0}</span>
+            <span class="text-[10px] font-bold text-yellow-700">días</span>
+        </div>
+    </div>
+</div>
             
             <div class="flex flex-col xl:flex-row items-center gap-2 bg-white p-2 rounded-xl border border-gray-100 shadow-sm overflow-x-auto custom-scrollbar w-full">
                 <div class="text-[11px] font-black uppercase text-indigo-900 tracking-widest px-3 border-r border-gray-100 shrink-0 text-center xl:text-left flex items-center gap-1.5">
@@ -3740,7 +3744,7 @@ window.procesarNuevaFoto = function(inputElement, dniChofer, safeId) {
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
   
 <script>
-    // 2. Nos conectamos al servidor en tiempo real
+// 2. Nos conectamos al servidor en tiempo real
     const socket = io('https://diagramasnode.onrender.com');    
     // 🛡️ Filtro Anti-Metralleta para proteger el procesador
     let debounceSocketTimer = null; 
@@ -3748,8 +3752,6 @@ window.procesarNuevaFoto = function(inputElement, dniChofer, safeId) {
     // 3. Escuchamos el evento mágico
     socket.on('datos_actualizados', (data) => {
         try {
-
-
             const dataDiag = typeof data.diagramas === 'string' ? JSON.parse(data.diagramas) : data.diagramas;
             
             datosGlobales = (dataDiag.diagramas || []).filter(c => {
@@ -3795,14 +3797,32 @@ window.procesarNuevaFoto = function(inputElement, dniChofer, safeId) {
             debounceSocketTimer = setTimeout(() => {
                 
                 const isInputFocused = document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName);
-                const isModalOpen = !document.getElementById('modal-editor').classList.contains('hidden');
+                const isModalOpen = document.getElementById('modal-editor') && !document.getElementById('modal-editor').classList.contains('hidden');
                 const isRangeSelected = typeof seleccionInicioIso !== 'undefined' && seleccionInicioIso !== null;
 
+                // 👉 LA MAGIA OCURRE AQUÍ: Enrutamiento de actualización sin parpadeo
                 if (!isInputFocused && !isModalOpen) {
-                    if (!isRangeSelected) {
-                        filtrarTabla(); // Se ejecuta UNA sola vez de forma fluida
-                    } else if (typeof conductorSeleccionadoId !== 'undefined' && conductorSeleccionadoId) {
-                        if (typeof ejecutarRenderLocalHR === 'function') ejecutarRenderLocalHR(conductorSeleccionadoId);
+                    
+                    if (typeof vistaActual !== 'undefined' && vistaActual === 'individual' && typeof conductorSeleccionadoId !== 'undefined' && conductorSeleccionadoId) {
+                        
+                        // 1. Actualiza SOLO el badge gigante y la tarjeta de la cabecera individual
+                        if (typeof window.actualizarCabeceraIndividual === 'function') {
+                            window.actualizarCabeceraIndividual(conductorSeleccionadoId);
+                        }
+                        
+                        // 2. Actualiza la tabla inferior (si no hay un rango en plena edición)
+                        if (!isRangeSelected && typeof window.mostrarDetalleConductor === 'function') {
+                            window.mostrarDetalleConductor(conductorSeleccionadoId, true);
+                        } else if (isRangeSelected && typeof ejecutarRenderLocalHR === 'function') {
+                            ejecutarRenderLocalHR(conductorSeleccionadoId);
+                        }
+
+                    } else {
+                        // Si está en la Vista Diaria o Semanal, filtrarTabla usa morphdom 
+                        // y buscará el ID del badge exacto que cambió para mutarlo.
+                        if (!isRangeSelected && typeof window.filtrarTabla === 'function') {
+                            window.filtrarTabla(); 
+                        }
                     }
                 }
 
@@ -3823,7 +3843,6 @@ window.procesarNuevaFoto = function(inputElement, dniChofer, safeId) {
             console.warn("Error procesando sockets:", e);
         }
     });
-
 // ==========================================
 // 🌱 DETECTOR DE PERÍODO DE PRUEBA (6 MESES)
 // ==========================================
