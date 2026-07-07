@@ -1434,13 +1434,14 @@ window.renderizarGrillaDiaria = function(datos, container) {
                         </div>
                         
                         <div class="lg:col-span-2 flex items-center justify-end gap-3 shrink-0">
-                            <div class="${bgEstado} px-4 py-1.5 rounded-lg text-sm font-black text-center min-w-[3.5rem] flex flex-col items-center justify-center leading-none shadow-sm">
-                                ${contenidoBadge}
-                            </div>
-                            <div class="text-gray-300 hover:text-indigo-500 transition-colors ml-1">
-                                <svg class="w-5 h-5 transition-transform duration-300" id="icon-chevron-${item._safeId}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-                            </div>
+                     
+                        <div id="badge-estado-diario-${item._safeId}" class="${bgEstado} px-4 py-1.5 rounded-lg text-sm font-black text-center min-w-[3.5rem] flex flex-col items-center justify-center leading-none shadow-sm transition-colors duration-300">
+                        ${contenidoBadge}
                         </div>
+                        <div class="text-gray-300 hover:text-indigo-500 transition-colors ml-1">
+                        <svg class="w-5 h-5 transition-transform duration-300" id="icon-chevron-${item._safeId}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                   </div>
+            </div>
                     </div>
                 </div>
             </div>
