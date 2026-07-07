@@ -1435,14 +1435,14 @@ window.renderizarGrillaDiaria = function(datos, container) {
                         </div>
                         
                         <div class="lg:col-span-2 flex items-center justify-end gap-3 shrink-0">
-                            <!-- 🚀 ID AGREGADO: badge-estado-diario -->
-                            <div id="badge-estado-diario-${item._safeId}" class="${bgEstado} px-4 py-1.5 rounded-lg text-sm font-black text-center min-w-[3.5rem] flex flex-col items-center justify-center leading-none shadow-sm transition-colors duration-300">
-                                ${contenidoBadge}
-                            </div>
-                            <div class="text-gray-300 hover:text-indigo-500 transition-colors ml-1">
-                                <svg class="w-5 h-5 transition-transform duration-300" id="icon-chevron-${item._safeId}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-                            </div>
-                        </div>
+    <!-- ID AGREGADO AQUÍ 👇 -->
+    <div id="badge-diario-${item._safeId}" class="${bgEstado} px-4 py-1.5 rounded-lg text-sm font-black text-center min-w-[3.5rem] flex flex-col items-center justify-center leading-none shadow-sm transition-colors duration-300">
+        ${contenidoBadge}
+    </div>
+    <div class="text-gray-300 hover:text-indigo-500 transition-colors ml-1">
+        <svg class="w-5 h-5 transition-transform duration-300" id="icon-chevron-${item._safeId}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+    </div>
+</div>
                     </div>
                 </div>
             </div>
@@ -1966,20 +1966,20 @@ window.mostrarDetalleConductor = function(safeId, mantenerSeleccion = false) {
                     
                     ${window.obtenerProgressBarPrueba ? window.obtenerProgressBarPrueba(chofer) : ''}
 
-                    <!-- 🚀 ID AGREGADO: badge-estado-individual -->
-                    <div id="badge-estado-individual-${chofer._safeId}" class="flex items-center gap-3 bg-gray-50 p-2.5 rounded-xl border border-gray-100 shrink-0 justify-center min-w-[150px] transition-all duration-300">
-                        <div class="text-center shrink-0 px-2">
-                            <!-- 🚀 ID AGREGADO: texto-estado-individual -->
-                            <span id="texto-estado-individual-${chofer._safeId}" class="block text-2xl font-black text-gray-800 leading-none">${estadoDiaRaw || '-'}</span>
-                            <span class="text-[9px] uppercase font-bold text-gray-400 tracking-wider">Día ${fBaseObj.getDate()}</span>
-                        </div>
-                        ${separadorTopRight}
-                        ${(badgeFatiga || badgeUnidadHtml) ? `
-                        <div class="flex flex-col gap-1.5 flex-1 pr-1 items-center justify-center">
-                            ${badgeFatiga ? `<div>${badgeFatiga}</div>` : ''}
-                            ${badgeUnidadHtml ? `<div>${badgeUnidadHtml}</div>` : ''}
-                        </div>` : ''}
-                    </div>
+                    <!-- ID AGREGADO EN EL CONTENEDOR 👇 -->
+<div id="badge-indiv-container-${chofer._safeId}" class="flex items-center gap-3 bg-gray-50 p-2.5 rounded-xl border border-gray-100 shrink-0 justify-center min-w-[150px] transition-all duration-300">
+    <div class="text-center shrink-0 px-2">
+        <!-- ID AGREGADO EN EL TEXTO 👇 -->
+        <span id="badge-indiv-text-${chofer._safeId}" class="block text-2xl font-black text-gray-800 leading-none">${estadoDiaRaw || '-'}</span>
+        <span class="text-[9px] uppercase font-bold text-gray-400 tracking-wider">Día ${fBaseObj.getDate()}</span>
+    </div>
+    ${separadorTopRight}
+    ${(badgeFatiga || badgeUnidadHtml) ? `
+    <div class="flex flex-col gap-1.5 flex-1 pr-1 items-center justify-center">
+        ${badgeFatiga ? `<div>${badgeFatiga}</div>` : ''}
+        ${badgeUnidadHtml ? `<div>${badgeUnidadHtml}</div>` : ''}
+    </div>` : ''}
+</div>
                     
                     <div class="bg-[#fff9e6] p-2.5 rounded-xl border border-[#ffe599] flex flex-col justify-center items-center shadow-sm shrink-0 min-w-[100px]">
                         <span class="text-[10px] font-black text-yellow-700 uppercase tracking-widest mb-0.5 text-center">Vacaciones</span>
@@ -3753,100 +3753,161 @@ window.procesarNuevaFoto = function(inputElement, dniChofer, safeId) {
   
 <script>
 // 2. Nos conectamos al servidor en tiempo real
-    const socket = io('https://diagramasnode.onrender.com');    
-    // 🛡️ Filtro Anti-Metralleta para proteger el procesador
-    let debounceSocketTimer = null; 
+const socket = io('https://diagramasnode.onrender.com');    
+let debounceSocketTimer = null; 
 
-    // 3. Escuchamos el evento mágico
-    socket.on('datos_actualizados', (data) => {
-        try {
-            const dataDiag = typeof data.diagramas === 'string' ? JSON.parse(data.diagramas) : data.diagramas;
+// 3. Escuchamos el evento mágico
+socket.on('datos_actualizados', (data) => {
+    try {
+        const dataDiag = typeof data.diagramas === 'string' ? JSON.parse(data.diagramas) : data.diagramas;
+        
+        datosGlobales = (dataDiag.diagramas || []).filter(c => {
+            if (!c.nom) return false;
+            let nombreLimpio = String(c.nom).trim().toLowerCase();
+            return !NOMBRES_IGNORADOS.has(nombreLimpio) && nombreLimpio.length > 2;
+        }).map(c => {
+            c._safeId = "drv_" + c.nom.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "_");
+            return c;
+        });
+        
+        const normalize = (obj) => {
+            if (!obj) return {};
+            return Object.keys(obj).reduce((acc, k) => {
+                const cleanKey = String(k).trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
+                acc[cleanKey] = obj[k];
+                return acc;
+            }, {});
+        };
+
+        docsGlobales = normalize(dataDiag.documentos);
+        habsGlobales = normalize(dataDiag.habilitaciones);
+        certsGlobales = normalize(dataDiag.certificados);
+        kmsGlobales = normalize(dataDiag.kilometros);
+        dnisGlobales = normalize(dataDiag.dnis);
+        telefonosGlobales = normalize(dataDiag.telefonos);
+        historialGlobal = normalize(dataDiag.observaciones);
+        aptosGlobales = normalize(dataDiag.aptosMedicos);
+        viajesGlobales = normalize(dataDiag.viajesCampo);
+        window.vencimientosCacheGlobal = dataDiag.vencimientosObj;
+        fotosGlobales = dataDiag.fotosImgur || {};
+
+        if (dataDiag.nuevaSeccionViajes && typeof dataDiag.nuevaSeccionViajes === 'object' && !Array.isArray(dataDiag.nuevaSeccionViajes)) {
+            viajesDetalleGlobal = dataDiag.nuevaSeccionViajes;
+        } else {
+            viajesDetalleGlobal = {};
+        }
+
+        // --- RENDERIZADO QUIRÚRGICO (DOM DIRECTO) ---
+        clearTimeout(debounceSocketTimer); 
+        
+        debounceSocketTimer = setTimeout(() => {
+            const isInputFocused = document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName);
+            const isModalOpen = document.getElementById('modal-editor') && !document.getElementById('modal-editor').classList.contains('hidden');
             
-            datosGlobales = (dataDiag.diagramas || []).filter(c => {
-                if (!c.nom) return false;
-                let nombreLimpio = String(c.nom).trim().toLowerCase();
-                return !NOMBRES_IGNORADOS.has(nombreLimpio) && nombreLimpio.length > 2;
-            }).map(c => {
-                c._safeId = "drv_" + c.nom.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "_");
-                return c;
-            });
-            
-            const normalize = (obj) => {
-                if (!obj) return {};
-                return Object.keys(obj).reduce((acc, k) => {
-                    const cleanKey = String(k).trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
-                    acc[cleanKey] = obj[k];
-                    return acc;
-                }, {});
-            };
-
-            docsGlobales = normalize(dataDiag.documentos);
-            habsGlobales = normalize(dataDiag.habilitaciones);
-            certsGlobales = normalize(dataDiag.certificados);
-            kmsGlobales = normalize(dataDiag.kilometros);
-            dnisGlobales = normalize(dataDiag.dnis);
-            telefonosGlobales = normalize(dataDiag.telefonos);
-            historialGlobal = normalize(dataDiag.observaciones);
-            aptosGlobales = normalize(dataDiag.aptosMedicos);
-            viajesGlobales = normalize(dataDiag.viajesCampo);
-            window.vencimientosCacheGlobal = dataDiag.vencimientosObj;
-            fotosGlobales = dataDiag.fotosImgur || {};
-
-            if (dataDiag.nuevaSeccionViajes && typeof dataDiag.nuevaSeccionViajes === 'object' && !Array.isArray(dataDiag.nuevaSeccionViajes)) {
-                viajesDetalleGlobal = dataDiag.nuevaSeccionViajes;
-            } else {
-                viajesDetalleGlobal = {};
-            }
-
-            // --- PASO 2: RENDERIZADO INTELIGENTE ---
-            clearTimeout(debounceSocketTimer); 
-            
-            debounceSocketTimer = setTimeout(() => {
-                const isInputFocused = document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName);
-                const isModalOpen = document.getElementById('modal-editor') && !document.getElementById('modal-editor').classList.contains('hidden');
+            if (!isInputFocused && !isModalOpen) {
                 
-                // Si el usuario no está editando, inyectamos los cambios
-                if (!isInputFocused && !isModalOpen) {
+                const fBaseObj = new Date(fechaGlobalContexto + "T12:00:00");
+                let hoyReal = new Date();
+                hoyReal.setHours(12, 0, 0, 0); 
+
+                // Lógica de colores de Tailwind
+                const getBgClass = (baseVal, diag) => {
+                    if (['F','FSF'].includes(baseVal)) return 'bg-[#b6d7a8] text-gray-900 border-transparent shadow-sm';
+                    if (['V','VSF'].includes(baseVal)) return 'bg-[#ffe599] text-gray-900 border-transparent shadow-sm';
+                    if (['A', 'IND'].includes(baseVal)) return 'bg-[#cc0000] text-white border-transparent shadow-sm';
+                    if (baseVal === 'E') return 'bg-[#e06666] text-white border-transparent shadow-sm';
+                    if (baseVal === 'S') return 'bg-[#f6b26b] text-white border-transparent shadow-sm';
+                    if (baseVal === '?') return 'bg-gray-100 text-gray-500 border-dashed border-2 border-gray-300 shadow-sm';
+                    if (baseVal === 'ART') return 'bg-[#b4a7d6] text-white border-transparent shadow-sm';
                     
-                    // 🎯 VISTA INDIVIDUAL
-                    if (typeof vistaActual !== 'undefined' && vistaActual === 'individual' && typeof conductorSeleccionadoId !== 'undefined' && conductorSeleccionadoId) {
-                        
-                        // Actualiza el badge superior (Cabecera) sin parpadeo
-                        if (typeof window.actualizarCabeceraIndividual === 'function') {
-                            window.actualizarCabeceraIndividual(conductorSeleccionadoId);
-                        }
-                        
-                        // Actualiza el calendario inferior (si no se está seleccionando un rango)
-                        const isRangeSelected = typeof seleccionInicioIso !== 'undefined' && seleccionInicioIso !== null;
-                        if (!isRangeSelected && typeof window.mostrarDetalleConductor === 'function') {
-                            window.mostrarDetalleConductor(conductorSeleccionadoId, true);
-                        } else if (isRangeSelected && typeof ejecutarRenderLocalHR === 'function') {
-                            ejecutarRenderLocalHR(conductorSeleccionadoId);
-                        }
-                        
-                    } else {
-                        // 🎯 VISTA DIARIA / GENERAL
-                        // Ahora que las tarjetas tienen IDs, filtrarTabla hace el trabajo mágico
-                        // sin romper el responsiveness.
-                        if (typeof window.filtrarTabla === 'function') {
-                            window.filtrarTabla(); 
+                    if ((!isNaN(baseVal) && baseVal !== '') || baseVal === 'O' || baseVal === 'OPERATIVO') {
+                        let cons = parseInt(baseVal, 10);
+                        if(isNaN(cons)) cons = 1; 
+                        let limiteWarn = (diag && diag.includes('14')) ? 11 : 18;
+                        let limiteCrit = (diag && diag.includes('14')) ? 14 : 22;
+                        if (cons >= limiteCrit) return 'bg-white text-red-600 border-2 border-red-500 shadow-sm';
+                        if (cons >= limiteWarn) return 'bg-white text-orange-600 border-2 border-orange-400 shadow-sm';
+                        return 'bg-white text-blue-600 border-2 border-blue-400 shadow-sm';
+                    }
+                    return 'bg-white text-gray-800 border-gray-200 shadow-sm';
+                };
+
+                // Inyectar cambios directamente en el DOM
+                datosGlobales.forEach(chofer => {
+                    // 1. Cálculo para Vista Individual (Usa la fecha del calendario)
+                    let rawValCtx = getValDiaGlobal(chofer.dias, fBaseObj);
+                    
+                    // 2. Cálculo para Vista Diaria (Usa el día de HOY o histórico)
+                    let rawValHoy = getValDiaGlobal(chofer.dias, hoyReal);
+                    let fechaBadgeDiario = hoyReal;
+                    let usarHistoricoDiario = false;
+
+                    if (!rawValHoy || rawValHoy.trim() === '') {
+                        let fTemp = new Date(hoyReal);
+                        for (let i = 1; i <= 60; i++) {
+                            fTemp.setDate(fTemp.getDate() - 1);
+                            let valCheck = getValDiaGlobal(chofer.dias, fTemp);
+                            if (valCheck && valCheck.trim() !== '') {
+                                rawValHoy = valCheck;
+                                fechaBadgeDiario = new Date(fTemp);
+                                usarHistoricoDiario = true;
+                                break;
+                            }
                         }
                     }
-                }
 
-                // Mini-aviso visual del Socket (Punto verde -> Azul -> Verde)
-                let indicator = document.querySelector('.bg-green-500.animate-pulse');
-                if (indicator) {
-                    indicator.classList.replace('bg-green-500', 'bg-blue-500'); 
-                    setTimeout(() => indicator.classList.replace('bg-blue-500', 'bg-green-500'), 500);
-                }
-                
-            }, 150); 
+                    // A) Actualizar Vista Diaria (Si el badge existe en el HTML)
+                    let badgeDiario = document.getElementById(`badge-diario-${chofer._safeId}`);
+                    if (badgeDiario) {
+                        let baseValHoy = getBaseState(rawValHoy);
+                        let nuevasClasesDiario = getBgClass(baseValHoy, chofer.diag);
+                        let contenidoDiario = rawValHoy || '-';
+                        
+                        if (usarHistoricoDiario && rawValHoy) {
+                            let dd = String(fechaBadgeDiario.getDate()).padStart(2, '0');
+                            let mm = String(fechaBadgeDiario.getMonth() + 1).padStart(2, '0');
+                            contenidoDiario = `<span>${rawValHoy}</span><span style="font-family: 'Roboto', sans-serif; font-weight: 100; font-size: 8px; line-height: 1;" class="block mt-0.5 opacity-90">${dd}/${mm}</span>`;
+                        }
 
-        } catch (e) { 
-            console.warn("Error procesando sockets:", e);
-        }
-    });// ==========================================
+                        badgeDiario.className = `${nuevasClasesDiario} px-4 py-1.5 rounded-lg text-sm font-black text-center min-w-[3.5rem] flex flex-col items-center justify-center leading-none shadow-sm transition-colors duration-300`;
+                        if (badgeDiario.innerHTML !== contenidoDiario) badgeDiario.innerHTML = contenidoDiario;
+                    }
+
+                    // B) Actualizar Vista Individual (Si estamos viendo a ESE chofer)
+                    let textIndiv = document.getElementById(`badge-indiv-text-${chofer._safeId}`);
+                    if (textIndiv && textIndiv.innerText !== (rawValCtx || '-')) {
+                        textIndiv.innerText = rawValCtx || '-';
+                        
+                        let containerIndiv = document.getElementById(`badge-indiv-container-${chofer._safeId}`);
+                        if (containerIndiv) {
+                            containerIndiv.classList.add('ring-4', 'ring-indigo-400');
+                            setTimeout(() => containerIndiv.classList.remove('ring-4', 'ring-indigo-400'), 400);
+                        }
+                    }
+                });
+
+                // Si se estaba editando la Hoja de Ruta, actualizar abajo
+                const isRangeSelected = typeof seleccionInicioIso !== 'undefined' && seleccionInicioIso !== null;
+                if (isRangeSelected && typeof conductorSeleccionadoId !== 'undefined' && conductorSeleccionadoId) {
+                    if (typeof ejecutarRenderLocalHR === 'function') ejecutarRenderLocalHR(conductorSeleccionadoId);
+                }
+            }
+
+            // Indicador visual verde/azul global
+            let indicator = document.querySelector('.bg-green-500.animate-pulse');
+            if (indicator) {
+                indicator.classList.replace('bg-green-500', 'bg-blue-500'); 
+                setTimeout(() => indicator.classList.replace('bg-blue-500', 'bg-green-500'), 500);
+            }
+            
+        }, 150); 
+
+    } catch (e) { 
+        console.warn("Error procesando sockets:", e);
+    }
+});
+
+// ==========================================
 // 🌱 DETECTOR DE PERÍODO DE PRUEBA (6 MESES)
 // ==========================================
 window.calcularMesesPrueba = function(chofer) {
