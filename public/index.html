@@ -1428,23 +1428,25 @@ window.renderizarGrillaDiaria = function(datos, container) {
                         <div onclick="copiarAlPortapapeles('${item.semi}', event)" title="Copiar Semi" class="bg-gray-50 rounded-lg p-1.5 border border-gray-200 flex items-center gap-1.5 cursor-pointer hover:bg-blue-50 transition-colors group"><span class="text-[9px] font-bold text-gray-400 uppercase">Semi</span><span class="font-mono text-xs font-bold text-blue-900 w-16 truncate text-center">${item.semi || '-'}</span></div>
                     </div>
                     
+                   
                     <div class="lg:col-span-5 flex items-center justify-between w-full lg:contents">
                         <div class="lg:col-span-3 flex gap-1.5 flex-wrap justify-start items-center w-full">
                             ${alertasMinimalistas || '<span class="text-[10px] font-bold text-gray-300 flex items-center gap-1">OK</span>'}
                         </div>
                         
                         <div class="lg:col-span-2 flex items-center justify-end gap-3 shrink-0">
-                     
-                        <div id="badge-estado-diario-${item._safeId}" class="${bgEstado} px-4 py-1.5 rounded-lg text-sm font-black text-center min-w-[3.5rem] flex flex-col items-center justify-center leading-none shadow-sm transition-colors duration-300">
-                        ${contenidoBadge}
+                            <!-- 🚀 ID AGREGADO: badge-estado-diario -->
+                            <div id="badge-estado-diario-${item._safeId}" class="${bgEstado} px-4 py-1.5 rounded-lg text-sm font-black text-center min-w-[3.5rem] flex flex-col items-center justify-center leading-none shadow-sm transition-colors duration-300">
+                                ${contenidoBadge}
+                            </div>
+                            <div class="text-gray-300 hover:text-indigo-500 transition-colors ml-1">
+                                <svg class="w-5 h-5 transition-transform duration-300" id="icon-chevron-${item._safeId}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                            </div>
                         </div>
-                        <div class="text-gray-300 hover:text-indigo-500 transition-colors ml-1">
-                        <svg class="w-5 h-5 transition-transform duration-300" id="icon-chevron-${item._safeId}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-                   </div>
-            </div>
                     </div>
                 </div>
             </div>
+        
 
             <div id="detalle-${item._safeId}" class="hidden border-t border-gray-100 bg-gray-50/50 p-2.5 sm:p-3"> 
                 
@@ -1508,7 +1510,8 @@ window.renderizarGrillaDiaria = function(datos, container) {
     // 👉 CLAVE: Apuntar al ID correcto del contenedor (el container de HTML real, ej: contenedor-lista-principal)
     window.actualizarSinBlink(container.id || 'contenedor-lista-principal', html);    
 };
-    window.toggleDetalle = function(id) {
+   
+window.toggleDetalle = function(id) {
         const d = document.getElementById(`detalle-${id}`); const i = document.getElementById(`icon-chevron-${id}`);
         if (d.classList.contains('hidden')) { d.classList.remove('hidden'); d.classList.add('expand-anim'); i.style.transform = 'rotate(180deg)'; } 
         else { d.classList.add('hidden'); d.classList.remove('expand-anim'); i.style.transform = 'rotate(0deg)'; }
@@ -1933,6 +1936,8 @@ window.mostrarDetalleConductor = function(safeId, mantenerSeleccion = false) {
 
     let separadorTopRight = (badgeFatiga || badgeUnidadHtml) ? `<div class="w-px h-8 bg-gray-200 hidden sm:block"></div>` : '';
 
+// ... código anterior de mostrarDetalleConductor ...
+
     let html = `
     <div class="col-span-12 bg-white p-5 sm:p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col md:flex-row gap-5 w-full items-stretch">
         <div class="shrink-0 w-full md:w-36 lg:w-48 flex justify-center md:justify-start self-start">
@@ -1958,31 +1963,34 @@ window.mostrarDetalleConductor = function(safeId, mantenerSeleccion = false) {
                 </div>
                 
                 <div class="flex flex-wrap items-stretch gap-3 w-full xl:w-auto justify-start xl:justify-end">
-    
-    ${typeof window.obtenerProgressBarPrueba === 'function' ? window.obtenerProgressBarPrueba(chofer) : ''}
+                    
+                    ${window.obtenerProgressBarPrueba ? window.obtenerProgressBarPrueba(chofer) : ''}
 
-   
-    <div id="badge-estado-individual-${chofer._safeId}" class="flex items-center gap-3 bg-gray-50 p-2.5 rounded-xl border border-gray-100 shrink-0 justify-center min-w-[150px] transition-all duration-300">
-        <div class="text-center shrink-0 px-2">
-            <span class="block text-2xl font-black text-gray-800 leading-none">${estadoDiaRaw || '-'}</span>
-            <span class="text-[9px] uppercase font-bold text-gray-400 tracking-wider">Día ${fBaseObj.getDate()}</span>
-        </div>
-        ${typeof separadorTopRight !== 'undefined' ? separadorTopRight : ''}
-        ${(typeof badgeFatiga !== 'undefined' && badgeFatiga) || (typeof badgeUnidadHtml !== 'undefined' && badgeUnidadHtml) ? `
-        <div class="flex flex-col gap-1.5 flex-1 pr-1 items-center justify-center">
-            ${badgeFatiga ? `<div>${badgeFatiga}</div>` : ''}
-            ${badgeUnidadHtml ? `<div>${badgeUnidadHtml}</div>` : ''}
-        </div>` : ''}
-    </div>
+                    <!-- 🚀 ID AGREGADO: badge-estado-individual -->
+                    <div id="badge-estado-individual-${chofer._safeId}" class="flex items-center gap-3 bg-gray-50 p-2.5 rounded-xl border border-gray-100 shrink-0 justify-center min-w-[150px] transition-all duration-300">
+                        <div class="text-center shrink-0 px-2">
+                            <!-- 🚀 ID AGREGADO: texto-estado-individual -->
+                            <span id="texto-estado-individual-${chofer._safeId}" class="block text-2xl font-black text-gray-800 leading-none">${estadoDiaRaw || '-'}</span>
+                            <span class="text-[9px] uppercase font-bold text-gray-400 tracking-wider">Día ${fBaseObj.getDate()}</span>
+                        </div>
+                        ${separadorTopRight}
+                        ${(badgeFatiga || badgeUnidadHtml) ? `
+                        <div class="flex flex-col gap-1.5 flex-1 pr-1 items-center justify-center">
+                            ${badgeFatiga ? `<div>${badgeFatiga}</div>` : ''}
+                            ${badgeUnidadHtml ? `<div>${badgeUnidadHtml}</div>` : ''}
+                        </div>` : ''}
+                    </div>
+                    
+                    <div class="bg-[#fff9e6] p-2.5 rounded-xl border border-[#ffe599] flex flex-col justify-center items-center shadow-sm shrink-0 min-w-[100px]">
+                        <span class="text-[10px] font-black text-yellow-700 uppercase tracking-widest mb-0.5 text-center">Vacaciones</span>
+                        <div class="flex items-baseline gap-1">
+                            <span class="font-black text-yellow-900 text-2xl leading-none">${vacacionesAPI}</span>
+                            <span class="text-[10px] font-bold text-yellow-700">días</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
     
-    <div class="bg-[#fff9e6] p-2.5 rounded-xl border border-[#ffe599] flex flex-col justify-center items-center shadow-sm shrink-0 min-w-[100px]">
-        <span class="text-[10px] font-black text-yellow-700 uppercase tracking-widest mb-0.5 text-center">Vacaciones</span>
-        <div class="flex items-baseline gap-1">
-            <span class="font-black text-yellow-900 text-2xl leading-none">${typeof vacacionesAPI !== 'undefined' ? vacacionesAPI : 0}</span>
-            <span class="text-[10px] font-bold text-yellow-700">días</span>
-        </div>
-    </div>
-</div>
             
             <div class="flex flex-col xl:flex-row items-center gap-2 bg-white p-2 rounded-xl border border-gray-100 shadow-sm overflow-x-auto custom-scrollbar w-full">
                 <div class="text-[11px] font-black uppercase text-indigo-900 tracking-widest px-3 border-r border-gray-100 shrink-0 text-center xl:text-left flex items-center gap-1.5">
@@ -3790,51 +3798,47 @@ window.procesarNuevaFoto = function(inputElement, dniChofer, safeId) {
                 viajesDetalleGlobal = {};
             }
 
-            // --- PASO 2: RENDERIZADO INTELIGENTE (Agrupado por Debounce) ---
-            clearTimeout(debounceSocketTimer); // Cancelamos dibujos atrasados
+            // --- PASO 2: RENDERIZADO INTELIGENTE ---
+            clearTimeout(debounceSocketTimer); 
             
-            // Subimos a 150ms y quitamos el requestAnimationFrame para evitar el warning [Violation]
             debounceSocketTimer = setTimeout(() => {
-                
                 const isInputFocused = document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName);
                 const isModalOpen = document.getElementById('modal-editor') && !document.getElementById('modal-editor').classList.contains('hidden');
-                const isRangeSelected = typeof seleccionInicioIso !== 'undefined' && seleccionInicioIso !== null;
-
-                // 👉 LA MAGIA OCURRE AQUÍ: Enrutamiento de actualización sin parpadeo
+                
+                // Si el usuario no está editando, inyectamos los cambios
                 if (!isInputFocused && !isModalOpen) {
                     
+                    // 🎯 VISTA INDIVIDUAL
                     if (typeof vistaActual !== 'undefined' && vistaActual === 'individual' && typeof conductorSeleccionadoId !== 'undefined' && conductorSeleccionadoId) {
                         
-                        // 1. Actualiza SOLO el badge gigante y la tarjeta de la cabecera individual
+                        // Actualiza el badge superior (Cabecera) sin parpadeo
                         if (typeof window.actualizarCabeceraIndividual === 'function') {
                             window.actualizarCabeceraIndividual(conductorSeleccionadoId);
                         }
                         
-                        // 2. Actualiza la tabla inferior (si no hay un rango en plena edición)
+                        // Actualiza el calendario inferior (si no se está seleccionando un rango)
+                        const isRangeSelected = typeof seleccionInicioIso !== 'undefined' && seleccionInicioIso !== null;
                         if (!isRangeSelected && typeof window.mostrarDetalleConductor === 'function') {
                             window.mostrarDetalleConductor(conductorSeleccionadoId, true);
                         } else if (isRangeSelected && typeof ejecutarRenderLocalHR === 'function') {
                             ejecutarRenderLocalHR(conductorSeleccionadoId);
                         }
-
+                        
                     } else {
-                        // Si está en la Vista Diaria o Semanal, filtrarTabla usa morphdom 
-                        // y buscará el ID del badge exacto que cambió para mutarlo.
-                        if (!isRangeSelected && typeof window.filtrarTabla === 'function') {
+                        // 🎯 VISTA DIARIA / GENERAL
+                        // Ahora que las tarjetas tienen IDs, filtrarTabla hace el trabajo mágico
+                        // sin romper el responsiveness.
+                        if (typeof window.filtrarTabla === 'function') {
                             window.filtrarTabla(); 
                         }
                     }
                 }
 
-                // Mini-aviso visual (Cambia el punto verde a azul indicando actualización)
+                // Mini-aviso visual del Socket (Punto verde -> Azul -> Verde)
                 let indicator = document.querySelector('.bg-green-500.animate-pulse');
                 if (indicator) {
-                    indicator.classList.remove('bg-green-500');
-                    indicator.classList.add('bg-blue-500'); 
-                    setTimeout(() => {
-                        indicator.classList.remove('bg-blue-500');
-                        indicator.classList.add('bg-green-500');
-                    }, 500);
+                    indicator.classList.replace('bg-green-500', 'bg-blue-500'); 
+                    setTimeout(() => indicator.classList.replace('bg-blue-500', 'bg-green-500'), 500);
                 }
                 
             }, 150); 
@@ -3842,8 +3846,7 @@ window.procesarNuevaFoto = function(inputElement, dniChofer, safeId) {
         } catch (e) { 
             console.warn("Error procesando sockets:", e);
         }
-    });
-// ==========================================
+    });// ==========================================
 // 🌱 DETECTOR DE PERÍODO DE PRUEBA (6 MESES)
 // ==========================================
 window.calcularMesesPrueba = function(chofer) {
@@ -3941,6 +3944,8 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 </script>
+
+
   <script src="modulo_inducciones.js"></script>
 </body>
 </html>
