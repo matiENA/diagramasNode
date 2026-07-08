@@ -95,35 +95,7 @@
 
 <body class="bg-gray-100 font-sans text-gray-800 min-h-screen flex flex-col">
 
-  <div id="login-wall" class="fixed inset-0 z-[200] bg-gray-100 flex flex-col items-center justify-center transition-opacity duration-500">
-    <div class="bg-white p-8 rounded-2xl shadow-xl border border-gray-200 w-full max-w-sm transform transition-all animate-expand-anim">
-        
-        <div class="text-center mb-8">
-            <div class="w-16 h-16 bg-primary text-white rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
-            </div>
-            <h1 class="text-2xl font-black text-gray-900 tracking-tight">Diagramas EOR</h1>
-            <p class="text-xs text-gray-500 mt-1 uppercase tracking-widest font-bold">Acceso Restringido</p>
-        </div>
-
-        <div class="space-y-5">
-            <div>
-                <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Usuario</label>
-                <input type="text" id="login-user" class="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-primary focus:border-primary block p-3 font-bold outline-none shadow-inner transition-all" placeholder="ID de Usuario" autocomplete="off">
-            </div>
-            <div>
-                <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Contraseña</label>
-                <input type="password" id="login-pass" class="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-primary focus:border-primary block p-3 font-bold outline-none shadow-inner transition-all" placeholder="••••••••" onkeydown="if(event.key === 'Enter') procesarLogin()">
-            </div>
-            
-            <button id="btn-login" onclick="procesarLogin()" class="w-full bg-primary text-white font-black text-sm rounded-xl p-3.5 mt-2 hover:bg-blue-800 transition-colors shadow-md flex justify-center items-center gap-2">
-                Ingresar al Sistema
-            </button>
-        </div>
-        
-        <div id="login-error" class="hidden mt-4 p-3 bg-red-50 border border-red-200 text-red-600 text-xs font-bold rounded-lg text-center"></div>
-    </div>
-</div>
+<div id="auth-container"></div>
 
 <header class="max-w-7xl mx-auto w-full pt-6 pb-2 px-4 sm:px-6 flex justify-between items-start sm:items-center">
     <div>
@@ -453,7 +425,12 @@ document.addEventListener('DOMContentLoaded', () => {
         window.actualizarIconoTema(true);
     }
     
-    verificarSesion();
+    // 👉 LANZAMOS EL MÓDULO DE AUTH (Reemplaza a verificarSesion)
+    if (typeof inicializarModuloAuth === 'function') {
+        inicializarModuloAuth();
+    } else {
+        console.error("El módulo de autenticación (modulo_auth.js) no se ha cargado correctamente.");
+    }
 });
 
 function verificarSesion() {
@@ -3795,39 +3772,35 @@ window.procesarNuevaFoto = function(inputElement, dniChofer, safeId) {
     reader.readAsDataURL(file);
 };
 
-// 👉 BANDERA GLOBAL PARA EL INTERCEPTOR
+// 👉 BANDERA GLOBAL
 let urlYaEvaluada = false;
 
 window.evaluarDeepLinkDeArranque = function() {
-    if (urlYaEvaluada) return; // Evitar doble ejecución
+    if (urlYaEvaluada) return;
+    urlYaEvaluada = true; // 1. Marcamos inmediatamente para evitar bucles
 
     const params = new URLSearchParams(window.location.search);
     const choferIdBuscado = params.get('chofer');
 
+    // 2. Verificamos si hay link Y si la base de datos tiene info
     if (choferIdBuscado && datosGlobales && datosGlobales.length > 0) {
         const choferExiste = datosGlobales.find(c => c._safeId === choferIdBuscado);
         
         if (choferExiste) {
-            urlYaEvaluada = true; 
-            // Esperamos unos milisegundos para que el DOM se asiente
-            setTimeout(() => {
-                irAVistaIndividual(choferIdBuscado);
-            }, 100);
+            // ÉXITO: Abrimos la vista individual (esto dispara filtrarTabla internamente)
+            setTimeout(() => irAVistaIndividual(choferIdBuscado), 50);
+            return; // 🛑 Cortamos la ejecución aquí
         } else {
-            // ID inválido: limpiamos URL y mostramos tabla normal
-            urlYaEvaluada = true; 
+            // FRACASO: El ID no existe. Limpiamos la URL silenciosamente.
             const urlLimpia = new URL(window.location);
             urlLimpia.searchParams.delete('chofer');
             window.history.replaceState({}, '', urlLimpia);
-            filtrarTabla();
         }
-    } else {
-        // Carga normal sin parámetros
-        urlYaEvaluada = true; 
-        filtrarTabla();
     }
-        };
-
+    
+    // 3. RUTINA POR DEFECTO: Si no hay link, o era inválido, o la DB estaba vacía.
+    filtrarTabla();
+};
   </script>
 
 <script src="https://unpkg.com/morphdom@2.7.1/dist/morphdom-umd.min.js"></script>
@@ -4015,6 +3988,7 @@ document.addEventListener("DOMContentLoaded", () => {
 </script>
 
 
+<script src="modulo_auth.js"></script>
   <script src="modulo_inducciones.js"></script>
 </body>
 </html>
