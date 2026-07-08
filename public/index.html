@@ -3797,7 +3797,7 @@ socket.on('datos_actualizados', (data) => {
             viajesDetalleGlobal = {};
         }
 
-// --- PASO 2: RENDERIZADO QUIRÚRGICO (DOM DIRECTO) ---
+        // --- RENDERIZADO QUIRÚRGICO (DOM DIRECTO) ---
         clearTimeout(debounceSocketTimer); 
         
         debounceSocketTimer = setTimeout(() => {
@@ -3856,10 +3856,8 @@ socket.on('datos_actualizados', (data) => {
                         }
                     }
 
-                    // ==========================================
-                    // A) Actualizar Vista Diaria (ID CORREGIDO)
-                    // ==========================================
-                    let badgeDiario = document.getElementById(`badge-estado-diario-${chofer._safeId}`);
+                    // A) Actualizar Vista Diaria (Si el badge existe en el HTML)
+                    let badgeDiario = document.getElementById(`badge-diario-${chofer._safeId}`);
                     if (badgeDiario) {
                         let baseValHoy = getBaseState(rawValHoy);
                         let nuevasClasesDiario = getBgClass(baseValHoy, chofer.diag);
@@ -3875,21 +3873,15 @@ socket.on('datos_actualizados', (data) => {
                         if (badgeDiario.innerHTML !== contenidoDiario) badgeDiario.innerHTML = contenidoDiario;
                     }
 
-                    // ==========================================
-                    // B) Actualizar Vista Individual (ID CORREGIDO)
-                    // ==========================================
-                    if (typeof vistaActual !== 'undefined' && vistaActual === 'individual' && conductorSeleccionadoId === chofer._safeId) {
+                    // B) Actualizar Vista Individual (Si estamos viendo a ESE chofer)
+                    let textIndiv = document.getElementById(`badge-indiv-text-${chofer._safeId}`);
+                    if (textIndiv && textIndiv.innerText !== (rawValCtx || '-')) {
+                        textIndiv.innerText = rawValCtx || '-';
                         
-                        let textIndiv = document.getElementById(`texto-estado-individual-${chofer._safeId}`);
-                        let containerIndiv = document.getElementById(`badge-estado-individual-${chofer._safeId}`);
-                        
-                        if (textIndiv && textIndiv.innerText !== (rawValCtx || '-')) {
-                            textIndiv.innerText = rawValCtx || '-';
-                            
-                            if (containerIndiv) {
-                                containerIndiv.classList.add('ring-4', 'ring-indigo-400');
-                                setTimeout(() => containerIndiv.classList.remove('ring-4', 'ring-indigo-400'), 400);
-                            }
+                        let containerIndiv = document.getElementById(`badge-indiv-container-${chofer._safeId}`);
+                        if (containerIndiv) {
+                            containerIndiv.classList.add('ring-4', 'ring-indigo-400');
+                            setTimeout(() => containerIndiv.classList.remove('ring-4', 'ring-indigo-400'), 400);
                         }
                     }
                 });
@@ -3914,6 +3906,7 @@ socket.on('datos_actualizados', (data) => {
         console.warn("Error procesando sockets:", e);
     }
 });
+
 // ==========================================
 // 🌱 DETECTOR DE PERÍODO DE PRUEBA (6 MESES)
 // ==========================================
