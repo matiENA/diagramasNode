@@ -3795,27 +3795,39 @@ window.procesarNuevaFoto = function(inputElement, dniChofer, safeId) {
     reader.readAsDataURL(file);
 };
 
-// 👉 4. DEEP LINKING: Leer la URL al arrancar el sistema
+// 👉 BANDERA GLOBAL PARA EL INTERCEPTOR
+let urlYaEvaluada = false;
+
+window.evaluarDeepLinkDeArranque = function() {
+    if (urlYaEvaluada) return; // Evitar doble ejecución
+
     const params = new URLSearchParams(window.location.search);
     const choferIdBuscado = params.get('chofer');
 
-    if (choferIdBuscado) {
-        // Buscamos si el ID de la URL realmente existe en la base de datos
+    if (choferIdBuscado && datosGlobales && datosGlobales.length > 0) {
         const choferExiste = datosGlobales.find(c => c._safeId === choferIdBuscado);
+        
         if (choferExiste) {
-            // Si existe, abrimos su vista individual de inmediato
-            irAVistaIndividual(choferIdBuscado);
+            urlYaEvaluada = true; 
+            // Esperamos unos milisegundos para que el DOM se asiente
+            setTimeout(() => {
+                irAVistaIndividual(choferIdBuscado);
+            }, 100);
         } else {
-            // Si el ID es viejo o no existe, limpiamos la URL y mostramos la grilla normal
+            // ID inválido: limpiamos URL y mostramos tabla normal
+            urlYaEvaluada = true; 
             const urlLimpia = new URL(window.location);
             urlLimpia.searchParams.delete('chofer');
             window.history.replaceState({}, '', urlLimpia);
             filtrarTabla();
         }
     } else {
-        // Flujo normal si entran a la web sin parámetros
+        // Carga normal sin parámetros
+        urlYaEvaluada = true; 
         filtrarTabla();
     }
+        };
+
   </script>
 
 <script src="https://unpkg.com/morphdom@2.7.1/dist/morphdom-umd.min.js"></script>
