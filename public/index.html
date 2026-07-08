@@ -279,20 +279,29 @@
 
   <script>
 
-    window.cerrarSesion = function() {
-    sessionStorage.removeItem('eor_session_token');
-    sessionStorage.removeItem('eor_session_role');
+window.cerrarSesion = function() {
+    localStorage.removeItem('eor_session_token');
+    localStorage.removeItem('eor_session_role');
+    localStorage.removeItem('usuarioActivo');
+    
     const wall = document.getElementById('login-wall');
     wall.classList.remove('hidden');
     void wall.offsetWidth; 
     wall.classList.remove('opacity-0', 'pointer-events-none');
+    
     const passInput = document.getElementById('login-pass');
     if(passInput) passInput.value = '';
+    
     window.datosGlobales = [];
     document.getElementById('dashboard').innerHTML = '';
+    
+    // Limpiar URL por si cerramos sesión estando en un perfil
+    const urlLimpia = new URL(window.location);
+    urlLimpia.searchParams.delete('chofer');
+    window.history.replaceState({}, '', urlLimpia);
+    
     showToast("Sesión cerrada correctamente.", "success");
 };
-
 
 window.procesarLogin = function() {
     const user = document.getElementById('login-user').value.trim();
@@ -306,12 +315,10 @@ window.procesarLogin = function() {
         return;
     }
 
-    // Feedback visual
     btn.innerHTML = `<span class="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full"></span> Validando...`;
     btn.disabled = true;
     errorBox.classList.add('hidden');
 
-    // Conexión Directa a Node.js
     fetch(API_URL, {
         method: 'POST',
         headers: { "Content-Type": "application/json" },
@@ -320,8 +327,9 @@ window.procesarLogin = function() {
     .then(res => res.json())
     .then(res => {
         if (res.success) {
-            sessionStorage.setItem('eor_session_token', res.token);
-            sessionStorage.setItem('eor_session_role', res.rol);
+            // 👉 CAMBIO A LOCALSTORAGE
+            localStorage.setItem('eor_session_token', res.token);
+            localStorage.setItem('eor_session_role', res.rol);
             localStorage.setItem('usuarioActivo', user); 
             desbloquearSistema();
         } else {
@@ -332,13 +340,24 @@ window.procesarLogin = function() {
     .catch(err => {
         errorBox.innerText = "Error de red. Intente nuevamente.";
         errorBox.classList.remove('hidden');
-        console.error("Error en Fetch Login:", err);
     })
     .finally(() => {
         btn.innerHTML = "Ingresar al Sistema";
         btn.disabled = false;
     });
 }
+
+function verificarSesion() {
+    // 👉 CAMBIO A LOCALSTORAGE
+    const token = localStorage.getItem('eor_session_token');
+    if (!token) {
+        document.getElementById('login-wall').classList.remove('hidden');
+    } else {
+        desbloquearSistema();
+    }
+}
+
+
 window.sincronizarBackend = function() {
     const btn = document.getElementById('btn-sync-global');
     const icon = document.getElementById('icon-sync-global');
@@ -514,19 +533,27 @@ document.addEventListener('click', (e) => {
     }
     
 function cambiarVistaPrincipal(vista) {
-        vistaActual = vista;
-        const btnClasses = {
-            active: "px-3 sm:px-5 py-1.5 sm:py-2 text-[11px] sm:text-sm font-bold rounded-md bg-white shadow text-primary transition-all whitespace-nowrap",
-            inactive: "px-3 sm:px-5 py-1.5 sm:py-2 text-[11px] sm:text-sm font-bold rounded-md text-gray-500 hover:text-gray-700 transition-all whitespace-nowrap cursor-pointer"
-        };
-        
-        document.getElementById('btn-vista-diaria').className = vista === 'diaria' ? btnClasses.active : btnClasses.inactive;
-        document.getElementById('btn-vista-semanal').className = vista === 'semanal' ? btnClasses.active : btnClasses.inactive;
-        document.getElementById('btn-vista-individual').className = vista === 'individual' ? btnClasses.active : btnClasses.inactive;
-        document.getElementById('btn-vista-metricas').className = vista === 'metricas' ? btnClasses.active : btnClasses.inactive;        
-        document.getElementById('container-busqueda').style.display = (vista === 'individual' || vista === 'metricas' || vista === 'unidades') ? 'none' : 'block';
-        filtrarTabla();
+    vistaActual = vista;
+    const btnClasses = {
+        active: "px-3 sm:px-5 py-1.5 sm:py-2 text-[11px] sm:text-sm font-bold rounded-md bg-white shadow text-primary transition-all whitespace-nowrap",
+        inactive: "px-3 sm:px-5 py-1.5 sm:py-2 text-[11px] sm:text-sm font-bold rounded-md text-gray-500 hover:text-gray-700 transition-all whitespace-nowrap cursor-pointer"
+    };
+    
+    document.getElementById('btn-vista-diaria').className = vista === 'diaria' ? btnClasses.active : btnClasses.inactive;
+    document.getElementById('btn-vista-semanal').className = vista === 'semanal' ? btnClasses.active : btnClasses.inactive;
+    document.getElementById('btn-vista-individual').className = vista === 'individual' ? btnClasses.active : btnClasses.inactive;
+    document.getElementById('btn-vista-metricas').className = vista === 'metricas' ? btnClasses.active : btnClasses.inactive;        
+    document.getElementById('container-busqueda').style.display = (vista === 'individual' || vista === 'metricas' || vista === 'unidades') ? 'none' : 'block';
+    
+    // 👉 Limpiar URL si no estamos en la vista individual
+    if (vista !== 'individual') {
+        const urlLimpia = new URL(window.location);
+        urlLimpia.searchParams.delete('chofer');
+        window.history.pushState({}, '', urlLimpia);
     }
+    
+    filtrarTabla();
+}
     
     window.mapearVencimientos = function(patente, jsonVencimientos) {
     if (!patente || !jsonVencimientos || !Array.isArray(jsonVencimientos)) return null;
@@ -968,7 +995,7 @@ async function cargarDatosDesdeCache() {
             })
             .map(c => ({ ...c, _safeId: crearSafeId(c.nom) }));
 
-        filtrarTabla(); 
+        window.evaluarDeepLinkDeArranque();
         mostrarCargando(false); 
 
     } catch (e) { 
@@ -3841,55 +3868,42 @@ window.procesarNuevaFoto = function(inputElement, dniChofer, safeId) {
                 viajesDetalleGlobal = {};
             }
 
-            // --- PASO 2: RENDERIZADO INTELIGENTE ---
-            clearTimeout(debounceSocketTimer); 
+// --- PASO 2: RENDERIZADO INTELIGENTE ---
             
-            debounceSocketTimer = setTimeout(() => {
-                const isInputFocused = document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName);
-                const isModalOpen = document.getElementById('modal-editor') && !document.getElementById('modal-editor').classList.contains('hidden');
+            // Si la URL no se ha evaluado aún (el socket llegó antes que el fetch), la evaluamos
+            if (!urlYaEvaluada) {
+                window.evaluarDeepLinkDeArranque();
+            } else {
+                // Motor quirúrgico (solo se ejecuta si ya pasó la primera carga)
+                clearTimeout(debounceSocketTimer); 
                 
-                // Si el usuario no está editando, inyectamos los cambios
-                if (!isInputFocused && !isModalOpen) {
+                debounceSocketTimer = setTimeout(() => {
+                    const isInputFocused = document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName);
+                    const isModalOpen = document.getElementById('modal-editor') && !document.getElementById('modal-editor').classList.contains('hidden');
                     
-                    // 🎯 VISTA INDIVIDUAL
-                    if (typeof vistaActual !== 'undefined' && vistaActual === 'individual' && typeof conductorSeleccionadoId !== 'undefined' && conductorSeleccionadoId) {
-                        
-                        // Actualiza el badge superior (Cabecera) sin parpadeo
-                        if (typeof window.actualizarCabeceraIndividual === 'function') {
-                            window.actualizarCabeceraIndividual(conductorSeleccionadoId);
-                        }
-                        
-                        // Actualiza el calendario inferior (si no se está seleccionando un rango)
-                        const isRangeSelected = typeof seleccionInicioIso !== 'undefined' && seleccionInicioIso !== null;
-                        if (!isRangeSelected && typeof window.mostrarDetalleConductor === 'function') {
-                            window.mostrarDetalleConductor(conductorSeleccionadoId, true);
-                        } else if (isRangeSelected && typeof ejecutarRenderLocalHR === 'function') {
-                            ejecutarRenderLocalHR(conductorSeleccionadoId);
-                        }
-                        
-                    } else {
-                        // 🎯 VISTA DIARIA / GENERAL
-                        // Ahora que las tarjetas tienen IDs, filtrarTabla hace el trabajo mágico
-                        // sin romper el responsiveness.
-                        if (typeof window.filtrarTabla === 'function') {
-                            window.filtrarTabla(); 
+                    if (!isInputFocused && !isModalOpen) {
+                        if (typeof vistaActual !== 'undefined' && vistaActual === 'individual' && typeof conductorSeleccionadoId !== 'undefined' && conductorSeleccionadoId) {
+                            if (typeof window.actualizarCabeceraIndividual === 'function') window.actualizarCabeceraIndividual(conductorSeleccionadoId);
+                            const isRangeSelected = typeof seleccionInicioIso !== 'undefined' && seleccionInicioIso !== null;
+                            if (!isRangeSelected && typeof window.mostrarDetalleConductor === 'function') window.mostrarDetalleConductor(conductorSeleccionadoId, true);
+                            else if (isRangeSelected && typeof ejecutarRenderLocalHR === 'function') ejecutarRenderLocalHR(conductorSeleccionadoId);
+                        } else {
+                            if (typeof window.filtrarTabla === 'function') window.filtrarTabla(); 
                         }
                     }
-                }
 
-                // Mini-aviso visual del Socket (Punto verde -> Azul -> Verde)
-                let indicator = document.querySelector('.bg-green-500.animate-pulse');
-                if (indicator) {
-                    indicator.classList.replace('bg-green-500', 'bg-blue-500'); 
-                    setTimeout(() => indicator.classList.replace('bg-blue-500', 'bg-green-500'), 500);
-                }
-                
-            }, 150); 
-
+                    // Mini-aviso visual del Socket
+                    let indicator = document.querySelector('.bg-green-500.animate-pulse');
+                    if (indicator) {
+                        indicator.classList.replace('bg-green-500', 'bg-blue-500'); 
+                        setTimeout(() => indicator.classList.replace('bg-blue-500', 'bg-green-500'), 500);
+                    }
+                }, 150); 
+            }
         } catch (e) { 
             console.warn("Error procesando sockets:", e);
         }
-    });// ==========================================
+        });// ==========================================
 // 🌱 DETECTOR DE PERÍODO DE PRUEBA (6 MESES)
 // ==========================================
 window.calcularMesesPrueba = function(chofer) {
