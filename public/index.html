@@ -3535,18 +3535,27 @@ window.actualizarSinBlink = function(elementoId, nuevoHTML) {
         }
     };
 
-    // Variable global para el estado del filtro
+// ==============================================================
+// 👉 VARIABLES Y FUNCIONES GLOBALES DEL FILTRO DE FLOTA
+// ==============================================================
 window.filtroFlotaActual = 'todos'; 
 
 window.setFiltroFlota = function(tipoFiltro) {
+    // 1. Actualizamos el estado global
     window.filtroFlotaActual = tipoFiltro;
     
-    // Asumiendo que inyectas las unidades en el div 'dashboard' o el contenedor actual
+    // 2. Buscamos el contenedor donde se dibuja la vista
+    // OJO: Revisa que el ID de tu contenedor central sea 'dashboard' (o cámbialo aquí)
     const container = document.getElementById('dashboard'); 
+    
     if (container) {
+        // 3. Volvemos a renderizar la vista con el filtro aplicado
         window.renderizarVistaUnidades(container);
+    } else {
+        console.error("No se encontró el contenedor para re-renderizar las unidades.");
     }
 };
+// ==============================================================
 
 window.renderizarVistaUnidades = function(container) {
     let cache = window.vencimientosCacheGlobal;
