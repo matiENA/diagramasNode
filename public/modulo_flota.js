@@ -2,32 +2,29 @@
 // 🚛 MÓDULO CONTROL DE FLOTA (LÓGICA y UX/UI)
 // ==========================================
 
-// Estado Global Exclusivo del Módulo
 window.filtroFlotaActual = 'todos'; 
 
 window.setFiltroFlota = function(tipoFiltro) {
     window.filtroFlotaActual = tipoFiltro;
     
-    // Al cambiar el filtro (Todos/Vencidos), re-ejecutamos el filtro global
-    // Esto asegura que si hay texto en el buscador, no se pierda.
     if (typeof window.filtrarTabla === 'function') {
         window.filtrarTabla();
     } else {
         const container = document.getElementById('contenedor-unidades') || document.getElementById('dashboard');
-        window.renderizarVistaUnidades(container, window.datosGlobales);
+        // 👉 CORRECCIÓN 1: Leer datosGlobales directo (sin window.)
+        window.renderizarVistaUnidades(container, datosGlobales); 
     }
 };
 
 window.renderizarVistaUnidades = function(container, choferesFiltrados = null) {
-    // 1. Obtener la caché de vencimientos de la Base de Datos
     let cache = window.vencimientosCacheGlobal;
     if (typeof cache === 'string') { try { cache = JSON.parse(cache); } catch(e) { cache = []; } }
     if (!Array.isArray(cache)) cache = [];
 
-    let fBaseObj = new Date(window.fechaGlobalContexto + "T12:00:00");
+    // 👉 CORRECCIÓN 2: Leer fechaGlobalContexto directo (sin window.)
+    let fBaseObj = new Date(fechaGlobalContexto + "T12:00:00");
     const textoBusqueda = (document.getElementById('buscador-nombre') ? document.getElementById('buscador-nombre').value.toLowerCase().trim() : '');
     
-    // 2. Mapear y unificar datos para tener una lista enriquecida (Patrón Factory)
     let listaUnidades = cache.map((u, index) => {
         let patente = String(u.col_b || '').trim().toUpperCase();
         let esSemi = (!u.col_g && !u.col_h && (u.col_j || u.col_k)); 
@@ -40,8 +37,8 @@ window.renderizarVistaUnidades = function(container, choferesFiltrados = null) {
         
         let estadoGlobal = window.evaluarAlertasUnidad(unidadData, fBaseObj);
         
-        // Buscar quién tiene asignada esta unidad
-        let choferAsignado = window.datosGlobales.find(c =>
+        // 👉 CORRECCIÓN 3: Leer datosGlobales directo (sin window.)
+        let choferAsignado = datosGlobales.find(c =>
             (c.tractor || '').toUpperCase().trim() === patente ||
             (c.semi || '').toUpperCase().trim() === patente
         );
