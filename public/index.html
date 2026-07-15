@@ -399,12 +399,6 @@ window.sincronizarBackend = function() {
     let metricaActivaState = null;
     let zoomTablaNivel = 1; 
     let seleccionInicioIso = null;
-
-        // Estado de Selección en Lote
-    let modoLoteActivo = false;
-    let choferesSeleccionadosLote = new Set(); // Guarda los IDs o nombres de choferes
-    let diaInicioLote = null;
-    let diaFinLote = null;
     
     let filtrosActivos = { estados: [], servicios: [], documentos: [], retornan: false, fechaRetorno: '' };
 
@@ -4060,30 +4054,6 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 </script>
-
-<div id="barra-lote-flotante" class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-6 py-4 rounded-2xl shadow-2xl border border-gray-700 flex flex-col md:flex-row items-center gap-4 z-50 transition-all duration-300 transform translate-y-20 opacity-0 pointer-events-none">
-    <div class="flex items-center gap-3">
-        <span class="text-xl">🪄</span>
-        <div class="flex flex-col">
-            <span class="text-xs font-black text-indigo-400 uppercase tracking-widest">Asignación Masiva</span>
-            <span id="texto-resumen-lote" class="text-sm font-medium text-gray-200">0 Choferes seleccionados</span>
-        </div>
-    </div>
-    
-    <div class="flex items-center gap-2 bg-gray-800 px-3 py-1.5 rounded-lg border border-gray-700">
-        <span class="text-xs text-gray-400 font-bold">Rango:</span>
-        <span id="badge-rango-lote" class="text-xs font-black text-white bg-indigo-600 px-2 py-0.5 rounded">Sin definir</span>
-    </div>
-
-    <div class="flex items-center gap-1.5 border-l border-gray-700 pl-4">
-        <button onclick="aplicarEstadoLote('F')" class="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-lg shadow transition-all">F</button>
-        <button onclick="aplicarEstadoLote('V')" class="px-3 py-1.5 bg-yellow-500 hover:bg-yellow-400 text-gray-950 text-xs font-bold rounded-lg shadow transition-all">V</button>
-        <button onclick="aplicarEstadoLote('L')" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg shadow transition-all">L</button>
-        <button onclick="aplicarEstadoLote('BORRAR')" class="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs font-bold rounded-lg shadow transition-all">Vaciar</button>
-    </div>
-    
-    <button onclick="desactivarModoLote()" class="text-xs font-bold text-gray-400 hover:text-white transition-colors ml-2">Cancelar</button>
-</div>
 
 
 <script src="modulo_auth.js"></script>
