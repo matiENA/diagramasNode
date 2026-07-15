@@ -682,3 +682,76 @@ app.post('/api/subir-foto', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`🚀 Servidor Node Activo en puerto ${PORT}`));
+
+app.post('/api/guardar_estado_lote', async (req, res) => {
+    try {
+        const { choferes, mesAnio, dias, estado } = req.body;
+        
+        if (!choferes || !mesAnio || !dias || dias.length === 0) {
+            return res.status(400).json({ success: false, error: "Datos incompletos" });
+        }
+
+        // 1. Obtener la base de datos de choferes directamente desde Google Sheets
+        const sheets = google.sheets({ version: 'v4', auth });
+        const spreadsheetId = SPREADSHEET_ID; // Tu constante de ID de Sheet
+        const range = 'choferes y unidades!A:Z'; // Ajusta el nombre de la pestaña donde guardas los días
+
+        const response = await sheets.spreadsheets.values.get({ spreadsheetId, range });
+        const rows = response.data.values;
+        if (!rows || rows.length === 0) throw new Error("No se encontraron registros");
+
+        // Cabecera para identificar en qué columna está cada día del mes
+        const header = rows[0];
+        
+        // Buscaremos las coordenadas de escritura en Google Sheets para realizar actualizaciones en lote (Batch Update)
+        const updates = [];
+
+        choferes.forEach(choferNombre => {
+            // Buscamos la fila del chofer por nombre
+            const filaIndex = rows.findIndex(r => r[0] && r[0].trim().toUpperCase() === choferNombre.trim().toUpperCase());
+            if (filaIndex === -1) return; // Skip si no existe el chofer
+
+            dias.forEach(dia => {
+                // Buscamos la columna correspondiente al día del mes (ej: "1", "2", "15" en la cabecera)
+                const colIndex = header.findIndex(h => h.trim() === String(dia));
+                if (colIndex === -1) return;
+
+                // Traducimos índices de JS (0-based) a coordenadas A1 de Excel/Sheets
+                const letraColumna = traducirIndexAColumnaA1(colIndex);
+                const numeroFila = filaIndex + 1; // Las filas de Sheets son 1-based
+
+                updates.push({
+                    range: `choferes y unidades!${letraColumna}${numeroFila}`,
+                    values: [[estado === 'BORRAR' ? '' : estado]]
+                });
+            });
+        });
+
+        // 2. Ejecutar la escritura en masa (una sola petición HTTP al API de Google Sheets)
+        if (updates.length > 0) {
+            await sheets.spreadsheets.values.batchUpdate({
+                spreadsheetId,
+                resource: {
+                    valueInputOption: 'USER_ENTERED',
+                    data: updates
+                }
+            });
+        }
+
+        res.json({ success: true, actualizados: updates.length });
+    } catch (error) {
+        console.error("Error en asignación masiva:", error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Helper para convertir índice numérico de columna en letra A1 (ej: 0 -> A, 27 -> AB)
+function traducirIndexAColumnaA1(colIndex) {
+    let temp = colIndex;
+    let letter = '';
+    while (temp >= 0) {
+        letter = String.fromCharCode((temp % 26) + 65) + letter;
+        temp = Math.floor(temp / 26) - 1;
+    }
+    return letter;
+}
