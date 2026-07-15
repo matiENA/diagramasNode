@@ -998,13 +998,12 @@ window.toggleVencimientosUnidad = function(safeId) {
     }
 };
 
-function filtrarTabla() {
+    function filtrarTabla() {
         const texto = document.getElementById('buscador-nombre') ? document.getElementById('buscador-nombre').value.toLowerCase().trim() : '';
         const fBaseObj = new Date(fechaGlobalContexto + "T12:00:00");
         const esVistaTabla = vistaActual === 'semanal';
 
         const filtrados = datosGlobales.filter(c => {
-            
             let nKey = (c.nom || '').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
             let datosDni = dnisGlobales[nKey];
             let dniString = datosDni ? String(datosDni.dni || datosDni).toLowerCase() : "";
@@ -1020,6 +1019,28 @@ function filtrarTabla() {
             let srv = (c.srv || 'SIN ASIGNAR').toUpperCase().trim();
             if (filtrosActivos.servicios.length > 0 && !filtrosActivos.servicios.includes(srv)) return false;
 
+            // 👉 FILTRO EXCLUSIVO DE CONTROL DE FLOTA
+            if (vistaActual === 'unidades') {
+                let unidadData = (window.unidadesGlobales && window.unidadesGlobales[c.tractor]) || {};
+                try {
+                    let cache = window.vencimientosCacheGlobal;
+                    if (cache && typeof cache === 'string') { cache = JSON.parse(cache); }
+                    if (cache && Array.isArray(cache) && c.tractor) {
+                        let datosVencimientos = window.mapearVencimientos(c.tractor, cache);
+                        if (datosVencimientos) { unidadData = { ...unidadData, ...datosVencimientos }; }
+                    }
+                } catch (error) {}
+
+                let estadoGlobal = window.evaluarAlertasUnidad(unidadData, fBaseObj);
+                
+                if (window.filtroFlotaActual === 'vencido' && estadoGlobal !== 'VENCIDO') return false;
+                if (window.filtroFlotaActual === 'por_vencer' && estadoGlobal !== 'POR_VENCER') return false;
+                
+                // Si pasa el filtro de flota, no necesita pasar por los filtros de métricas diarios
+                return true; 
+            }
+
+            // Filtros originales para Diaria, Semanal y Métricas
             if (vistaActual !== 'metricas') {
                 let estadoDiaRaw = getValDiaGlobal(c.dias, fBaseObj);
                 let estadoDiaBase = getBaseState(estadoDiaRaw);
@@ -1054,7 +1075,7 @@ function filtrarTabla() {
             return true;
         });
 
-const dashboard = document.getElementById('dashboard');
+        const dashboard = document.getElementById('dashboard');
         if (vistaActual === 'individual') {
             if (!document.getElementById('contenedor-individual')) {
                 dashboard.innerHTML = '<div id="contenedor-individual" class="w-full"></div>';
@@ -1070,14 +1091,14 @@ const dashboard = document.getElementById('dashboard');
             }
             renderizarVistaMetricas(document.getElementById('contenedor-metricas'));
             
-        // 👉 ENRUTADOR PARA LA PESTAÑA UNIDADES
+        // 👉 ENRUTADOR PARA LA PESTAÑA UNIDADES (ACTUALIZADO PARA RECIBIR LA LISTA FILTRADA)
         } else if (vistaActual === 'unidades') {
             if (!document.getElementById('contenedor-unidades')) {
                 dashboard.innerHTML = '<div id="contenedor-unidades" class="w-full"></div>';
             }
-            window.renderizarVistaUnidades(document.getElementById('contenedor-unidades'));
+            // IMPORTANTE: Le pasamos la lista "filtrados" (no lee de la caché cruda)
+            window.renderizarVistaUnidades(document.getElementById('contenedor-unidades'), filtrados);
 
-        // 👉 NUEVO ENRUTADOR PARA LA PESTAÑA INDUCCIONES
         } else if (vistaActual === 'inducciones') {
             if (!document.getElementById('contenedor-inducciones')) {
                 dashboard.innerHTML = '<div id="contenedor-inducciones" class="w-full"></div>';
@@ -1099,148 +1120,149 @@ const dashboard = document.getElementById('dashboard');
             if (vistaActual === 'diaria') renderizarGrillaDiaria(filtrados, contLista);
             else if (vistaActual === 'semanal') renderizarGrillaSemanal(filtrados, contLista);
             renderizarPanelFiltros();
-        }    }
-
+        }    
+    }
+       
     window.toggleFiltroRetornan = function() {
-        filtrosActivos.retornan = !filtrosActivos.retornan;
-        if (!filtrosActivos.retornan) filtrosActivos.fechaRetorno = ''; 
-        else {
-            let map = {};
-            datosGlobales.forEach(c => { let r = calcularRetorno(c.dias, fechaGlobalContexto); if (r) map[formatIsoShort(r)] = true; });
-            let arr = Object.keys(map).sort();
-            if (arr.length > 0) filtrosActivos.fechaRetorno = arr[0];
-        }
-        filtrarTabla();
-    }
-    window.setFiltroFechaRetorno = function(val) { filtrosActivos.fechaRetorno = val; filtrarTabla(); }
-    
-    window.toggleFiltro = function(tipo, valor) {
-        const arr = filtrosActivos[tipo];
-        const idx = arr.indexOf(valor);
-        if (idx > -1) arr.splice(idx, 1); else arr.push(valor);
-        filtrarTabla();
-    };
-    window.limpiarFiltros = function() {
-        filtrosActivos = { estados: [], servicios: [], documentos: [], retornan: false, fechaRetorno: '' };
-        filtrarTabla();
-    };
-
-function renderizarPanelFiltros() {
-        const contenedor = document.getElementById('contenedor-filtros-lateral');
-        if (!contenedor) return;
-        const esVistaTabla = vistaActual === 'semanal';
-        const fBaseObj = new Date(fechaGlobalContexto + "T12:00:00");
-        let mapRetornos = {};
-        let contadorPorVencer = 0; let contadorVencidos = 0;
-
-        datosGlobales.forEach(c => {
-            let retObj = calcularRetorno(c.dias, fechaGlobalContexto);
-            if (retObj) { let iso = formatIsoShort(retObj); mapRetornos[iso] = (mapRetornos[iso] || 0) + 1; }
-            let n = c.nom.toLowerCase();
-            let d = docsGlobales[n] || {}; let h = habsGlobales[n] || {}; let cert = certsGlobales[n] || {};
-            
-            let dEst = evaluarEstadoDoc(d.ven, fBaseObj);
-            let hEst = evaluarEstadoDoc(h.ven, fBaseObj);
-            let cEst = evaluarEstadoDoc(cert.ven, fBaseObj);
-
-            if (dEst === 'VENCIDO' || hEst === 'VENCIDO' || cEst === 'VENCIDO') contadorVencidos++;
-            if (dEst === 'POR_VENCER' || hEst === 'POR_VENCER' || cEst === 'POR_VENCER') contadorPorVencer++;
-        });
-
-        let subFiltroHtml = '';
-        if (filtrosActivos.retornan) {
-            let options = ''; let keys = Object.keys(mapRetornos).sort();
-            if (keys.length === 0) options = `<option value="">Sin retornos previstos</option>`;
+            filtrosActivos.retornan = !filtrosActivos.retornan;
+            if (!filtrosActivos.retornan) filtrosActivos.fechaRetorno = ''; 
             else {
-                keys.forEach(isoKey => {
-                    let selected = filtrosActivos.fechaRetorno === isoKey ? 'selected' : '';
-                    let dObj = new Date(isoKey + "T12:00:00");
-                    let dd = String(dObj.getDate()).padStart(2, '0'); let mm = String(dObj.getMonth() + 1).padStart(2, '0');
-                    options += `<option value="${isoKey}" ${selected}>${dd}/${mm} - Vuelven: ${mapRetornos[isoKey]}</option>`;
-                });
+                let map = {};
+                datosGlobales.forEach(c => { let r = calcularRetorno(c.dias, fechaGlobalContexto); if (r) map[formatIsoShort(r)] = true; });
+                let arr = Object.keys(map).sort();
+                if (arr.length > 0) filtrosActivos.fechaRetorno = arr[0];
             }
-            subFiltroHtml = `<div class="mt-2 bg-indigo-50 border border-indigo-100 rounded-xl p-3 animate-expand-anim relative overflow-hidden shadow-inner"><div class="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div><label class="block text-[10px] font-bold text-indigo-800 uppercase mb-2 flex items-center gap-1">Ver Día por Día</label><select onchange="setFiltroFechaRetorno(this.value)" class="w-full bg-white border border-indigo-200 text-xs font-bold text-indigo-900 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm cursor-pointer">${options}</select></div>`;
+            filtrarTabla();
         }
-
-        const serviciosSet = new Set();
-        datosGlobales.forEach(c => { 
-            let srv = (c.srv || 'SIN ASIGNAR').toUpperCase().trim();
-            if (SERVICIOS_PERMITIDOS.includes(srv)) serviciosSet.add(srv); 
-        });
-        const serviciosUnicos = Array.from(serviciosSet).sort();
-        const estadosFiltro = ['ACTIVOS', 'F', 'FSF', 'V', 'VSF', 'IND', 'E', 'A', 'S', 'ART', '?'];
-
-        let html = `
-            <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 animate-[fadeIn_0.3s_ease-out]">
-                <div class="flex justify-between items-center mb-4 border-b border-gray-100 pb-3">
-                    <h3 class="font-bold text-gray-800 text-sm uppercase tracking-wider flex items-center gap-2"><svg class="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 00-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path></svg> Filtros</h3>
-                    ${(filtrosActivos.estados.length > 0 || filtrosActivos.servicios.length > 0 || filtrosActivos.documentos.length > 0 || filtrosActivos.retornan) ? `<button onclick="limpiarFiltros()" class="text-[10px] font-bold text-red-600 bg-red-50 px-2.5 py-1 rounded-md hover:bg-red-100 border border-red-200">Limpiar Todos</button>` : ''}
-                </div>`;
-
-        html += `
-            <div class="mb-6 border-b border-gray-100 pb-5">
-                <h4 class="text-[11px] font-bold text-gray-400 mb-3 uppercase tracking-wide">Filtro Principal</h4>
-                <div class="border rounded-xl py-2.5 px-3 text-xs font-bold cursor-pointer transition-all duration-200 select-none flex justify-between items-center shadow-sm ${filtrosActivos.retornan ? 'bg-indigo-600 text-white border-indigo-700 ring-2 ring-indigo-300 ring-offset-1' : 'bg-indigo-50 text-indigo-900 border-indigo-200 hover:bg-indigo-100'}" onclick="toggleFiltroRetornan()">
-                    <div class="flex items-center gap-2"><span>Personal que Retorna</span></div>
-                </div>
-                ${subFiltroHtml}
-            </div>
-            <div class="mb-6"><h4 class="text-[11px] font-bold text-gray-400 mb-3 uppercase tracking-wide">Por Estado de Actividad</h4><div class="grid grid-cols-2 gap-2">`;
+        window.setFiltroFechaRetorno = function(val) { filtrosActivos.fechaRetorno = val; filtrarTabla(); }
         
-        estadosFiltro.forEach(est => {
-            const activo = filtrosActivos.estados.includes(est);
-            let clases = "border rounded-lg py-1.5 text-[11px] text-center cursor-pointer transition-all duration-200 select-none shadow-sm ";
-            if (!activo) {
-                let colorTexto = "text-gray-500 font-medium";
-                if (est === 'ACTIVOS') colorTexto = "text-blue-500 font-bold";
-                else if (['F','FSF'].includes(est)) colorTexto = "text-[#6aa84f] font-bold";
-                else if (['V','VSF'].includes(est)) colorTexto = "text-[#d6a800] font-bold";
-                else if (['IND','E','A'].includes(est)) colorTexto = "text-[#cc0000] font-bold";
-                else if (est === 'S') colorTexto = "text-[#e69138] font-bold";
-                else if (est === 'ART') colorTexto = "text-[#8e7cc3] font-bold";
-                else if (est === '?') colorTexto = "text-gray-500 font-bold";
-                clases += `bg-white border-gray-200 ${colorTexto} hover:bg-gray-50 hover:border-gray-300`;
-            } else {
-                if (est === 'ACTIVOS') clases += "bg-blue-50 border-blue-400 text-blue-900 font-black shadow-inner ring-1 ring-blue-400";
-                else if (['F','FSF'].includes(est)) clases += "bg-[#b6d7a8] border-[#93c47d] text-green-900 font-black shadow-inner ring-1 ring-[#93c47d]";
-                else if (['V','VSF'].includes(est)) clases += "bg-[#ffe599] border-[#f1c232] text-yellow-900 font-black shadow-inner ring-1 ring-[#f1c232]";
-                else if (['IND','E','A'].includes(est)) clases += "bg-[#cc0000] border-[#990000] text-white font-black shadow-inner ring-1 ring-[#990000]";
-                else if (est === 'S') clases += "bg-[#f6b26b] border-[#e69138] text-white font-black shadow-inner ring-1 ring-[#e69138]";
-                else if (est === 'ART') clases += "bg-[#b4a7d6] border-[#8e7cc3] text-white font-black shadow-inner ring-1 ring-[#8e7cc3]";
-                else if (est === '?') clases += "bg-gray-200 border-gray-400 text-gray-800 font-black shadow-inner ring-1 ring-gray-400";
+        window.toggleFiltro = function(tipo, valor) {
+            const arr = filtrosActivos[tipo];
+            const idx = arr.indexOf(valor);
+            if (idx > -1) arr.splice(idx, 1); else arr.push(valor);
+            filtrarTabla();
+        };
+        window.limpiarFiltros = function() {
+            filtrosActivos = { estados: [], servicios: [], documentos: [], retornan: false, fechaRetorno: '' };
+            filtrarTabla();
+        };
+
+    function renderizarPanelFiltros() {
+            const contenedor = document.getElementById('contenedor-filtros-lateral');
+            if (!contenedor) return;
+            const esVistaTabla = vistaActual === 'semanal';
+            const fBaseObj = new Date(fechaGlobalContexto + "T12:00:00");
+            let mapRetornos = {};
+            let contadorPorVencer = 0; let contadorVencidos = 0;
+
+            datosGlobales.forEach(c => {
+                let retObj = calcularRetorno(c.dias, fechaGlobalContexto);
+                if (retObj) { let iso = formatIsoShort(retObj); mapRetornos[iso] = (mapRetornos[iso] || 0) + 1; }
+                let n = c.nom.toLowerCase();
+                let d = docsGlobales[n] || {}; let h = habsGlobales[n] || {}; let cert = certsGlobales[n] || {};
+                
+                let dEst = evaluarEstadoDoc(d.ven, fBaseObj);
+                let hEst = evaluarEstadoDoc(h.ven, fBaseObj);
+                let cEst = evaluarEstadoDoc(cert.ven, fBaseObj);
+
+                if (dEst === 'VENCIDO' || hEst === 'VENCIDO' || cEst === 'VENCIDO') contadorVencidos++;
+                if (dEst === 'POR_VENCER' || hEst === 'POR_VENCER' || cEst === 'POR_VENCER') contadorPorVencer++;
+            });
+
+            let subFiltroHtml = '';
+            if (filtrosActivos.retornan) {
+                let options = ''; let keys = Object.keys(mapRetornos).sort();
+                if (keys.length === 0) options = `<option value="">Sin retornos previstos</option>`;
+                else {
+                    keys.forEach(isoKey => {
+                        let selected = filtrosActivos.fechaRetorno === isoKey ? 'selected' : '';
+                        let dObj = new Date(isoKey + "T12:00:00");
+                        let dd = String(dObj.getDate()).padStart(2, '0'); let mm = String(dObj.getMonth() + 1).padStart(2, '0');
+                        options += `<option value="${isoKey}" ${selected}>${dd}/${mm} - Vuelven: ${mapRetornos[isoKey]}</option>`;
+                    });
+                }
+                subFiltroHtml = `<div class="mt-2 bg-indigo-50 border border-indigo-100 rounded-xl p-3 animate-expand-anim relative overflow-hidden shadow-inner"><div class="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div><label class="block text-[10px] font-bold text-indigo-800 uppercase mb-2 flex items-center gap-1">Ver Día por Día</label><select onchange="setFiltroFechaRetorno(this.value)" class="w-full bg-white border border-indigo-200 text-xs font-bold text-indigo-900 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm cursor-pointer">${options}</select></div>`;
             }
-            html += `<div class="${clases}" onclick="toggleFiltro('estados', '${est}')">${est}</div>`;
-        });
-        html += `</div></div>`;
 
-        html += `<div><h4 class="text-[11px] font-bold text-gray-400 mb-3 uppercase tracking-wide">Por Servicio Asignado</h4><div class="flex flex-col gap-2">`;
-        serviciosUnicos.forEach(srv => {
-            const activo = filtrosActivos.servicios.includes(srv); const theme = getSrvTheme(srv);
-            let count = datosGlobales.filter(c => (c.srv || 'SIN ASIGNAR').toUpperCase().trim() === srv).length;
-            let clases = "border rounded-lg py-2 px-3 text-xs font-bold cursor-pointer transition-all duration-200 select-none flex justify-between items-center shadow-sm ";
-            if (!activo) clases += `bg-white border-gray-200 text-gray-600 ${theme.hoverBg} hover:border-gray-300`;
-            else clases += `${theme.solidBg} ${theme.solidText} border-transparent shadow-inner ring-2 ring-offset-1 ring-gray-300`;
-            html += `<div class="${clases}" onclick="toggleFiltro('servicios', '${srv}')"><span>${srv}</span><span class="${activo ? 'bg-black/20 text-white border-transparent' : theme.softBg + ' ' + theme.softText + ' border ' + theme.border} px-2 py-0.5 rounded text-[10px]">${count}</span></div>`;
-        });
-        html += `</div></div>`;
+            const serviciosSet = new Set();
+            datosGlobales.forEach(c => { 
+                let srv = (c.srv || 'SIN ASIGNAR').toUpperCase().trim();
+                if (SERVICIOS_PERMITIDOS.includes(srv)) serviciosSet.add(srv); 
+            });
+            const serviciosUnicos = Array.from(serviciosSet).sort();
+            const estadosFiltro = ['ACTIVOS', 'F', 'FSF', 'V', 'VSF', 'IND', 'E', 'A', 'S', 'ART', '?'];
 
-        html += `<div class="mt-6 border-t border-gray-100 pt-5"><h4 class="text-[11px] font-bold text-gray-400 mb-3 uppercase tracking-wide">Documentos</h4><div class="grid grid-cols-2 gap-2">`;
-        const docsFiltros = [
-            { id: 'VENCIDO', label: 'Vencido', count: contadorVencidos, bgActive: 'bg-red-100 border-red-300 text-red-700 font-black shadow-inner ring-1 ring-red-300', inactiveText: 'text-red-600' },
-            { id: 'POR_VENCER', label: 'Por Vencer', count: contadorPorVencer, bgActive: 'bg-yellow-100 border-yellow-300 text-yellow-700 font-black shadow-inner ring-1 ring-yellow-300', inactiveText: 'text-[#d6a800]' }
-        ];
-        docsFiltros.forEach(f => {
-            const activo = filtrosActivos.documentos && filtrosActivos.documentos.includes(f.id);
-            let clases = "border rounded-lg py-1.5 text-[11px] text-center cursor-pointer transition-all duration-200 select-none shadow-sm flex flex-col items-center justify-center ";
-            if (!activo) clases += `bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300 font-bold ${f.inactiveText}`;
-            else clases += f.bgActive;
-            html += `<div class="${clases}" onclick="toggleFiltro('documentos', '${f.id}')"><span>${f.label}</span><span class="text-[9px] opacity-80 font-bold">(${f.count})</span></div>`;
-        });
-        html += `</div></div>`;
-        
-        html += `</div>`; 
-        contenedor.innerHTML = html;
-    }
+            let html = `
+                <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 animate-[fadeIn_0.3s_ease-out]">
+                    <div class="flex justify-between items-center mb-4 border-b border-gray-100 pb-3">
+                        <h3 class="font-bold text-gray-800 text-sm uppercase tracking-wider flex items-center gap-2"><svg class="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 00-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path></svg> Filtros</h3>
+                        ${(filtrosActivos.estados.length > 0 || filtrosActivos.servicios.length > 0 || filtrosActivos.documentos.length > 0 || filtrosActivos.retornan) ? `<button onclick="limpiarFiltros()" class="text-[10px] font-bold text-red-600 bg-red-50 px-2.5 py-1 rounded-md hover:bg-red-100 border border-red-200">Limpiar Todos</button>` : ''}
+                    </div>`;
+
+            html += `
+                <div class="mb-6 border-b border-gray-100 pb-5">
+                    <h4 class="text-[11px] font-bold text-gray-400 mb-3 uppercase tracking-wide">Filtro Principal</h4>
+                    <div class="border rounded-xl py-2.5 px-3 text-xs font-bold cursor-pointer transition-all duration-200 select-none flex justify-between items-center shadow-sm ${filtrosActivos.retornan ? 'bg-indigo-600 text-white border-indigo-700 ring-2 ring-indigo-300 ring-offset-1' : 'bg-indigo-50 text-indigo-900 border-indigo-200 hover:bg-indigo-100'}" onclick="toggleFiltroRetornan()">
+                        <div class="flex items-center gap-2"><span>Personal que Retorna</span></div>
+                    </div>
+                    ${subFiltroHtml}
+                </div>
+                <div class="mb-6"><h4 class="text-[11px] font-bold text-gray-400 mb-3 uppercase tracking-wide">Por Estado de Actividad</h4><div class="grid grid-cols-2 gap-2">`;
+            
+            estadosFiltro.forEach(est => {
+                const activo = filtrosActivos.estados.includes(est);
+                let clases = "border rounded-lg py-1.5 text-[11px] text-center cursor-pointer transition-all duration-200 select-none shadow-sm ";
+                if (!activo) {
+                    let colorTexto = "text-gray-500 font-medium";
+                    if (est === 'ACTIVOS') colorTexto = "text-blue-500 font-bold";
+                    else if (['F','FSF'].includes(est)) colorTexto = "text-[#6aa84f] font-bold";
+                    else if (['V','VSF'].includes(est)) colorTexto = "text-[#d6a800] font-bold";
+                    else if (['IND','E','A'].includes(est)) colorTexto = "text-[#cc0000] font-bold";
+                    else if (est === 'S') colorTexto = "text-[#e69138] font-bold";
+                    else if (est === 'ART') colorTexto = "text-[#8e7cc3] font-bold";
+                    else if (est === '?') colorTexto = "text-gray-500 font-bold";
+                    clases += `bg-white border-gray-200 ${colorTexto} hover:bg-gray-50 hover:border-gray-300`;
+                } else {
+                    if (est === 'ACTIVOS') clases += "bg-blue-50 border-blue-400 text-blue-900 font-black shadow-inner ring-1 ring-blue-400";
+                    else if (['F','FSF'].includes(est)) clases += "bg-[#b6d7a8] border-[#93c47d] text-green-900 font-black shadow-inner ring-1 ring-[#93c47d]";
+                    else if (['V','VSF'].includes(est)) clases += "bg-[#ffe599] border-[#f1c232] text-yellow-900 font-black shadow-inner ring-1 ring-[#f1c232]";
+                    else if (['IND','E','A'].includes(est)) clases += "bg-[#cc0000] border-[#990000] text-white font-black shadow-inner ring-1 ring-[#990000]";
+                    else if (est === 'S') clases += "bg-[#f6b26b] border-[#e69138] text-white font-black shadow-inner ring-1 ring-[#e69138]";
+                    else if (est === 'ART') clases += "bg-[#b4a7d6] border-[#8e7cc3] text-white font-black shadow-inner ring-1 ring-[#8e7cc3]";
+                    else if (est === '?') clases += "bg-gray-200 border-gray-400 text-gray-800 font-black shadow-inner ring-1 ring-gray-400";
+                }
+                html += `<div class="${clases}" onclick="toggleFiltro('estados', '${est}')">${est}</div>`;
+            });
+            html += `</div></div>`;
+
+            html += `<div><h4 class="text-[11px] font-bold text-gray-400 mb-3 uppercase tracking-wide">Por Servicio Asignado</h4><div class="flex flex-col gap-2">`;
+            serviciosUnicos.forEach(srv => {
+                const activo = filtrosActivos.servicios.includes(srv); const theme = getSrvTheme(srv);
+                let count = datosGlobales.filter(c => (c.srv || 'SIN ASIGNAR').toUpperCase().trim() === srv).length;
+                let clases = "border rounded-lg py-2 px-3 text-xs font-bold cursor-pointer transition-all duration-200 select-none flex justify-between items-center shadow-sm ";
+                if (!activo) clases += `bg-white border-gray-200 text-gray-600 ${theme.hoverBg} hover:border-gray-300`;
+                else clases += `${theme.solidBg} ${theme.solidText} border-transparent shadow-inner ring-2 ring-offset-1 ring-gray-300`;
+                html += `<div class="${clases}" onclick="toggleFiltro('servicios', '${srv}')"><span>${srv}</span><span class="${activo ? 'bg-black/20 text-white border-transparent' : theme.softBg + ' ' + theme.softText + ' border ' + theme.border} px-2 py-0.5 rounded text-[10px]">${count}</span></div>`;
+            });
+            html += `</div></div>`;
+
+            html += `<div class="mt-6 border-t border-gray-100 pt-5"><h4 class="text-[11px] font-bold text-gray-400 mb-3 uppercase tracking-wide">Documentos</h4><div class="grid grid-cols-2 gap-2">`;
+            const docsFiltros = [
+                { id: 'VENCIDO', label: 'Vencido', count: contadorVencidos, bgActive: 'bg-red-100 border-red-300 text-red-700 font-black shadow-inner ring-1 ring-red-300', inactiveText: 'text-red-600' },
+                { id: 'POR_VENCER', label: 'Por Vencer', count: contadorPorVencer, bgActive: 'bg-yellow-100 border-yellow-300 text-yellow-700 font-black shadow-inner ring-1 ring-yellow-300', inactiveText: 'text-[#d6a800]' }
+            ];
+            docsFiltros.forEach(f => {
+                const activo = filtrosActivos.documentos && filtrosActivos.documentos.includes(f.id);
+                let clases = "border rounded-lg py-1.5 text-[11px] text-center cursor-pointer transition-all duration-200 select-none shadow-sm flex flex-col items-center justify-center ";
+                if (!activo) clases += `bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300 font-bold ${f.inactiveText}`;
+                else clases += f.bgActive;
+                html += `<div class="${clases}" onclick="toggleFiltro('documentos', '${f.id}')"><span>${f.label}</span><span class="text-[9px] opacity-80 font-bold">(${f.count})</span></div>`;
+            });
+            html += `</div></div>`;
+            
+            html += `</div>`; 
+            contenedor.innerHTML = html;
+        }
 
 window.renderizarGrillaDiaria = function(datos, container) {
     const fBaseObj = new Date(fechaGlobalContexto + "T12:00:00");
@@ -3564,7 +3586,7 @@ window.renderizarVistaUnidades = function(container) {
 
     let fBaseObj = new Date(fechaGlobalContexto + "T12:00:00");
     
-    // 👉 1. ORDENAR Y FILTRAR ANTES DE DIBUJAR
+    // 👉 1. ORDENAR Y FILTRAR
     let listaUnidades = [...cache].sort((a, b) => String(a.col_b || '').localeCompare(String(b.col_b || '')));
     
     let unidadesFiltradas = listaUnidades.filter(u => {
@@ -3573,15 +3595,16 @@ window.renderizarVistaUnidades = function(container) {
             mass_semi: u.col_j, vtv_semi: u.col_k,
             esp_es: u.col_l, vi: u.col_m, ve: u.col_n
         };
-        // Usamos tu evaluador para saber el estado de la unidad
         let estadoGlobal = window.evaluarAlertasUnidad(unidadData, fBaseObj);
         
-        // Comparamos contra el filtro activo
         if (window.filtroFlotaActual === 'vencido' && estadoGlobal !== 'VENCIDO') return false;
         if (window.filtroFlotaActual === 'por_vencer' && estadoGlobal !== 'POR_VENCER') return false;
-        
-        return true; // Pasa el filtro
+        return true;
     });
+
+    // 👉 2. DIBUJAR HEADER CON CLASES CONDICIONALES
+    // Definimos estilos rápidos para limpiar el código
+    const baseBtn = "px-3 py-1.5 rounded-md text-xs font-bold transition-all";
 
     // 👉 2. DIBUJAR EL ENCABEZADO CON LOS BOTONES DE FILTRO INTEGRADOS
     let html = `
