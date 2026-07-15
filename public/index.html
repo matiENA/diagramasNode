@@ -1091,13 +1091,17 @@ window.toggleVencimientosUnidad = function(safeId) {
             }
             renderizarVistaMetricas(document.getElementById('contenedor-metricas'));
             
-        // 👉 ENRUTADOR PARA LA PESTAÑA UNIDADES (ACTUALIZADO PARA RECIBIR LA LISTA FILTRADA)
+       // 👉 ENRUTADOR PARA LA PESTAÑA UNIDADES (Actualizado para el nuevo modulo_flota)
         } else if (vistaActual === 'unidades') {
             if (!document.getElementById('contenedor-unidades')) {
                 dashboard.innerHTML = '<div id="contenedor-unidades" class="w-full"></div>';
             }
-            // IMPORTANTE: Le pasamos la lista "filtrados" (no lee de la caché cruda)
-            window.renderizarVistaUnidades(document.getElementById('contenedor-unidades'), filtrados);
+            
+            // IMPORTANTE: Le pasamos 'filtrados' para que modulo_flota.js cruce 
+            // la lista de patentes con la barra de texto del buscador global.
+            if (typeof window.renderizarVistaUnidades === 'function') {
+                window.renderizarVistaUnidades(document.getElementById('contenedor-unidades'), filtrados);
+            }
 
         } else if (vistaActual === 'inducciones') {
             if (!document.getElementById('contenedor-inducciones')) {
