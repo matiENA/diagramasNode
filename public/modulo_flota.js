@@ -2,8 +2,10 @@
 // 🚛 MÓDULO CONTROL DE FLOTA (LÓGICA)
 // ==========================================
 
+// 1. Declaración de la variable de estado (fuera de las funciones)
 let filtroFlotaActual = 'todos';
 
+// 2. Tu función (perfectamente escrita)
 window.setFiltroFlota = function(tipoFiltro) {
     filtroFlotaActual = tipoFiltro;
     
@@ -22,8 +24,12 @@ window.setFiltroFlota = function(tipoFiltro) {
         btnActivo.classList.add('bg-white', 'shadow-sm', 'text-gray-800');
     }
 
-    renderizarFlota();
+    // Asegúrate de que esta función también exista globalmente
+    if (typeof window.renderizarFlota === 'function') {
+        window.renderizarFlota();
+    }
 };
+
 
 window.renderizarFlota = function() {
     const tbody = document.getElementById('tbody-flota');
