@@ -39,14 +39,22 @@
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-
-/* Estado de Selección (Halo de contraste) */
+/* Highlight para el rango seleccionado en el calendario individual */
 .celda-calendario.seleccionada {
-    outline: 3px solid #4f46e5; /* Indigo 600 */
-    outline-offset: 1px;
-    z-index: 20;
+    outline: 3px solid #4f46e5 !important; /* Indigo 600 */
+    outline-offset: -2px;
+    z-index: 30;
     transform: scale(1.05);
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 0 15px rgba(79, 70, 229, 0.4);
+    background-color: #eef2ff !important; /* Indigo 50 de fondo */
+    color: #312e81 !important;
+}
+
+/* Para que se vea bien en modo oscuro */
+html.dark-theme .celda-calendario.seleccionada {
+    outline: 3px solid #818cf8 !important;
+    background-color: #312e81 !important;
+    color: #e0e7ff !important;
 }
 
 /* Tipografía de contraste dinámico */
@@ -2148,18 +2156,31 @@ window.mostrarDetalleConductor = function(safeId, mantenerSeleccion = false) {
     </div>
     `;
     
-    window.actualizarSinBlink('contenedor-detalle-chofer', html + (typeof getHTMLRestante === 'function' ? getHTMLRestante(chofer, doc, hab, cert, apto, badgeExam, badgeLic, badgeCert) : ''));
-    if (typeof renderizarHistorialEventos === 'function') renderizarHistorialEventos(chofer.nom);
+// ... [Todo el código anterior de renderizado del HTML] ...
 
-    if (mantenerSeleccion && seleccionInicioIso && currentEndIso) {
+    window.actualizarSinBlink('contenedor-detalle-chofer', html + (typeof getHTMLRestante === 'function' ? getHTMLRestante(chofer, doc, hab, cert, apto, badgeExam, badgeLic, badgeCert) : ''));
+    
+    if (typeof renderizarHistorialEventos === 'function') {
+        renderizarHistorialEventos(chofer.nom);
+    }
+
+    // 👉 BLOQUE ACTUALIZADO: Restauración del resaltado y panel de acciones
+    if (mantenerSeleccion && window.seleccionInicioContext && window.seleccionFinContext) {
         setTimeout(() => {
-            let d1 = new Date(seleccionInicioIso + "T12:00:00"); 
-            let d2 = new Date(currentEndIso + "T12:00:00"); 
-            let start = d1 <= d2 ? seleccionInicioIso : currentEndIso; 
-            let end = d1 <= d2 ? currentEndIso : seleccionInicioIso; 
+            // 1. Restauramos visualmente las celdas seleccionadas usando el motor 2D
+            window.pintarCeldas2D(window.seleccionInicioContext, window.seleccionFinContext);
             
-            if (typeof mostrarPanelAcciones === 'function') mostrarPanelAcciones(conductorSeleccionadoId, start, end); 
-        }, 10); 
+            // 2. Calculamos las fechas para el panel de acciones
+            let d1 = new Date(window.seleccionInicioContext.colIso + "T12:00:00"); 
+            let d2 = new Date(window.seleccionFinContext.colIso + "T12:00:00"); 
+            let startIso = d1 <= d2 ? window.seleccionInicioContext.colIso : window.seleccionFinContext.colIso; 
+            let endIso = d1 <= d2 ? window.seleccionFinContext.colIso : window.seleccionInicioContext.colIso; 
+            
+            // 3. Restauramos el panel inferior con los datos del rango
+            if (typeof mostrarPanelAcciones === 'function') {
+                mostrarPanelAcciones(startIso, endIso);
+            }
+        }, 50); // Un pequeño delay para asegurar que el DOM esté listo
     }
 };
 
@@ -2256,16 +2277,22 @@ window.pintarCeldas = function(startIso, endIso) {
     let dStart = new Date(startIso + "T12:00:00"); 
     let dEnd = new Date(endIso + "T12:00:00");
     
+    // Normalizar a medianoche para evitar errores por husos horarios
+    dStart.setHours(12, 0, 0, 0);
+    dEnd.setHours(12, 0, 0, 0);
+    
     document.querySelectorAll('.celda-calendario').forEach(el => { 
-        let cellDate = new Date(el.dataset.fecha + "T12:00:00"); 
+        if (!el.dataset.fecha) return;
         
-        // Removemos clases previas de selección
+        let cellDate = new Date(el.dataset.fecha + "T12:00:00"); 
+        cellDate.setHours(12, 0, 0, 0);
+        
+        // Removemos clases previas
         el.classList.remove('seleccionada', 'brightness-110'); 
         
-        // Aplicamos el "halo" (ring) a las celdas que caen dentro del rango seleccionado
+        // Aplicamos si está en rango
         if (cellDate >= dStart && cellDate <= dEnd) {
             el.classList.add('seleccionada');
-            el.classList.add('brightness-110');
         }
     });
 };
