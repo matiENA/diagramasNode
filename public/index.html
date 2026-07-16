@@ -473,6 +473,13 @@ document.addEventListener('click', (e) => {
                            e.target.closest('button').getAttribute('onclick').includes('cambiarZoomIndividual');
 
         if (!clicEnPanel && !clicEnCelda && !clicEnZoom) {
+            
+            // 👉 AQUI LIMPIAMOS LAS NUEVAS VARIABLES MATRICIALES (y las antiguas por compatibilidad)
+            window.seleccionInicioContext = null;
+            window.seleccionFinContext = null;
+            window.seleccionMultipleIds = [];
+            
+            // Mantenemos estas por compatibilidad con la vista individual si hace falta
             seleccionInicioIso = null;
             currentEndIso = null;
             
@@ -2171,27 +2178,77 @@ window.copiarEnlaceChofer = function(safeId) {
 // --- SELECCIÓN Y PINTADO DE RANGOS EN EL CALENDARIO ---
 // ====================================================================
 
+// ====================================================================
+// 🟦 MOTOR DE SELECCIÓN MATRICIAL (RANGO 2D: MÚLTIPLES CHOFERES Y DÍAS)
+// ====================================================================
+
+window.seleccionInicioContext = null; 
+window.seleccionFinContext = null;
+window.seleccionMultipleIds = [];
+
 window.manejarSeleccionCalendario = function(isoStr, event, safeId) {
-    // Evita que el texto de la pantalla se seleccione accidentalmente al hacer Shift + Clic
     window.getSelection().removeAllRanges(); 
     
-    if (!seleccionInicioIso || !event.shiftKey) { 
-        // Si es un clic normal o el primer clic, selecciona solo ese día
-        seleccionInicioIso = isoStr; 
-        currentEndIso = isoStr; 
-        pintarCeldas(isoStr, isoStr); 
-        mostrarPanelAcciones(safeId, isoStr, isoStr); 
+    // Si no hay inicio o no se presionó Shift, empezamos una nueva selección
+    if (!window.seleccionInicioContext || !event.shiftKey) { 
+        window.seleccionInicioContext = { rowId: safeId, colIso: isoStr };
+        window.seleccionFinContext = { rowId: safeId, colIso: isoStr };
     } else { 
-        // Si es Shift + Clic, calcula el inicio y fin correctos
-        let d1 = new Date(seleccionInicioIso + "T12:00:00"); 
-        let d2 = new Date(isoStr + "T12:00:00"); 
-        let start = d1 <= d2 ? seleccionInicioIso : isoStr; 
-        let end = d1 <= d2 ? isoStr : seleccionInicioIso; 
-        
-        currentEndIso = isoStr; 
-        pintarCeldas(start, end); 
-        mostrarPanelAcciones(safeId, start, end); 
+        // Si hay Shift, marcamos el fin del rectángulo
+        window.seleccionFinContext = { rowId: safeId, colIso: isoStr };
     }
+    
+    let rango = window.pintarCeldas2D(window.seleccionInicioContext, window.seleccionFinContext); 
+    window.mostrarPanelAcciones(rango.startIso, rango.endIso); // Ignoramos safeId, usamos la matriz global
+};
+
+window.pintarCeldas2D = function(startCtx, endCtx) {
+    let d1 = new Date(startCtx.colIso + "T12:00:00"); 
+    let d2 = new Date(endCtx.colIso + "T12:00:00");
+    let dStart = d1 <= d2 ? d1 : d2;
+    let dEnd = d1 <= d2 ? d2 : d1;
+    
+    let startIsoFinal = formatIsoShort(dStart);
+    let endIsoFinal = formatIsoShort(dEnd);
+
+    let allRowIds = [];
+    
+    // Si estamos en la grilla Semanal, leemos el DOM para ver qué filas están en el medio del rectángulo
+    if (vistaActual === 'semanal') {
+        const tableRows = Array.from(document.querySelectorAll('tbody tr'));
+        let startIndex = tableRows.findIndex(tr => tr.querySelector(`[data-row="${startCtx.rowId}"]`));
+        let endIndex = tableRows.findIndex(tr => tr.querySelector(`[data-row="${endCtx.rowId}"]`));
+        
+        if (startIndex > -1 && endIndex > -1) {
+            let rStart = Math.min(startIndex, endIndex);
+            let rEnd = Math.max(startIndex, endIndex);
+            for(let i = rStart; i <= rEnd; i++) {
+                let cell = tableRows[i].querySelector('.celda-calendario');
+                if (cell) allRowIds.push(cell.getAttribute('data-row'));
+            }
+        } else {
+            allRowIds = [startCtx.rowId];
+        }
+    } else {
+        // En vista individual es siempre 1 sola fila
+        allRowIds = [startCtx.rowId];
+    }
+    
+    // Guardamos la matriz de IDs seleccionados
+    window.seleccionMultipleIds = allRowIds; 
+    
+    // Pintamos todas las celdas que cumplan estar entre las fechas y entre las filas seleccionadas
+    document.querySelectorAll('.celda-calendario').forEach(el => { 
+        el.classList.remove('seleccionada', 'brightness-110'); 
+        let cellDate = new Date(el.dataset.col + "T12:00:00"); 
+        let cellRow = el.dataset.row;
+        
+        if (cellDate >= dStart && cellDate <= dEnd && allRowIds.includes(cellRow)) {
+            el.classList.add('seleccionada', 'brightness-110');
+        }
+    });
+    
+    return { startIso: startIsoFinal, endIso: endIsoFinal };
 };
 
 window.pintarCeldas = function(startIso, endIso) {
@@ -2210,205 +2267,6 @@ window.pintarCeldas = function(startIso, endIso) {
             el.classList.add('brightness-110');
         }
     });
-};
-
-// ... (Aquí debajo ya iría tu "window.mostrarPanelAcciones = function(safeId, startIso, endIso) { ...")
-
-window.mostrarPanelAcciones = function(safeId, startIso, endIso) {
-    const panel = document.getElementById('panel-acciones-rango');
-    const chofer = datosGlobales.find(c => String(c._safeId) === String(safeId));
-    if(!chofer) return;
-
-    let dStart = new Date(startIso + "T12:00:00"); 
-    let dEnd = new Date(endIso + "T12:00:00");
-    let totalKmRango = 0; let rangoActivos = 0, rangoFrancos = 0, rangoVacaciones = 0, rangoAusencias = 0;
-    let currentDate = new Date(dStart);
-    
-    let htmlBadgesDiarios = `<div class="flex gap-2 overflow-x-auto custom-scrollbar pb-2 pt-1 mt-1 w-full snap-x">`;
-    let htmlDetalleViajes = ''; 
-    let hayViajes = false;
-    
-    while(currentDate <= dEnd) {
-        let isoCurr = formatIsoShort(currentDate); 
-        let valRaw = getValDiaGlobal(chofer.dias, currentDate);
-        let valBase = getBaseState(valRaw);
-        
-        let esDiaActivo = ((!isNaN(valBase) && valBase !== '') || valBase === 'O' || valBase === 'OPERATIVO');
-
-        if (esDiaActivo) rangoActivos++; 
-        else if (['F','FSF'].includes(valBase)) rangoFrancos++; 
-        else if (['V','VSF'].includes(valBase)) rangoVacaciones++; 
-        else if (['IND','E','A','S','ART'].includes(valBase)) rangoAusencias++;
-        
-        let bgClass = "bg-white text-gray-800 border border-gray-200"; 
-        if (['F','FSF'].includes(valBase)) bgClass = 'bg-[#b6d7a8] text-gray-900 border border-[#93c47d]';
-        else if (['V','VSF'].includes(valBase)) bgClass = 'bg-[#ffe599] text-gray-900 border border-[#f1c232]';
-        else if (['A', 'IND'].includes(valBase)) bgClass = 'bg-[#cc0000] text-white border border-[#990000]';
-        else if (valBase === 'E') bgClass = 'bg-[#e06666] text-white border border-[#cc0000]';
-        else if (valBase === 'S') bgClass = 'bg-[#f6b26b] text-white border border-[#e69138]';
-        else if (valBase === '?') bgClass = 'bg-gray-100 text-gray-500 border-dashed border-2 border-gray-300';
-        else if (valBase === 'ART') bgClass = 'bg-[#b4a7d6] text-white border border-[#8e7cc3]';
-        else if (esDiaActivo) {
-            let cons = parseInt(valBase, 10);
-            if(isNaN(cons)) cons = 1; 
-            let limiteWarn = (chofer.diag && chofer.diag.includes('14')) ? 11 : 18;
-            let limiteCrit = (chofer.diag && chofer.diag.includes('14')) ? 14 : 22;
-            if (cons >= limiteCrit) bgClass = 'bg-white text-red-600 border-2 border-red-500';
-            else if (cons >= limiteWarn) bgClass = 'bg-white text-orange-600 border-2 border-orange-400';
-            else bgClass = 'bg-white text-blue-600 border-2 border-blue-400';
-        }
-
-        let diaText = String(currentDate.getDate()).padStart(2, '0') + '/' + String(currentDate.getMonth() + 1).padStart(2, '0');
-        let badgeContent = valRaw || '-';
-        
-        let kmDia = window.obtenerKmDia(chofer.nom, isoCurr);
-        totalKmRango += kmDia;
-        
-        let kmHtml = '';
-        if (kmDia > 0) {
-            kmHtml = `
-            <div class="bg-indigo-50/90 text-indigo-800 w-full text-center py-1 border-t border-indigo-100 shadow-inner flex flex-col items-center justify-center min-h-[30px] shrink-0" title="KMs del día">
-                <span class="text-[10px] font-black leading-none">${kmDia} <span class="text-[8px] font-normal text-indigo-500">km</span></span>
-            </div>`;
-        }
-
-        htmlBadgesDiarios += `
-        <div class="flex flex-col items-center justify-start shrink-0 w-12 sm:w-14 snap-start group">
-            <span class="text-[10px] font-bold text-indigo-300 mb-1 transition-colors group-hover:text-indigo-500">${diaText}</span>
-            <div class="w-full flex flex-col rounded-lg shadow-sm overflow-hidden ${bgClass} transition-transform duration-200 hover:-translate-y-0.5">
-                <div class="w-full py-1.5 text-xs sm:text-sm font-black text-center flex items-center justify-center min-h-[30px]">
-                    ${badgeContent}
-                </div>
-                ${kmHtml}
-            </div>
-        </div>`;
-
-        let detViaje = window.obtenerDetalleViajeDia(chofer.nom, isoCurr);
-        
-        if (detViaje || esDiaActivo) {
-            hayViajes = true;
-            let safeCampo = detViaje ? detViaje.campo : 0;
-            let safeLiv = detViaje ? detViaje.liviano : 0;
-            let safeEuro = detViaje ? detViaje.euro : 0;
-            let safeInf = detViaje ? detViaje.infiniaD : 0;
-            
-            let hrArr = (detViaje && detViaje.hoja_ruta) ? detViaje.hoja_ruta : [];
-            if (!Array.isArray(hrArr)) hrArr = [];
-
-            // Micro-badges para HR ocupando el 100% del ancho interno (Vertical flow)
-            let hrMicroBadges = hrArr.length > 0 && hrArr[0] !== "" ? hrArr.map(hr => `
-                <div class="w-full bg-indigo-100 text-indigo-800 border border-indigo-200 px-2 py-0.5 rounded shadow-sm flex items-center justify-between group">
-                    <span class="text-[10px] font-mono font-bold tracking-wide">${hr}</span>
-                    <button type="button" onclick="eliminarHojaDeRuta('${chofer._safeId}', '${isoCurr}', '${hr}'); event.stopPropagation();" class="text-indigo-400 hover:text-red-500 transition-colors" title="Eliminar">
-                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"></path></svg>
-                    </button>
-                </div>
-            `).join('') : '<span class="text-[9px] font-bold text-indigo-300/80 italic w-full text-center">Sin datos</span>';
-
-            htmlDetalleViajes += `
-            <div class="bg-white border border-indigo-100 rounded-xl p-3 shadow-sm flex flex-col h-full justify-between hover:shadow-md transition-shadow">
-                
-                <div class="flex flex-col gap-1 border-b border-gray-100 pb-2 mb-2 w-full text-center sm:text-left">
-                    <span class="font-black text-indigo-900 text-xs sm:text-sm flex items-center justify-center sm:justify-start gap-1.5">
-                        📅 ${isoCurr.split('-').reverse().join('/')}
-                    </span>
-                    <span class="text-[9px] font-black bg-indigo-50 text-indigo-800 px-2 py-0.5 rounded border border-indigo-200 self-center sm:self-start">
-                        TOTAL: ${kmDia} KM
-                    </span>
-                </div>
-                
-                <div class="flex flex-col gap-1 w-full mb-3">
-                    ${safeLiv > 0 ? `<div class="bg-sky-50 border border-sky-200 rounded px-1.5 py-0.5 shadow-inner flex items-center justify-between w-full"><span class="text-[8px] uppercase font-bold text-sky-600">Liviano</span><span class="text-[10px] font-black text-sky-900">${safeLiv}</span></div>` : ''}
-                    ${safeEuro > 0 ? `<div class="bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5 shadow-inner flex items-center justify-between w-full"><span class="text-[8px] uppercase font-bold text-emerald-600">Euro</span><span class="text-[10px] font-black text-emerald-900">${safeEuro}</span></div>` : ''}
-                    ${safeCampo > 0 ? `<div class="bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 shadow-inner flex items-center justify-between w-full"><span class="text-[8px] uppercase font-bold text-amber-600">Campo</span><span class="text-[10px] font-black text-amber-900">${safeCampo}</span></div>` : ''}
-                    ${safeInf > 0 ? `<div class="bg-purple-50 border border-purple-200 rounded px-1.5 py-0.5 shadow-inner flex items-center justify-between w-full"><span class="text-[8px] uppercase font-bold text-purple-600">Inf. Diesel</span><span class="text-[10px] font-black text-purple-900">${safeInf}</span></div>` : ''}
-                    ${(safeLiv === 0 && safeEuro === 0 && safeCampo === 0 && safeInf === 0 && kmDia === 0) ? `<div class="text-[9px] text-gray-400 font-bold italic w-full text-center">Sin volúmenes</div>` : ''}
-                </div>
-                
-                <div class="flex flex-col gap-1 bg-indigo-50/30 p-2 rounded-lg border border-indigo-50 mt-auto w-full">
-                    <span class="text-[8px] uppercase font-black text-indigo-400 tracking-wider text-center w-full">
-                        Hojas de Ruta
-                    </span>
-                    
-                    <div class="flex flex-col gap-1 w-full" id="hr-confirmed-${isoCurr}">
-                        ${hrMicroBadges}
-                    </div>
-
-                    <div class="flex flex-col gap-1.5 border-t border-indigo-100/60 pt-1.5 mt-0.5 w-full">
-                        <input type="text" id="hr-new-input-panel-${isoCurr}" maxlength="25" placeholder="N° (Ej: 384460/1)" class="w-full text-center px-1.5 py-1 text-[10px] font-mono font-bold border border-indigo-200 rounded shadow-inner outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-300 transition-all text-indigo-900 bg-white" oninput="this.value = this.value.replace(/[^0-9\\/]/g, '');" onkeydown="if(event.key === 'Enter') { event.preventDefault(); agregarNuevaHojaRuta('${chofer._safeId}', '${isoCurr}', 'panel'); }">
-                        <button type="button" onclick="agregarNuevaHojaRuta('${chofer._safeId}', '${isoCurr}', 'panel')" class="w-full py-1 text-[9px] font-black text-white bg-indigo-500 hover:bg-indigo-600 rounded transition-colors shadow-sm tracking-wider uppercase">Guardar</button>
-                    </div>
-                </div>
-
-            </div>`;
-        }
-
-        currentDate.setDate(currentDate.getDate() + 1);
-    }
-    htmlBadgesDiarios += `</div>`;
-
-    let diffDays = Math.round((dEnd - dStart) / (1000 * 60 * 60 * 24)) + 1;
-    let textoFecha = startIso === endIso ? `${startIso.split('-').reverse().join('/')}` : `${startIso.split('-').reverse().join('/')} al ${endIso.split('-').reverse().join('/')}`;
-
-    panel.innerHTML = `
-        <div class="bg-indigo-900 text-white p-4 sm:p-5 rounded-xl shadow-xl border border-indigo-800 flex flex-col gap-4 animate-[fadeInDown_0.2s_ease-out]">
-            
-            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-indigo-800/60 pb-4">
-                <div class="flex-1 w-full text-center md:text-left">
-                    <span class="text-indigo-300 text-[10px] font-bold uppercase tracking-wider block mb-1">Rango Seleccionado (${diffDays} días)</span>
-                    <span class="text-base sm:text-lg font-black tracking-wide">${textoFecha}</span>
-                </div>
-                <div class="flex flex-col sm:flex-row gap-2 w-full md:w-auto shrink-0 items-center bg-indigo-800/50 p-1.5 rounded-xl border border-indigo-700/50 shadow-inner">
-                    <select id="quick-estado-${safeId}" class="bg-indigo-950 border-none text-white text-sm rounded-lg focus:ring-2 focus:ring-indigo-400 block w-full sm:w-auto p-2.5 outline-none font-bold cursor-pointer text-center sm:text-left min-w-[160px]">
-                        <option value="" disabled selected>👉 Elegir Estado...</option><option value="OPERATIVO">✅ Activo</option><option value="F">🔵 Franco (F)</option><option value="FSF">🔵 Franco SF (FSF)</option><option value="V">🟡 Vacaciones (V)</option><option value="VSF">🟡 Vacac. SF (VSF)</option><option value="IND">🔴 Indisp. (IND)</option><option value="A">🔴 Ausencia (A)</option><option value="E">🔴 Enfermedad (E)</option><option value="ART">🟣 ART</option><option value="S">🟠 Suspensión (S)</option><option value="BORRAR">🗑️ Borrar Celda</option>
-                    </select>
-                    <button id="btn-quick-save" onclick="guardarEstadoDesdeRango('${safeId}', '${startIso}', '${endIso}')" class="w-full sm:w-auto px-5 py-2.5 bg-white text-indigo-900 text-sm font-black rounded-lg hover:bg-indigo-50 hover:scale-[1.02] transition-all flex justify-center items-center gap-2">Aplicar</button>
-                </div>
-            </div>
-
-            <div class="w-full">
-                <span class="text-indigo-300 text-[10px] font-bold uppercase tracking-wider block mb-1 flex items-center gap-1.5">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-                    Estado del Diagrama
-                </span>
-                ${htmlBadgesDiarios}
-            </div>
-
-            <div class="grid grid-cols-2 md:grid-cols-5 gap-2 py-3 border-y border-indigo-800/60 mt-1">
-                <div class="flex justify-between items-center bg-indigo-800/40 border border-indigo-700/50 p-2.5 rounded-lg shadow-inner"><span class="text-[10px] font-bold text-indigo-300 uppercase tracking-wider">Activos</span><span class="font-black text-white text-lg">${rangoActivos}</span></div>
-                <div class="flex justify-between items-center bg-indigo-800/40 border border-indigo-700/50 p-2.5 rounded-lg shadow-inner"><span class="text-[10px] font-bold text-indigo-300 uppercase tracking-wider">Francos</span><span class="font-black text-white text-lg">${rangoFrancos}</span></div>
-                <div class="flex justify-between items-center bg-indigo-800/40 border border-indigo-700/50 p-2.5 rounded-lg shadow-inner"><span class="text-[10px] font-bold text-indigo-300 uppercase tracking-wider">Vacaciones</span><span class="font-black text-white text-lg">${rangoVacaciones}</span></div>
-                <div class="flex justify-between items-center bg-indigo-800/40 border border-indigo-700/50 p-2.5 rounded-lg shadow-inner"><span class="text-[10px] font-bold text-indigo-300 uppercase tracking-wider">Ausencias</span><span class="font-black text-white text-lg">${rangoAusencias}</span></div>
-                <div class="flex justify-between items-center bg-[#e0e7ff] border border-[#c7d2fe] p-2.5 rounded-lg shadow-inner transition-all hover:bg-[#c7d2fe] col-span-2 md:col-span-1"><span class="text-[10px] font-bold text-[#1e3a8a] uppercase tracking-wider flex items-center gap-1"><svg class="w-3.5 h-3.5 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg> KMs</span><span class="font-black text-[#1e3a8a] text-lg">${totalKmRango.toLocaleString('es-AR')}</span></div>
-            </div>
-
-            ${hayViajes ? `
-            <div class="mt-2 w-full animate-[fadeIn_0.3s_ease-out]">
-                <div class="bg-white/95 backdrop-blur-sm rounded-xl p-4 shadow-inner border border-indigo-200 text-gray-800">
-                    
-                    <div class="flex flex-col sm:flex-row justify-between items-center mb-4 border-b border-gray-100 pb-3 gap-2">
-                        <span class="font-black text-indigo-900 text-sm uppercase tracking-wider flex items-center gap-2">
-                            <svg class="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0"></path></svg>
-                            Log de Viajes
-                        </span>
-                        <span class="text-[10px] font-black bg-indigo-100 text-indigo-800 px-2.5 py-1 rounded-md border border-indigo-200 shadow-sm w-full sm:w-auto text-center">TOTAL RANGO: ${totalKmRango.toLocaleString('es-AR')} KM</span>
-                    </div>
-
-                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 w-full">
-                        ${htmlDetalleViajes}
-                    </div>
-
-                </div>
-            </div>` : ''}
-
-        </div>`;            
-    
-    panel.classList.remove('hidden');
-    if(document.getElementById('header-km-rango-val')) { 
-        document.getElementById('header-km-rango-val').innerHTML = `${totalKmRango.toLocaleString('es-AR')} <span class="text-xs text-indigo-500 font-bold">km</span>`; 
-        document.getElementById('header-km-rango').classList.remove('hidden'); 
-    }
-    window.renderizarHistorialEventos(chofer.nom, startIso, endIso);
 };
 
 window.agregarNuevaHojaRuta = function(safeId, isoStr, contexto) {
@@ -2631,78 +2489,202 @@ const formatearParaInputDate = (fechaStr) => {
     `;
 }
 
-window.guardarEstadoDesdeRango = function(safeId, startIso, endIso) {
-        const est = document.getElementById(`quick-estado-${safeId}`).value;
-        if (!est) return showToast("Por favor, seleccione un estado.", "error");
+    // ====================================================================
+// ⚡ PANEL Y PROCESAMIENTO EN LOTE (MÚLTIPLES CHOFERES)
+// ====================================================================
 
-        const btn = document.getElementById('btn-quick-save');
-        btn.innerHTML = `<span class="animate-spin inline-block w-4 h-4 border-2 border-indigo-900 border-t-transparent rounded-full"></span>`;
-        btn.disabled = true;
+window.mostrarPanelAcciones = function(startIso, endIso) {
+    const panel = document.getElementById('panel-acciones-rango');
+    let safeIdsArray = window.seleccionMultipleIds || [];
+    if (safeIdsArray.length === 0) return;
 
+    let choferesInvolucrados = safeIdsArray.map(id => datosGlobales.find(c => String(c._safeId) === String(id))).filter(Boolean);
+    if (choferesInvolucrados.length === 0) return;
+
+    let dStart = new Date(startIso + "T12:00:00"); 
+    let dEnd = new Date(endIso + "T12:00:00");
+    let diffDays = Math.round((dEnd - dStart) / (1000 * 60 * 60 * 24)) + 1;
+    
+    let totalKmRango = 0, rangoActivos = 0, rangoFrancos = 0, rangoVacaciones = 0, rangoAusencias = 0;
+    let htmlBadgesDiarios = `<div class="flex gap-2 overflow-x-auto custom-scrollbar pb-2 pt-1 mt-1 w-full snap-x">`;
+    
+    // Sumamos estadísticas globales del lote completo
+    choferesInvolucrados.forEach(chofer => {
+        let currentDate = new Date(dStart);
+        while(currentDate <= dEnd) {
+            let isoCurr = formatIsoShort(currentDate); 
+            let valBase = getBaseState(getValDiaGlobal(chofer.dias, currentDate));
+            let esDiaActivo = ((!isNaN(valBase) && valBase !== '') || valBase === 'O' || valBase === 'OPERATIVO');
+
+            if (esDiaActivo) rangoActivos++; 
+            else if (['F','FSF'].includes(valBase)) rangoFrancos++; 
+            else if (['V','VSF'].includes(valBase)) rangoVacaciones++; 
+            else if (['IND','E','A','S','ART'].includes(valBase)) rangoAusencias++;
+            
+            totalKmRango += window.obtenerKmDia(chofer.nom, isoCurr);
+            currentDate.setDate(currentDate.getDate() + 1);
+        }
+    });
+
+    let isMulti = choferesInvolucrados.length > 1;
+    let textoFecha = startIso === endIso ? `${startIso.split('-').reverse().join('/')}` : `${startIso.split('-').reverse().join('/')} al ${endIso.split('-').reverse().join('/')}`;
+
+    // Dibujamos tarjetas de días solo si hay 1 solo chofer. Si son muchos, mostramos advertencia.
+    if (!isMulti) {
+        let chofer = choferesInvolucrados[0];
+        let currentDate = new Date(dStart);
+        while(currentDate <= dEnd) {
+            let isoCurr = formatIsoShort(currentDate); 
+            let valRaw = getValDiaGlobal(chofer.dias, currentDate);
+            let valBase = getBaseState(valRaw);
+            let esDiaActivo = ((!isNaN(valBase) && valBase !== '') || valBase === 'O' || valBase === 'OPERATIVO');
+
+            let bgClass = "bg-white text-gray-800 border-gray-200"; 
+            if (['F','FSF'].includes(valBase)) bgClass = 'bg-[#b6d7a8] text-gray-900 border-[#93c47d]';
+            else if (['V','VSF'].includes(valBase)) bgClass = 'bg-[#ffe599] text-gray-900 border-[#f1c232]';
+            else if (['A', 'IND'].includes(valBase)) bgClass = 'bg-[#cc0000] text-white border-[#990000]';
+            else if (valBase === 'E') bgClass = 'bg-[#e06666] text-white border-[#cc0000]';
+            else if (valBase === 'S') bgClass = 'bg-[#f6b26b] text-white border-[#e69138]';
+            else if (valBase === 'ART') bgClass = 'bg-[#b4a7d6] text-white border-[#8e7cc3]';
+            else if (valBase === '?') bgClass = 'bg-gray-100 text-gray-500 border-gray-300 border-dashed';
+            else if (esDiaActivo) { bgClass = 'bg-white text-blue-600 border-blue-400'; }
+
+            let kmDia = window.obtenerKmDia(chofer.nom, isoCurr);
+            let kmHtml = kmDia > 0 ? `<div class="bg-indigo-50/90 text-indigo-800 w-full text-center py-1 border-t border-indigo-100 shadow-inner flex flex-col items-center justify-center min-h-[30px] shrink-0"><span class="text-[10px] font-black leading-none">${kmDia} <span class="text-[8px] font-normal text-indigo-500">km</span></span></div>` : '';
+            let diaText = String(currentDate.getDate()).padStart(2, '0') + '/' + String(currentDate.getMonth() + 1).padStart(2, '0');
+
+            htmlBadgesDiarios += `<div class="flex flex-col items-center justify-start shrink-0 w-12 sm:w-14 snap-start group"><span class="text-[10px] font-bold text-indigo-300 mb-1 transition-colors group-hover:text-indigo-500">${diaText}</span><div class="w-full flex flex-col rounded-lg shadow-sm border overflow-hidden ${bgClass} transition-transform duration-200 hover:-translate-y-0.5"><div class="w-full py-1.5 text-xs sm:text-sm font-black text-center flex items-center justify-center min-h-[30px]">${valRaw || '-'}</div>${kmHtml}</div></div>`;
+            currentDate.setDate(currentDate.getDate() + 1);
+        }
+    } else {
+        htmlBadgesDiarios = `<div class="w-full text-xs font-bold text-indigo-200 py-3 bg-indigo-800/40 rounded-lg text-center border border-indigo-700/50 shadow-inner">⚡ Edición en Lote Activada: Los cambios se aplicarán a las ${safeIdsArray.length} filas seleccionadas.</div>`;
+    }
+    htmlBadgesDiarios += (isMulti) ? '' : `</div>`;
+
+    panel.innerHTML = `
+        <div class="bg-indigo-900 text-white p-4 sm:p-5 rounded-xl shadow-xl border border-indigo-800 flex flex-col gap-4 animate-[fadeInDown_0.2s_ease-out]">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-indigo-800/60 pb-4">
+                <div class="flex-1 w-full text-center md:text-left">
+                    <span class="text-indigo-300 text-[10px] font-bold uppercase tracking-wider block mb-1">Rango Seleccionado (${diffDays} días) ${isMulti ? ' - MULTIPLE' : ''}</span>
+                    <span class="text-base sm:text-lg font-black tracking-wide">${textoFecha}</span>
+                </div>
+                <div class="flex flex-col sm:flex-row gap-2 w-full md:w-auto shrink-0 items-center bg-indigo-800/50 p-1.5 rounded-xl border border-indigo-700/50 shadow-inner">
+                    <select id="quick-estado-multi" class="bg-indigo-950 border-none text-white text-sm rounded-lg focus:ring-2 focus:ring-indigo-400 block w-full sm:w-auto p-2.5 outline-none font-bold cursor-pointer text-center sm:text-left min-w-[160px]">
+                        <option value="" disabled selected>👉 Elegir Estado...</option><option value="OPERATIVO">✅ Activo</option><option value="F">🔵 Franco (F)</option><option value="FSF">🔵 Franco SF (FSF)</option><option value="V">🟡 Vacaciones (V)</option><option value="VSF">🟡 Vacac. SF (VSF)</option><option value="IND">🔴 Indisp. (IND)</option><option value="A">🔴 Ausencia (A)</option><option value="E">🔴 Enfermedad (E)</option><option value="ART">🟣 ART</option><option value="S">🟠 Suspensión (S)</option><option value="BORRAR">🗑️ Borrar Celda</option>
+                    </select>
+                    <button id="btn-quick-save" onclick="guardarEstadoDesdeRango('${startIso}', '${endIso}')" class="w-full sm:w-auto px-5 py-2.5 bg-white text-indigo-900 text-sm font-black rounded-lg hover:bg-indigo-50 hover:scale-[1.02] transition-all flex justify-center items-center gap-2">Aplicar</button>
+                </div>
+            </div>
+
+            <div class="w-full">
+                <span class="text-indigo-300 text-[10px] font-bold uppercase tracking-wider block mb-1 flex items-center gap-1.5"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg> Estado del Diagrama</span>
+                ${htmlBadgesDiarios}
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-2 py-3 border-y border-indigo-800/60 mt-1">
+                <div class="flex justify-between items-center bg-indigo-800/40 border border-indigo-700/50 p-2.5 rounded-lg shadow-inner"><span class="text-[10px] font-bold text-indigo-300 uppercase tracking-wider">Activos</span><span class="font-black text-white text-lg">${rangoActivos}</span></div>
+                <div class="flex justify-between items-center bg-indigo-800/40 border border-indigo-700/50 p-2.5 rounded-lg shadow-inner"><span class="text-[10px] font-bold text-indigo-300 uppercase tracking-wider">Francos</span><span class="font-black text-white text-lg">${rangoFrancos}</span></div>
+                <div class="flex justify-between items-center bg-indigo-800/40 border border-indigo-700/50 p-2.5 rounded-lg shadow-inner"><span class="text-[10px] font-bold text-indigo-300 uppercase tracking-wider">Vacac.</span><span class="font-black text-white text-lg">${rangoVacaciones}</span></div>
+                <div class="flex justify-between items-center bg-indigo-800/40 border border-indigo-700/50 p-2.5 rounded-lg shadow-inner"><span class="text-[10px] font-bold text-indigo-300 uppercase tracking-wider">Ausenc.</span><span class="font-black text-white text-lg">${rangoAusencias}</span></div>
+                <div class="flex justify-between items-center bg-[#e0e7ff] border border-[#c7d2fe] p-2.5 rounded-lg shadow-inner transition-all hover:bg-[#c7d2fe] col-span-2 md:col-span-1"><span class="text-[10px] font-bold text-[#1e3a8a] uppercase tracking-wider flex items-center gap-1"><svg class="w-3.5 h-3.5 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg> KMs</span><span class="font-black text-[#1e3a8a] text-lg">${totalKmRango.toLocaleString('es-AR')}</span></div>
+            </div>
+        </div>`;
+    
+    panel.classList.remove('hidden');
+    if(document.getElementById('header-km-rango-val')) { 
+        document.getElementById('header-km-rango-val').innerHTML = `${totalKmRango.toLocaleString('es-AR')} <span class="text-xs text-indigo-500 font-bold">km</span>`; 
+        document.getElementById('header-km-rango').classList.remove('hidden'); 
+    }
+};
+
+window.guardarEstadoDesdeRango = function(startIso, endIso) {
+    const est = document.getElementById(`quick-estado-multi`).value;
+    if (!est) return showToast("Por favor, seleccione un estado.", "error");
+
+    const btn = document.getElementById('btn-quick-save');
+    btn.innerHTML = `<span class="animate-spin inline-block w-4 h-4 border-2 border-indigo-900 border-t-transparent rounded-full"></span>`;
+    btn.disabled = true;
+
+    const usuarioLogueado = localStorage.getItem('usuarioActivo') || "Sesión Perdida";
+    let peticiones = [];
+    let fStart = new Date(startIso + "T12:00:00");
+    let fEnd = new Date(endIso + "T12:00:00");
+    let idsToUpdate = window.seleccionMultipleIds || [];
+
+    idsToUpdate.forEach(safeId => {
         const chofer = datosGlobales.find(c => String(c._safeId) === String(safeId));
+        if (!chofer) return;
 
         let payloadEst = est;
+        
+        // Calcular correlativo de días si es Operativo
         if (est === 'OPERATIVO') {
-            let fStart = new Date(startIso + "T12:00:00");
-            let fEnd = new Date(endIso + "T12:00:00");
-            let fAyer = new Date(fStart);
-            fAyer.setDate(fAyer.getDate() - 1);
-
+            let fAyer = new Date(fStart); fAyer.setDate(fAyer.getDate() - 1);
             let valAyer = getBaseState(getValDiaGlobal(chofer.dias, fAyer));
             let numAyer = parseInt(valAyer, 10);
             let startNum = !isNaN(numAyer) ? numAyer + 1 : 1;
 
-            if (startIso === endIso) {
-                payloadEst = String(startNum);
-            } else {
-                payloadEst = [];
-                let cur = new Date(fStart);
-                let currentNum = startNum;
-                while(cur <= fEnd) {
-                    payloadEst.push(String(currentNum));
-                    currentNum++;
-                    cur.setDate(cur.getDate() + 1);
-                }
+            if (startIso === endIso) { payloadEst = String(startNum); } 
+            else {
+                payloadEst = []; let cur = new Date(fStart); let currentNum = startNum;
+                while(cur <= fEnd) { payloadEst.push(String(currentNum)); currentNum++; cur.setDate(cur.getDate() + 1); }
             }
         }
 
-        const usuarioLogueado = localStorage.getItem('usuarioActivo') || "Sesión Perdida";
+        // 👉 OPTIMISTIC UI: Actualizamos la memoria local al instante para este chofer
+        const mesesAbrev = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+        let optCur = new Date(fStart); let idxOpt = 0;
+        
+        while(optCur <= fEnd) {
+            let isoStr = optCur.toISOString().split('T')[0];
+            let tabName = mesesAbrev[optCur.getMonth()] + "-" + String(optCur.getFullYear()).slice(-2);
+            let optVal = Array.isArray(payloadEst) ? payloadEst[idxOpt] : payloadEst;
+            if (optVal === 'BORRAR') optVal = '-'; 
+            
+            if (!chofer.dias) chofer.dias = {};
+            if (!chofer.dias[tabName]) chofer.dias[tabName] = new Array(31).fill('-').join(',');
+            let tiraDias = chofer.dias[tabName].split(',');
+            tiraDias[optCur.getDate() - 1] = optVal;
+            chofer.dias[tabName] = tiraDias.join(',');
 
-        const payload = {
-            action: 'actualizarEstado',
-            nombre: chofer.nom,
-            startIso: startIso,
-            endIso: endIso,
-            est: payloadEst,
-            usuario: usuarioLogueado // 👉 FIRMA INYECTADA
-        };
+            optCur.setDate(optCur.getDate() + 1); idxOpt++;
+        }
 
-        fetch(API_URL, {
+        // 👉 Lanzamos la petición al servidor (Node.js puede manejar múltiples POSTs a la vez sin problemas)
+        peticiones.push(fetch(API_URL, {
             method: 'POST',
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
-        })
-        .then(res => res.json())
-        .then(res => {
-            if(res.success) { 
-                showToast("Estado actualizado correctamente.", "success"); 
-                document.getElementById('panel-acciones-rango').classList.add('hidden'); 
-                document.querySelectorAll('.celda-calendario').forEach(el => el.classList.remove('ring-4', 'ring-indigo-400', 'ring-offset-1', 'scale-105', 'z-10')); 
-                seleccionInicioIso = null; 
-                currentEndIso = null;
-            } else { 
-                showToast(res.error || "Error al actualizar", "error"); 
-                btn.innerHTML = 'Aplicar'; 
-                btn.disabled = false; 
-            }
-        })
-        .catch(err => {
-            showToast("Error de conexión al guardar: " + err.message, "error");
-            btn.innerHTML = 'Aplicar'; 
-            btn.disabled = false; 
-        });
-    };
+            body: JSON.stringify({ action: 'actualizarEstado', nombre: chofer.nom, startIso: startIso, endIso: endIso, est: payloadEst, usuario: usuarioLogueado })
+        }).then(r => r.json()));
+    });
+
+    // 1. Limpiamos la UI y quitamos selecciones inmediatamente
+    document.getElementById('panel-acciones-rango').classList.add('hidden'); 
+    document.querySelectorAll('.celda-calendario').forEach(el => el.classList.remove('seleccionada', 'brightness-110')); 
     
+    // 2. Repintamos la tabla (que ahora tiene los datos en RAM actualizados)
+    filtrarTabla(); 
+    
+    if (vistaActual === 'individual' && idsToUpdate.length === 1) {
+        mostrarDetalleConductor(idsToUpdate[0], true);
+    }
+    
+    // 3. Reiniciamos variables globales de selección
+    window.seleccionInicioContext = null; 
+    window.seleccionFinContext = null;
+    window.seleccionMultipleIds = [];
+
+    // 4. Confirmamos resultado del servidor
+    Promise.all(peticiones)
+    .then(results => {
+        let errors = results.filter(r => !r.success);
+        if(errors.length > 0) showToast(`Hubo errores en ${errors.length} asignaciones en lote.`, "error");
+        else showToast(`Lote procesado: ${idsToUpdate.length} conductores actualizados.`, "success");
+    })
+    .catch(err => showToast("Error de red al guardar lote: " + err.message, "error"))
+    .finally(() => { btn.innerHTML = 'Aplicar'; btn.disabled = false; });
+    };
+
     window.guardarDocs = function(nombre) {
         const exVen = document.getElementById('doc-exam-ven').value; 
         const licVen = document.getElementById('doc-lic-ven').value; 
@@ -3589,42 +3571,57 @@ window.renderizarVistaUnidades = function(container) {
     if (!Array.isArray(cache)) cache = [];
 
     let fBaseObj = new Date(fechaGlobalContexto + "T12:00:00");
+    let textoBuscador = document.getElementById('buscador-nombre') ? document.getElementById('buscador-nombre').value.toLowerCase().trim() : '';
     
     // 👉 1. ORDENAR Y FILTRAR
     let listaUnidades = [...cache].sort((a, b) => String(a.col_b || '').localeCompare(String(b.col_b || '')));
     
     let unidadesFiltradas = listaUnidades.filter(u => {
+        let patente = String(u.col_b || '').trim().toUpperCase();
+        if(!patente) return false;
+
         let unidadData = {
             mass_tr: u.col_g, vtv_tr: u.col_h,
             mass_semi: u.col_j, vtv_semi: u.col_k,
             esp_es: u.col_l, vi: u.col_m, ve: u.col_n
         };
+        
         let estadoGlobal = window.evaluarAlertasUnidad(unidadData, fBaseObj);
         
+        // Filtro de los botones (Todos / Por Vencer / Vencidos)
         if (window.filtroFlotaActual === 'vencido' && estadoGlobal !== 'VENCIDO') return false;
         if (window.filtroFlotaActual === 'por_vencer' && estadoGlobal !== 'POR_VENCER') return false;
-        return true;
+
+        // Filtro del buscador (Por patente o por nombre del chofer asignado)
+        let choferAsignado = window.datosGlobales.find(c => 
+            (c.tractor || '').toUpperCase().trim() === patente || 
+            (c.semi || '').toUpperCase().trim() === patente
+        );
+        let nombreChofer = choferAsignado ? choferAsignado.nom.toLowerCase() : '';
+        
+        if (textoBuscador !== '') {
+            if (!patente.toLowerCase().includes(textoBuscador) && !nombreChofer.includes(textoBuscador)) return false;
+        }
+        
+        return true; 
     });
 
-    // 👉 2. DIBUJAR HEADER CON CLASES CONDICIONALES
-    // Definimos estilos rápidos para limpiar el código
+    // 👉 2. DIBUJAR ENCABEZADO CON BOTONES REACTIVOS
     const baseBtn = "px-3 py-1.5 rounded-md text-xs font-bold transition-all";
-
-    // 👉 2. DIBUJAR EL ENCABEZADO CON LOS BOTONES DE FILTRO INTEGRADOS
+    
     let html = `
     <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden animate-[fadeIn_0.3s_ease-out] mb-8">
         <div class="bg-gradient-to-r from-gray-800 to-gray-600 p-5 flex flex-col md:flex-row justify-between md:items-center text-white gap-4">
             <div>
                 <h2 class="text-xl font-bold">Control de Flota</h2>
-                <p class="text-xs text-gray-200 mt-1">Lista exclusiva para el seguimiento de vencimientos de las Unidades</p>
+                <p class="text-xs text-gray-200 mt-1">Seguimiento de VTV, MASS y Certificados</p>
             </div>
             
             <div class="flex items-center gap-3">
-                <!-- Botones de Filtro -->
                 <div class="flex gap-1 bg-gray-900/40 p-1.5 rounded-lg border border-gray-600/50">
-                    <button onclick="setFiltroFlota('todos')" class="px-3 py-1.5 rounded-md text-xs font-bold transition-all ${window.filtroFlotaActual === 'todos' ? 'bg-white text-gray-900 shadow' : 'text-gray-300 hover:text-white'}">Todos</button>
-                    <button onclick="setFiltroFlota('por_vencer')" class="px-3 py-1.5 rounded-md text-xs font-bold transition-all ${window.filtroFlotaActual === 'por_vencer' ? 'bg-yellow-400 text-yellow-900 shadow' : 'text-gray-300 hover:text-yellow-400'}">Por Vencer</button>
-                    <button onclick="setFiltroFlota('vencido')" class="px-3 py-1.5 rounded-md text-xs font-bold transition-all ${window.filtroFlotaActual === 'vencido' ? 'bg-red-500 text-white shadow' : 'text-gray-300 hover:text-red-400'}">Vencidos</button>
+                    <button onclick="setFiltroFlota('todos')" class="${baseBtn} ${window.filtroFlotaActual === 'todos' ? 'bg-white text-gray-900 shadow' : 'text-gray-300 hover:text-white'}">Todos</button>
+                    <button onclick="setFiltroFlota('por_vencer')" class="${baseBtn} ${window.filtroFlotaActual === 'por_vencer' ? 'bg-yellow-400 text-yellow-900 shadow' : 'text-gray-300 hover:text-yellow-400'}">Por Vencer</button>
+                    <button onclick="setFiltroFlota('vencido')" class="${baseBtn} ${window.filtroFlotaActual === 'vencido' ? 'bg-red-500 text-white shadow' : 'text-gray-300 hover:text-red-400'}">Vencidos</button>
                 </div>
                 <span class="hidden lg:block px-3 py-1.5 bg-white/20 rounded-lg text-sm font-black border border-white/30 backdrop-blur-sm">${unidadesFiltradas.length} Unidades</span>
             </div>
@@ -3634,145 +3631,64 @@ window.renderizarVistaUnidades = function(container) {
             <div class="grid grid-cols-1 gap-3 w-full">
     `;
 
-    // Si el filtro no arroja resultados, mostramos aviso
     if (unidadesFiltradas.length === 0) {
-        html += `<div class="text-center p-10 bg-white rounded-xl shadow-sm border border-gray-200 font-bold text-gray-500">No hay unidades que coincidan con el filtro seleccionado.</div>`;
+        html += `<div class="text-center p-10 bg-white rounded-xl shadow-sm border border-gray-200 font-bold text-gray-500">No hay unidades que coincidan con los filtros.</div>`;
     }
 
-    // 👉 3. RECORRER SOLO LAS UNIDADES QUE PASARON EL FILTRO
+    // 👉 3. DIBUJAR TARJETAS
     unidadesFiltradas.forEach((u, index) => {
         let patente = String(u.col_b || '').trim().toUpperCase();
-        if(!patente) return;
-        
         let safeId = "unit_" + patente.replace(/[^a-zA-Z0-9]/g, "_") + "_" + index;
-
-        let unidadData = {
-            mass_tr: u.col_g, vtv_tr: u.col_h,
-            mass_semi: u.col_j, vtv_semi: u.col_k,
-            esp_es: u.col_l, vi: u.col_m, ve: u.col_n
-        };
-
+        
+        let unidadData = { mass_tr: u.col_g, vtv_tr: u.col_h, mass_semi: u.col_j, vtv_semi: u.col_k, esp_es: u.col_l, vi: u.col_m, ve: u.col_n };
         let esSemi = (!u.col_g && !u.col_h && (u.col_j || u.col_k)); 
         let estadoGlobal = window.evaluarAlertasUnidad(unidadData, fBaseObj);
         
-        let bgBarra = 'bg-white';
-        let textBarra = 'text-gray-700';
-        let alertIcon = '';
-        
-        if (estadoGlobal === 'VENCIDO') {
-            bgBarra = 'bg-red-50 hover:bg-red-100 border-red-200';
-            textBarra = 'text-red-700';
-            alertIcon = '🔴';
-        } else if (estadoGlobal === 'POR_VENCER') {
-            bgBarra = 'bg-yellow-50 hover:bg-yellow-100 border-yellow-200';
-            textBarra = 'text-yellow-800';
-            alertIcon = '🟡';
-        } else {
-            bgBarra = 'bg-white hover:bg-gray-50 border-gray-200';
-            textBarra = 'text-gray-700';
-            alertIcon = '✅';
-        }
+        let bgBarra = 'bg-white', textBarra = 'text-gray-700', alertIcon = '✅';
+        if (estadoGlobal === 'VENCIDO') { bgBarra = 'bg-red-50 hover:bg-red-100 border-red-200'; textBarra = 'text-red-700'; alertIcon = '🔴'; } 
+        else if (estadoGlobal === 'POR_VENCER') { bgBarra = 'bg-yellow-50 hover:bg-yellow-100 border-yellow-200'; textBarra = 'text-yellow-800'; alertIcon = '🟡'; }
 
-        let choferAsignado = datosGlobales.find(c =>
-            (c.tractor || '').toUpperCase().trim() === patente ||
-            (c.semi || '').toUpperCase().trim() === patente
-        );
-
+        let choferAsignado = datosGlobales.find(c => (c.tractor || '').toUpperCase().trim() === patente || (c.semi || '').toUpperCase().trim() === patente);
+        let patTractor = esSemi ? 'S/D' : patente; let patSemi = esSemi ? patente : 'S/D';
         let asignacionHtml = '';
-        let patTractor = esSemi ? 'S/D' : patente;
-        let patSemi = esSemi ? patente : 'S/D';
 
         if (choferAsignado) {
             let esEsteElTractor = (choferAsignado.tractor || '').toUpperCase().trim() === patente;
-            patTractor = choferAsignado.tractor || 'S/D';
-            patSemi = choferAsignado.semi || 'Desenganchado';
-            
-            let engancheBadge = '';
-            if (esEsteElTractor) {
-                engancheBadge = choferAsignado.semi
-                    ? `<span class="bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded text-[10px] font-black tracking-wide shadow-sm flex items-center gap-1" title="Semirremolque Enganchado">🔗 SEMI: ${choferAsignado.semi}</span>`
-                    : `<span class="bg-red-50 text-red-600 border border-red-200 px-2 py-0.5 rounded text-[10px] font-black tracking-wide shadow-sm italic">Desenganchado</span>`;
-            } else {
-                engancheBadge = choferAsignado.tractor
-                    ? `<span class="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded text-[10px] font-black tracking-wide shadow-sm flex items-center gap-1" title="Tractor Asignado">🚚 TRACTOR: ${choferAsignado.tractor}</span>`
-                    : `<span class="bg-gray-100 text-gray-500 border border-gray-200 px-2 py-0.5 rounded text-[10px] font-black tracking-wide shadow-sm italic">S/D</span>`;
-            }
+            patTractor = choferAsignado.tractor || 'S/D'; patSemi = choferAsignado.semi || 'Desenganchado';
+            let engancheBadge = esEsteElTractor ? (choferAsignado.semi ? `<span class="bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded text-[10px] font-black tracking-wide shadow-sm flex items-center gap-1" title="Semirremolque Enganchado">🔗 SEMI: ${choferAsignado.semi}</span>` : `<span class="bg-red-50 text-red-600 border border-red-200 px-2 py-0.5 rounded text-[10px] font-black tracking-wide shadow-sm italic">Desenganchado</span>`) : (choferAsignado.tractor ? `<span class="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded text-[10px] font-black tracking-wide shadow-sm flex items-center gap-1" title="Tractor Asignado">🚚 TRACTOR: ${choferAsignado.tractor}</span>` : `<span class="bg-gray-100 text-gray-500 border border-gray-200 px-2 py-0.5 rounded text-[10px] font-black tracking-wide shadow-sm italic">S/D</span>`);
 
             asignacionHtml = `
             <div class="col-span-1 sm:col-span-2 lg:col-span-3 flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-3 rounded-xl border border-indigo-100 shadow-sm mb-2 gap-3 hover:shadow-md transition-shadow">
-                <div class="flex items-center gap-3">
-                    <div class="w-8 h-8 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-500 flex items-center justify-center shadow-inner text-sm">👤</div>
-                    <div class="flex flex-col">
-                        <span class="text-[9px] font-black text-gray-400 uppercase tracking-widest leading-none mb-0.5">Asignación Actual</span>
-                        <span class="text-xs font-bold text-gray-800 cursor-pointer hover:text-blue-600 transition-colors" onclick="irAVistaIndividual('${choferAsignado._safeId}')">${choferAsignado.nom}</span>
-                    </div>
-                </div>
-                <div class="flex items-center gap-2">
-                    <span class="text-[9px] font-black bg-gray-100 text-gray-600 px-2 py-0.5 rounded border border-gray-200 uppercase tracking-wider shadow-sm">${choferAsignado.srv || 'S/A'}</span>
-                    ${engancheBadge}
-                </div>
+                <div class="flex items-center gap-3"><div class="w-8 h-8 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-500 flex items-center justify-center shadow-inner text-sm">👤</div><div class="flex flex-col"><span class="text-[9px] font-black text-gray-400 uppercase tracking-widest leading-none mb-0.5">Asignación Actual</span><span class="text-xs font-bold text-gray-800 cursor-pointer hover:text-blue-600 transition-colors" onclick="irAVistaIndividual('${choferAsignado._safeId}')">${choferAsignado.nom}</span></div></div>
+                <div class="flex items-center gap-2"><span class="text-[9px] font-black bg-gray-100 text-gray-600 px-2 py-0.5 rounded border border-gray-200 uppercase tracking-wider shadow-sm">${choferAsignado.srv || 'S/A'}</span>${engancheBadge}</div>
             </div>`;
         } else {
-            asignacionHtml = `
-            <div class="col-span-1 sm:col-span-2 lg:col-span-3 bg-gray-50 p-3 rounded-xl border border-dashed border-gray-200 flex items-center justify-center mb-2">
-                <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                    <span class="w-2 h-2 rounded-full bg-gray-300"></span> Unidad sin chofer asignado en el diagrama
-                </span>
-            </div>`;
+            asignacionHtml = `<div class="col-span-1 sm:col-span-2 lg:col-span-3 bg-gray-50 p-3 rounded-xl border border-dashed border-gray-200 flex items-center justify-center mb-2"><span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-gray-300"></span> Unidad sin chofer asignado en el diagrama</span></div>`;
         }
 
         html += `
         <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <button onclick="toggleUnidadDetalle('${safeId}')" class="w-full p-4 flex justify-between items-center ${bgBarra} transition-colors focus:outline-none cursor-pointer border-b border-transparent hover:border-gray-200">
                 <div class="flex items-center gap-4">
-                    <div class="w-10 h-10 rounded-lg ${esSemi ? 'bg-indigo-100 text-indigo-600' : 'bg-blue-100 text-blue-600'} flex items-center justify-center text-lg shadow-inner">
-                        ${esSemi ? '🔗' : '🚚'}
-                    </div>
-                    <div class="flex flex-col text-left">
-                        <span class="font-black ${textBarra} text-lg tracking-wide">${patente}</span>
-                        <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">${esSemi ? 'Semirremolque' : 'Tractor'}</span>
-                    </div>
+                    <div class="w-10 h-10 rounded-lg ${esSemi ? 'bg-indigo-100 text-indigo-600' : 'bg-blue-100 text-blue-600'} flex items-center justify-center text-lg shadow-inner">${esSemi ? '🔗' : '🚚'}</div>
+                    <div class="flex flex-col text-left"><span class="font-black ${textBarra} text-lg tracking-wide">${patente}</span><span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">${esSemi ? 'Semirremolque' : 'Tractor'}</span></div>
                 </div>
-                <div class="flex items-center gap-3">
-                    <span class="hidden sm:block text-[10px] font-black uppercase tracking-widest ${textBarra}">${alertIcon} ${estadoGlobal.replace('_', ' ')}</span>
-                    <svg id="icon-unit-${safeId}" class="w-5 h-5 ${textBarra} transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-                </div>
+                <div class="flex items-center gap-3"><span class="hidden sm:block text-[10px] font-black uppercase tracking-widest ${textBarra}">${alertIcon} ${estadoGlobal.replace('_', ' ')}</span><svg id="icon-unit-${safeId}" class="w-5 h-5 ${textBarra} transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg></div>
             </button>
-            
             <div id="panel-unit-${safeId}" class="hidden bg-slate-50 p-4 border-t border-gray-100">
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    
                     ${asignacionHtml}
-
-                    <div class="col-span-1 sm:col-span-2 lg:col-span-3 flex flex-wrap items-center justify-center sm:justify-start gap-2 mb-1 bg-white p-2.5 rounded-xl border border-gray-200 shadow-sm">
-                        <span class="text-[10px] font-black text-gray-400 uppercase tracking-widest sm:mr-2 w-full sm:w-auto text-center">Equipos Evaluados:</span>
-                        <span class="bg-blue-50 text-blue-800 border border-blue-200 px-2.5 py-1 rounded text-[10px] font-black tracking-wider shadow-sm">🚚 TR: ${patTractor}</span>
-                        <span class="bg-indigo-50 text-indigo-800 border border-indigo-200 px-2.5 py-1 rounded text-[10px] font-black tracking-wider shadow-sm">🔗 SE: ${patSemi}</span>
-                    </div>
-
-                    <div class="flex flex-col gap-2 bg-white p-3 rounded-xl border border-gray-200 shadow-sm">
-                        <span class="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-1 border-b border-gray-100 pb-1.5 text-center flex justify-center items-center gap-1"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg> MASS</span>
-                        ${window.renderBadgeUnidad(unidadData.mass_tr, 'MASS', 'TR', fBaseObj)}
-                        ${window.renderBadgeUnidad(unidadData.mass_semi, 'MASS', 'SE', fBaseObj)}
-                    </div>
-                    <div class="flex flex-col gap-2 bg-white p-3 rounded-xl border border-gray-200 shadow-sm">
-                        <span class="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-1 border-b border-gray-100 pb-1.5 text-center flex justify-center items-center gap-1"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg> VTV / RTO</span>
-                        ${window.renderBadgeUnidad(unidadData.vtv_tr, 'VTV', 'TR', fBaseObj)}
-                        ${window.renderBadgeUnidad(unidadData.vtv_semi, 'VTV', 'SE', fBaseObj)}
-                    </div>
-                    <div class="flex flex-col gap-2 bg-white p-3 rounded-xl border border-gray-200 shadow-sm">
-                        <span class="text-[9px] font-black text-purple-400 uppercase tracking-widest mb-1 border-b border-gray-100 pb-1.5 text-center flex justify-center items-center gap-1"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg> CERTIFICADOS EXTRA</span>
-                        ${window.renderBadgeUnidad(unidadData.esp_es, 'ESP-ES', 'TR', fBaseObj)}
-                        ${window.renderBadgeUnidad(unidadData.vi, 'VI', 'TR', fBaseObj)}
-                        ${window.renderBadgeUnidad(unidadData.ve, 'VE', 'TR', fBaseObj)}
-                    </div>
+                    <div class="col-span-1 sm:col-span-2 lg:col-span-3 flex flex-wrap items-center justify-center sm:justify-start gap-2 mb-1 bg-white p-2.5 rounded-xl border border-gray-200 shadow-sm"><span class="text-[10px] font-black text-gray-400 uppercase tracking-widest sm:mr-2 w-full sm:w-auto text-center">Equipos Evaluados:</span><span class="bg-blue-50 text-blue-800 border border-blue-200 px-2.5 py-1 rounded text-[10px] font-black tracking-wider shadow-sm">🚚 TR: ${patTractor}</span><span class="bg-indigo-50 text-indigo-800 border border-indigo-200 px-2.5 py-1 rounded text-[10px] font-black tracking-wider shadow-sm">🔗 SE: ${patSemi}</span></div>
+                    <div class="flex flex-col gap-2 bg-white p-3 rounded-xl border border-gray-200 shadow-sm"><span class="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-1 border-b border-gray-100 pb-1.5 text-center flex justify-center items-center gap-1"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg> MASS</span>${window.renderBadgeUnidad(unidadData.mass_tr, 'MASS', 'TR', fBaseObj)}${window.renderBadgeUnidad(unidadData.mass_semi, 'MASS', 'SE', fBaseObj)}</div>
+                    <div class="flex flex-col gap-2 bg-white p-3 rounded-xl border border-gray-200 shadow-sm"><span class="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-1 border-b border-gray-100 pb-1.5 text-center flex justify-center items-center gap-1"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg> VTV / RTO</span>${window.renderBadgeUnidad(unidadData.vtv_tr, 'VTV', 'TR', fBaseObj)}${window.renderBadgeUnidad(unidadData.vtv_semi, 'VTV', 'SE', fBaseObj)}</div>
+                    <div class="flex flex-col gap-2 bg-white p-3 rounded-xl border border-gray-200 shadow-sm"><span class="text-[9px] font-black text-purple-400 uppercase tracking-widest mb-1 border-b border-gray-100 pb-1.5 text-center flex justify-center items-center gap-1"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg> CERTIFICADOS EXTRA</span>${window.renderBadgeUnidad(unidadData.esp_es, 'ESP-ES', 'TR', fBaseObj)}${window.renderBadgeUnidad(unidadData.vi, 'VI', 'TR', fBaseObj)}${window.renderBadgeUnidad(unidadData.ve, 'VE', 'TR', fBaseObj)}</div>
                 </div>
             </div>
         </div>`;
     });
 
     html += `</div></div></div>`;
-    container.innerHTML = html;
+    window.actualizarSinBlink(container.id, html); 
 };
 // 👉 ESTA ES LA FUNCIÓN QUE SE TE HABÍA BORRADO
 window.toggleUnidadDetalle = function(id) {
