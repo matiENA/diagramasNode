@@ -1912,8 +1912,10 @@ window.mostrarDetalleConductor = function(safeId, mantenerSeleccion = false) {
                 }
             }
             
+            // 👉 AQUI INYECTAMOS data-col y data-row PARA COMPATIBILIDAD CON EL MODO LOTE
             gridHtml += `
-            <div data-fecha="${isoStr}" onclick="manejarSeleccionCalendario('${isoStr}', event, '${chofer._safeId}')" class="celda-calendario relative cursor-pointer w-full aspect-square flex flex-col items-center justify-center border rounded-lg ${bgClass} ${isToday} ${claseSeleccion} transition-all select-none overflow-hidden group">               <span class="absolute top-1 left-1.5 text-[9px] font-bold opacity-40 group-hover:opacity-70 transition-opacity pointer-events-none">${i}</span>
+            <div data-fecha="${isoStr}" data-col="${isoStr}" data-row="${chofer._safeId}" onclick="manejarSeleccionCalendario('${isoStr}', event, '${chofer._safeId}')" class="celda-calendario relative cursor-pointer w-full aspect-square flex flex-col items-center justify-center border rounded-lg ${bgClass} ${isToday} ${claseSeleccion} transition-all select-none overflow-hidden group">
+               <span class="absolute top-1 left-1.5 text-[9px] font-bold opacity-40 group-hover:opacity-70 transition-opacity pointer-events-none">${i}</span>
                 <span class="text-xs sm:text-sm font-black pointer-events-none drop-shadow-sm z-10 w-full text-center truncate px-0.5">${textVal}</span>
                 <div class="absolute bottom-1 w-full flex justify-center items-center gap-0.5 pointer-events-none px-1">${dotHtml}${obsHtml}${docVenHtml}</div>
             </div>`;
@@ -2259,11 +2261,18 @@ window.pintarCeldas2D = function(startCtx, endCtx) {
     // Guardamos la matriz de IDs seleccionados
     window.seleccionMultipleIds = allRowIds; 
     
-    // Pintamos todas las celdas que cumplan estar entre las fechas y entre las filas seleccionadas
+    // 👉 CORRECCIÓN: Pintamos celdas leyendo atributos de forma híbrida
     document.querySelectorAll('.celda-calendario').forEach(el => { 
         el.classList.remove('seleccionada', 'brightness-110'); 
-        let cellDate = new Date(el.dataset.col + "T12:00:00"); 
-        let cellRow = el.dataset.row;
+        
+        // Compatibilidad: Leemos 'col' (Diagrama) o 'fecha' (Individual)
+        let colData = el.dataset.col || el.dataset.fecha; 
+        if (!colData) return;
+        
+        let cellDate = new Date(colData + "T12:00:00"); 
+        
+        // Compatibilidad: Leemos 'row' (Diagrama) o usamos el ID activo (Individual)
+        let cellRow = el.dataset.row || startCtx.rowId;
         
         if (cellDate >= dStart && cellDate <= dEnd && allRowIds.includes(cellRow)) {
             el.classList.add('seleccionada', 'brightness-110');
