@@ -1554,106 +1554,107 @@ window.toggleDetalle = function(id) {
         else { d.classList.add('hidden'); d.classList.remove('expand-anim'); i.style.transform = 'rotate(0deg)'; }
     };
 
-    function renderizarGrillaSemanal(choferes, container) {
-        let fBaseObj = new Date(fechaGlobalContexto + "T12:00:00");
-        const nombresMeses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+window.renderizarGrillaSemanal = function(choferes, container) {
+    let fBaseObj = new Date(fechaGlobalContexto + "T12:00:00");
+    const nombresMeses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
     let mesesOffsets = [];
-            if (zoomTablaNivel === 1) mesesOffsets = [0]; 
-            else if (zoomTablaNivel === 2) mesesOffsets = [-1, 0, 1]; 
-            else if (zoomTablaNivel === 3) mesesOffsets = [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6];
+    if (zoomTablaNivel === 1) mesesOffsets = [0]; 
+    else if (zoomTablaNivel === 2) mesesOffsets = [-1, 0, 1]; 
+    else if (zoomTablaNivel === 3) mesesOffsets = [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6];
 
-        let headerMesesHtml = '', headerDiasHtml = '';
-        let arrayFechasIteracion = [];
+    let headerMesesHtml = '', headerDiasHtml = '';
+    let arrayFechasIteracion = [];
 
-        mesesOffsets.forEach(mOffset => {
-            let mesDate = new Date(fBaseObj.getFullYear(), fBaseObj.getMonth() + mOffset, 1);
-            let diasEnMes = new Date(mesDate.getFullYear(), mesDate.getMonth() + 1, 0).getDate();
-            let bgMes = mOffset === 0 ? 'bg-indigo-100 text-indigo-900' : 'bg-gray-200 text-gray-600';
-            headerMesesHtml += `<th colspan="${diasEnMes}" class="p-2 border border-gray-300 text-center text-xs font-black uppercase tracking-widest ${bgMes}">${nombresMeses[mesDate.getMonth()]} ${mesDate.getFullYear()}</th>`;
+    mesesOffsets.forEach(mOffset => {
+        let mesDate = new Date(fBaseObj.getFullYear(), fBaseObj.getMonth() + mOffset, 1);
+        let diasEnMes = new Date(mesDate.getFullYear(), mesDate.getMonth() + 1, 0).getDate();
+        let bgMes = mOffset === 0 ? 'bg-indigo-100 text-indigo-900' : 'bg-gray-200 text-gray-600';
+        headerMesesHtml += `<th colspan="${diasEnMes}" class="p-2 border border-gray-300 text-center text-xs font-black uppercase tracking-widest ${bgMes}">${nombresMeses[mesDate.getMonth()]} ${mesDate.getFullYear()}</th>`;
 
-            for(let i = 1; i <= diasEnMes; i++) {
-                let currentD = new Date(mesDate.getFullYear(), mesDate.getMonth(), i);
-                let isoStr = formatIsoShort(currentD);
-                arrayFechasIteracion.push(currentD);
-                
-                let isToday = (currentD.getDate() === new Date().getDate() && currentD.getMonth() === new Date().getMonth() && currentD.getFullYear() === new Date().getFullYear()) ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600';
-                headerDiasHtml += `<th id="header-day-${isoStr}" onmouseover="hoverGrid(null, '${isoStr}')" class="p-0 border border-gray-300 text-center w-8 min-w-[32px] max-w-[32px] h-7 text-[10px] font-bold ${isToday} cursor-default">${i}</th>`;
-            }
-        });
-
-        let tablaHtml = `
-            <div class="flex justify-between items-center w-full mb-3 bg-white p-3 rounded-xl shadow-sm border border-gray-200">
-                <h3 class="text-sm font-bold text-gray-800 uppercase tracking-wider flex items-center gap-2">Diagrama</h3>
-                <div class="flex bg-gray-100 p-1 rounded-lg border border-gray-200 shadow-inner overflow-x-auto">
-                    <button onclick="cambiarZoomTabla(1)" class="whitespace-nowrap px-4 py-1.5 text-xs font-bold rounded-md ${zoomTablaNivel === 1 ? 'bg-white text-indigo-700 shadow border border-gray-200' : 'text-gray-500 hover:text-gray-700 transition-colors'}">1 Mes</button>
-                    <button onclick="cambiarZoomTabla(2)" class="whitespace-nowrap px-4 py-1.5 text-xs font-bold rounded-md ${zoomTablaNivel === 2 ? 'bg-white text-indigo-700 shadow border border-gray-200' : 'text-gray-500 hover:text-gray-700 transition-colors'}">Trimestre</button>
-                    <button onclick="cambiarZoomTabla(3)" class="whitespace-nowrap px-4 py-1.5 text-xs font-bold rounded-md ${zoomTablaNivel === 3 ? 'bg-white text-indigo-700 shadow border border-gray-200' : 'text-gray-500 hover:text-gray-700 transition-colors'}">12 Meses</button>
-                </div>
-            </div>
-<div class="overflow-x-auto overflow-y-auto max-h-[calc(100vh-200px)] bg-white rounded-xl shadow-sm border border-gray-300 custom-scrollbar">
-            <table class="w-max text-left border-collapse min-w-full" onmouseleave="clearHoverGrid()">
-                <thead class="sticky top-0 z-30 bg-white outline outline-1 outline-gray-200">
-                    <tr>
-                        <th rowspan="2" class="p-3 border-b-2 border-r border-gray-300 sticky left-0 top-0 bg-gray-200 z-40 w-48 text-[11px] uppercase tracking-wider shadow-[2px_2px_5px_-2px_rgba(0,0,0,0.1)]">
-                            Chofer / Unidad
-                        </th>
-                        ${headerMesesHtml}
-                    </tr>
-                    <tr>${headerDiasHtml}</tr>
-                </thead>
-                <tbody class="divide-y divide-gray-200">        `;
-        
-        if (!choferes.length) tablaHtml += '<tr><td colspan="100%" class="text-center p-8 font-bold text-gray-500">Sin datos que coincidan con el filtro.</td></tr>';
-
-        choferes.forEach(c => {
-            const theme = getSrvTheme(c.srv);
-            let tr = `<tr><td id="header-driver-${c._safeId}" onmouseover="hoverGrid('${c._safeId}', null)" class="p-2 border-r border-gray-300 sticky left-0 bg-white z-10 w-48 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] cursor-pointer" onclick="irAVistaIndividual('${c._safeId}')"><div class="flex flex-col"><span class="text-[11px] font-black truncate hover:text-blue-600 cursor-pointer transition-colors inline-block" onclick="copiarAlPortapapeles('${c.nom.replace(/'/g, "\\'")}', event)" title="Copiar Nombre">${c.nom}</span><div class="flex items-center gap-1.5 mt-1"><span class="${theme.softBg} ${theme.softText} border ${theme.border} px-1 rounded text-[8px] font-bold uppercase tracking-widest">${c.srv || '-'}</span><span class="px-1 py-0.5 rounded border bg-gray-50 text-[9px] font-mono text-gray-500 font-bold">${c.n_ute || '-'}</span></div></div></td>`;
-
-            arrayFechasIteracion.forEach(d => {
-                let rawEst = getValDiaGlobal(c.dias, d);
-                let estBase = getBaseState(rawEst);
-                let bgClass = "bg-white text-gray-200"; 
-                let textVal = rawEst || '-';
-                let isoStr = formatIsoShort(d);
-
-                if ((!isNaN(estBase) && estBase !== '') || estBase === 'O' || estBase === 'OPERATIVO') {
-                    let cons = parseInt(estBase, 10);
-                    if(isNaN(cons)) cons = 1;
-                    let limiteWarn = (c.diag && c.diag.includes('14')) ? 11 : 18;
-                    let limiteCrit = (c.diag && c.diag.includes('14')) ? 14 : 22;
-                    if (cons >= limiteCrit) bgClass = 'bg-white text-red-600 border-x border-red-500'; 
-                    else if (cons >= limiteWarn) bgClass = 'bg-white text-orange-600 border-x border-orange-400'; 
-                    else bgClass = 'bg-white text-blue-600 border-x border-blue-400';
-                } 
-                else if (['F','FSF'].includes(estBase)) bgClass = 'bg-[#b6d7a8] text-gray-900 border-x border-transparent';
-                else if (['V','VSF'].includes(estBase)) bgClass = 'bg-[#ffe599] text-gray-900 border-x border-transparent';
-                else if (['IND','E','A','S','ART'].includes(estBase)) bgClass = 'bg-[#e06666] text-white border-x border-transparent';
-
-tr += `<td id="cell-${c._safeId}-${isoStr}" data-row="${c._safeId}" data-col="${isoStr}" onmouseover="hoverGrid('${c._safeId}', '${isoStr}')" onclick="abrirEditor('${c._safeId}', '${isoStr}')" class="p-0 border-b border-gray-200 text-center w-8 min-w-[32px] h-9 text-[10px] font-black select-none cursor-pointer hover:ring-2 hover:ring-blue-500 hover:z-20 relative transition-all ${bgClass}">${textVal}</td>`;
-            });
-            tablaHtml += tr + '</tr>';
-        });
-        
-    window.actualizarSinBlink('contenedor-lista-principal', tablaHtml + '</tbody></table></div>');
-        setTimeout(() => {
-            let isoHoy = formatIsoShort(fBaseObj);
-            let celdaHoy = document.getElementById(`header-day-${isoHoy}`);
-            let contenedorScroll = container.querySelector('.overflow-x-auto');
+        for(let i = 1; i <= diasEnMes; i++) {
+            let currentD = new Date(mesDate.getFullYear(), mesDate.getMonth(), i);
+            let isoStr = formatIsoShort(currentD);
+            arrayFechasIteracion.push(currentD);
             
-            if (celdaHoy && contenedorScroll) {
-                let posicionScroll = celdaHoy.offsetLeft - (contenedorScroll.clientWidth / 2) + (celdaHoy.clientWidth / 2);
-                
-                contenedorScroll.scrollTo({
-                    left: posicionScroll,
-                    behavior: 'smooth'
-                });
-            }
-        }, 50); 
-    
-    }
+            let isToday = (currentD.getDate() === new Date().getDate() && currentD.getMonth() === new Date().getMonth() && currentD.getFullYear() === new Date().getFullYear()) ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600';
+            headerDiasHtml += `<th id="header-day-${isoStr}" onmouseover="hoverGrid(null, '${isoStr}')" class="p-0 border border-gray-300 text-center w-8 min-w-[32px] max-w-[32px] h-7 text-[10px] font-bold ${isToday} cursor-default">${i}</th>`;
+        }
+    });
 
-    // --- VISTA INDIVIDUAL ---
+    let tablaHtml = `
+        <div class="flex justify-between items-center w-full mb-3 bg-white p-3 rounded-xl shadow-sm border border-gray-200">
+            <h3 class="text-sm font-bold text-gray-800 uppercase tracking-wider flex items-center gap-2">Diagrama</h3>
+            <div class="flex bg-gray-100 p-1 rounded-lg border border-gray-200 shadow-inner overflow-x-auto">
+                <button onclick="cambiarZoomTabla(1)" class="whitespace-nowrap px-4 py-1.5 text-xs font-bold rounded-md ${zoomTablaNivel === 1 ? 'bg-white text-indigo-700 shadow border border-gray-200' : 'text-gray-500 hover:text-gray-700 transition-colors'}">1 Mes</button>
+                <button onclick="cambiarZoomTabla(2)" class="whitespace-nowrap px-4 py-1.5 text-xs font-bold rounded-md ${zoomTablaNivel === 2 ? 'bg-white text-indigo-700 shadow border border-gray-200' : 'text-gray-500 hover:text-gray-700 transition-colors'}">Trimestre</button>
+                <button onclick="cambiarZoomTabla(3)" class="whitespace-nowrap px-4 py-1.5 text-xs font-bold rounded-md ${zoomTablaNivel === 3 ? 'bg-white text-indigo-700 shadow border border-gray-200' : 'text-gray-500 hover:text-gray-700 transition-colors'}">12 Meses</button>
+            </div>
+        </div>
+        <div class="overflow-x-auto overflow-y-auto max-h-[calc(100vh-200px)] bg-white rounded-xl shadow-sm border border-gray-300 custom-scrollbar relative">
+        <table class="w-max text-left border-collapse min-w-full" onmouseleave="clearHoverGrid()">
+            <thead class="sticky top-0 z-30 bg-white outline outline-1 outline-gray-200">
+                <tr>
+                    <th rowspan="2" class="p-3 border-b-2 border-r border-gray-300 sticky left-0 top-0 bg-gray-200 z-40 w-48 text-[11px] uppercase tracking-wider shadow-[2px_2px_5px_-2px_rgba(0,0,0,0.1)]">
+                        Chofer / Unidad
+                    </th>
+                    ${headerMesesHtml}
+                </tr>
+                <tr>${headerDiasHtml}</tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200">`;
+    
+    if (!choferes.length) tablaHtml += '<tr><td colspan="100%" class="text-center p-8 font-bold text-gray-500">Sin datos que coincidan con el filtro.</td></tr>';
+
+    choferes.forEach(c => {
+        const theme = getSrvTheme(c.srv);
+        let tr = `<tr><td id="header-driver-${c._safeId}" onmouseover="hoverGrid('${c._safeId}', null)" class="p-2 border-r border-gray-300 sticky left-0 bg-white z-10 w-48 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] cursor-pointer" onclick="irAVistaIndividual('${c._safeId}')"><div class="flex flex-col"><span class="text-[11px] font-black truncate hover:text-blue-600 cursor-pointer transition-colors inline-block" onclick="copiarAlPortapapeles('${c.nom.replace(/'/g, "\\'")}', event)" title="Copiar Nombre">${c.nom}</span><div class="flex items-center gap-1.5 mt-1"><span class="${theme.softBg} ${theme.softText} border ${theme.border} px-1 rounded text-[8px] font-bold uppercase tracking-widest">${c.srv || '-'}</span><span class="px-1 py-0.5 rounded border bg-gray-50 text-[9px] font-mono text-gray-500 font-bold">${c.n_ute || '-'}</span></div></div></td>`;
+
+        arrayFechasIteracion.forEach(d => {
+            let rawEst = getValDiaGlobal(c.dias, d);
+            let estBase = getBaseState(rawEst);
+            let bgClass = "bg-white text-gray-200"; 
+            let textVal = rawEst || '-';
+            let isoStr = formatIsoShort(d);
+
+            if ((!isNaN(estBase) && estBase !== '') || estBase === 'O' || estBase === 'OPERATIVO') {
+                let cons = parseInt(estBase, 10);
+                if(isNaN(cons)) cons = 1;
+                let limiteWarn = (c.diag && c.diag.includes('14')) ? 11 : 18;
+                let limiteCrit = (c.diag && c.diag.includes('14')) ? 14 : 22;
+                if (cons >= limiteCrit) bgClass = 'bg-white text-red-600 border-x border-red-500'; 
+                else if (cons >= limiteWarn) bgClass = 'bg-white text-orange-600 border-x border-orange-400'; 
+                else bgClass = 'bg-white text-blue-600 border-x border-blue-400';
+            } 
+            else if (['F','FSF'].includes(estBase)) bgClass = 'bg-[#b6d7a8] text-gray-900 border-x border-transparent';
+            else if (['V','VSF'].includes(estBase)) bgClass = 'bg-[#ffe599] text-gray-900 border-x border-transparent';
+            else if (['IND','E','A','S','ART'].includes(estBase)) bgClass = 'bg-[#e06666] text-white border-x border-transparent';
+
+            // 👉 AQUÍ OCURRE LA MAGIA: Cambiamos abrirEditor por manejarSeleccionCalendario
+            tr += `<td id="cell-${c._safeId}-${isoStr}" data-row="${c._safeId}" data-col="${isoStr}" onmouseover="hoverGrid('${c._safeId}', '${isoStr}')" onclick="manejarSeleccionCalendario('${isoStr}', event, '${c._safeId}')" class="celda-calendario p-0 border-b border-gray-200 text-center w-8 min-w-[32px] h-9 text-[10px] font-black select-none cursor-pointer hover:ring-2 hover:ring-blue-500 hover:z-20 relative transition-all ${bgClass}">${textVal}</td>`;
+        });
+        tablaHtml += tr + '</tr>';
+    });
+    
+    // 👉 AGREGAMOS EL CONTENEDOR DE EDICIÓN FLOTANTE DEBAJO DE LA TABLA
+    let htmlFinal = tablaHtml + `</tbody></table></div>
+    <div id="panel-acciones-rango" class="hidden mt-4 sticky bottom-4 z-[60] shadow-2xl mx-auto w-full md:w-11/12 max-w-4xl"></div>`;
+
+    window.actualizarSinBlink('contenedor-lista-principal', htmlFinal);
+    
+    // Centrar Scroll
+    setTimeout(() => {
+        let isoHoy = formatIsoShort(fBaseObj);
+        let celdaHoy = document.getElementById(`header-day-${isoHoy}`);
+        let contenedorScroll = container.querySelector('.overflow-x-auto');
+        
+        if (celdaHoy && contenedorScroll) {
+            let posicionScroll = celdaHoy.offsetLeft - (contenedorScroll.clientWidth / 2) + (celdaHoy.clientWidth / 2);
+            contenedorScroll.scrollTo({ left: posicionScroll, behavior: 'smooth' });
+        }
+    }, 50); 
+};    // --- VISTA INDIVIDUAL ---
+
 window.irAVistaIndividual = function(safeId) {
         cambiarVistaPrincipal('individual');
         setTimeout(() => { 
