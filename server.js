@@ -343,7 +343,7 @@ async function actualizarCacheDesdeGoogle() {
 // ==========================================
 // 🔌 INYECCIÓN DE MÓDULOS AISLADOS
 // ==========================================
-const initNovedadesBackend = require('./novedadesBackend');
+const initNovedadesBackend = require('./novedades'); // <-- Extensión exacta del archivo
 initNovedadesBackend(io, serviceAccountAuth, cacheDatosGlobales);
 
 app.use('/api/webhook', webhookRouter(cacheDatosGlobales, io));
