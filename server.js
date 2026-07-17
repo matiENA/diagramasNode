@@ -338,6 +338,19 @@ async function actualizarCacheDesdeGoogle() {
     } catch (error) { console.error("❌ Error RAM:", error); } 
 }
 
+// ... [Tu código anterior: declaración de cacheDatosGlobales, funciones de fetchRango, etc.] ...
+
+// ==========================================
+// 🔌 INYECCIÓN DE MÓDULOS AISLADOS
+// ==========================================
+const initNovedadesBackend = require('./novedadesBackend');
+initNovedadesBackend(io, serviceAccountAuth, cacheDatosGlobales);
+
+app.use('/api/webhook', webhookRouter(cacheDatosGlobales, io));
+app.get('/health', (req, res) => res.status(200).send('OK'));
+
+// ... [El resto de tu código, app.get('/api/datos'), app.post('/api/proxy'), etc.] ...
+
 app.use('/api/webhook', webhookRouter(cacheDatosGlobales, io));
 app.get('/health', (req, res) => res.status(200).send('OK'));
 app.get('/api/datos', (req, res) => {
