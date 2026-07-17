@@ -12,8 +12,17 @@ const app = express();
 app.use(compression()); 
 const server = http.createServer(app); 
 
+// Reemplaza esto en tu server.js
 const io = new Server(server, { 
-    cors: { origin: ["https://diagramas-hp1p.onrender.com", "http://localhost:3000", "*"], methods: ["GET", "POST"], credentials: true },
+    cors: { 
+        origin: [
+            "https://diagramas-hp1p.onrender.com", 
+            "http://localhost:3000",
+            "https://dash-aa1f.onrender.com/" // 👉 AGREGA TU NUEVA URL AQUÍ
+        ], 
+        methods: ["GET", "POST"], 
+        credentials: true 
+    },
     transports: ['websocket', 'polling']
 });
 
