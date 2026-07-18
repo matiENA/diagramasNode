@@ -8,6 +8,8 @@ const { JWT } = require('google-auth-library');
 const webhookRouter = require('./webhook');
 const { createClient } = require('@supabase/supabase-js');
 
+const { cargarNovedades, createNovedadesRouter } = require('./novedades'); // dash
+
 const app = express();
 app.use(compression()); 
 const server = http.createServer(app); 
@@ -119,17 +121,8 @@ async function actualizarCacheDesdeGoogle() {
         } catch (e) {}
 
         // 👉 CARGA DE NOVEDADES
-        try {
-            const rowsNov = await fetchRango(ID_SPREADSHEET_MASTER, "'novedades'!A2:L2000");
-            rowsNov.forEach(row => {
-                if(!row[0]) return;
-                resDiagGAS.novedades.push({
-                    id: String(row[0]), resuelto: String(row[1]).toUpperCase() === 'TRUE',
-                    nom: row[2] || '', tractor: row[3] || '', semi: row[4] || '', srv: row[5] || '', n_ute: row[6] || '', dias: row[7] || '',
-                    tipo_novedad: row[8] || '', fecha_objetivo: row[9] || '', detalle: row[10] || '', timestamp: row[11] || ''
-                });
-            });
-        } catch (e) { console.error("Error leyendo Novedades:", e); }
+   // Llamamos al archivo externo para que cargue la RAM
+        await cargarNovedades(fetchRango, ID_SPREADSHEET_MASTER, cacheDatosGlobales);
 
         let listaChoferesMaestros = [];
         try {
@@ -317,55 +310,8 @@ app.get('/api/datos', (req, res) => {
     res.json({ success: true, diagramas: cacheDatosGlobales.diagramas, tds: cacheDatosGlobales.tds, timestamp: cacheDatosGlobales.ultimaActualizacion });
 });
 
-// ==========================================
-// 📡 NUEVO API ENDPOINT: NOVEDADES LIVE
-// ==========================================
-app.get('/api/novedades', (req, res) => {
-    res.json({ success: true, data: cacheDatosGlobales.novedades || [] });
-});
-
-app.post('/api/novedades/actualizar', async (req, res) => {
-    try {
-        const { action, id_novedad, payload } = req.body;
-        if (!cacheDatosGlobales.novedades) cacheDatosGlobales.novedades = [];
-
-        if (action === 'nueva') {
-            const nuevaNovedad = { id: String(Date.now()), resuelto: false, ...payload, timestamp: new Date().toISOString() };
-            
-            // 1. Optimistic Server RAM
-            cacheDatosGlobales.novedades.unshift(nuevaNovedad);
-            io.emit('novedades_actualizadas', cacheDatosGlobales.novedades);
-            res.json({ success: true, data: nuevaNovedad });
-
-            // 2. Persistencia en Google Sheets (Background)
-            try {
-                const docNov = new GoogleSpreadsheet(ID_SPREADSHEET_MASTER, serviceAccountAuth);
-                await docNov.loadInfo();
-                let sheet = docNov.sheetsByTitle['novedades'];
-                if (!sheet) sheet = await docNov.addSheet({ title: 'novedades', headerValues: ['id', 'resuelto', 'nom', 'tractor', 'semi', 'srv', 'n_ute', 'dias', 'tipo_novedad', 'fecha_objetivo', 'detalle', 'timestamp'] });
-                await sheet.addRow([ nuevaNovedad.id, "FALSE", nuevaNovedad.nom, nuevaNovedad.tractor, nuevaNovedad.semi, nuevaNovedad.srv, nuevaNovedad.n_ute, nuevaNovedad.dias, nuevaNovedad.tipo_novedad, nuevaNovedad.fecha_objetivo, nuevaNovedad.detalle, nuevaNovedad.timestamp ]);
-            } catch(e) { console.error("Error Sheet Novedades:", e); }
-        } 
-        else if (action === 'resolver') {
-            let index = cacheDatosGlobales.novedades.findIndex(n => String(n.id) === String(id_novedad));
-            if(index > -1) {
-                cacheDatosGlobales.novedades[index].resuelto = true;
-                io.emit('novedades_actualizadas', cacheDatosGlobales.novedades);
-                res.json({ success: true });
-
-                try {
-                    const rowsNov = await fetchRango(ID_SPREADSHEET_MASTER, "'novedades'!A:B");
-                    let rIdx = -1;
-                    for (let i = 0; i < rowsNov.length; i++) { if (String(rowsNov[i][0]) === String(id_novedad)) { rIdx = i + 1; break; } }
-                    if (rIdx !== -1) {
-                        await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_MASTER}/values/'novedades'!B${rIdx}?valueInputOption=USER_ENTERED`, method: 'PUT', data: { values: [["TRUE"]] } });
-                    }
-                } catch(e) {}
-            } else { res.status(404).json({ success: false, error: "No encontrada" }); }
-        }
-    } catch (err) { res.status(500).json({ success: false, error: "Error en servidor" }); }
-});
-
+// 👉 RUTAS EXTERNAS DE NOVEDADES
+app.use('/api/novedades', createNovedadesRouter(cacheDatosGlobales, io, serviceAccountAuth, ID_SPREADSHEET_MASTER, fetchRango));
 // ==========================================
 // 🛡️ API PROXY: ESCRITURA DIRECTA DIAGRAMAS
 // ==========================================
