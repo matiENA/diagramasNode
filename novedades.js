@@ -9,19 +9,23 @@ async function cargarNovedades(fetchRango, ID_SPREADSHEET_MASTER, cacheDatosGlob
         cacheDatosGlobales.novedades = []; // Vaciamos para recargar
         const rowsNov = await fetchRango(ID_SPREADSHEET_MASTER, "'novedades'!A:B");
         
-        rowsNov.forEach(row => {
-            let id = row[0];
-            let jsonStr = row[1];
-            
-            if(!id || id === 'id' || !jsonStr) return; 
-            
-            try {
-                let novedadParseada = JSON.parse(jsonStr);
-                cacheDatosGlobales.novedades.push(novedadParseada);
-            } catch(parseError) {
-                console.error(`Error parseando el JSON del ID ${id}:`, parseError);
-            }
-        });
+        if (rowsNov.length > 0) {
+            let temporalNovedades = [];
+            rowsNov.forEach(row => {
+                let id = row[0];
+                let jsonStr = row[1];
+                
+                if(!id || id === 'id' || !jsonStr) return; 
+                
+                try {
+                    let novedadParseada = JSON.parse(jsonStr);
+                    temporalNovedades.push(novedadParseada);
+                } catch(parseError) {
+                    console.error(`Error parseando el JSON del ID ${id}:`, parseError);
+                }
+            });
+            cacheDatosGlobales.novedades = temporalNovedades;
+        }
     } catch (e) { 
         console.error("Error leyendo Novedades:", e); 
     }
@@ -66,6 +70,7 @@ function createNovedadesRouter(cacheDatosGlobales, io, serviceAccountAuth, ID_SP
                 let index = cacheDatosGlobales.novedades.findIndex(n => String(n.id) === String(id_novedad));
                 if(index > -1) {
                     cacheDatosGlobales.novedades[index].resuelto = true;
+                    cacheDatosGlobales.novedades[index].fecha_resolucion = new Date().toISOString();
                     let novedadActualizada = cacheDatosGlobales.novedades[index];
                     
                     io.emit('novedades_actualizadas', cacheDatosGlobales.novedades);
@@ -97,5 +102,4 @@ function createNovedadesRouter(cacheDatosGlobales, io, serviceAccountAuth, ID_SP
     return router;
 }
 
-// Exportamos ambas funciones para usarlas en el server.js
 module.exports = { cargarNovedades, createNovedadesRouter };

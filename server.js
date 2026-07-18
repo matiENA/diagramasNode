@@ -8,7 +8,8 @@ const { JWT } = require('google-auth-library');
 const webhookRouter = require('./webhook');
 const { createClient } = require('@supabase/supabase-js');
 
-const { cargarNovedades, createNovedadesRouter } = require('./novedades'); // dash
+// 👉 IMPORTAMOS EL MÓDULO DE NOVEDADES
+const { cargarNovedades, createNovedadesRouter } = require('./novedades'); 
 
 const app = express();
 app.use(compression()); 
@@ -17,32 +18,20 @@ const server = http.createServer(app);
 // ==============================================================
 // 🛡️ CONFIGURACIÓN ESTRICTA DE CORS (Seguridad Web)
 // ==============================================================
-// Colocamos explícitamente los dominios exactos (SIN la barra / al final)
 const dominiosPermitidos = [
     "https://diagramas-hp1p.onrender.com", 
     "http://localhost:3000", 
-    "https://dash-aa1f.onrender.com" // 👈 Tu nuevo sitio estático
+    "https://dash-aa1f.onrender.com" 
 ];
 
-// 1. CORS para Socket.io (Tiempo real)
 const io = new Server(server, { 
-    cors: { 
-        origin: dominiosPermitidos, 
-        methods: ["GET", "POST", "OPTIONS"], 
-        credentials: true 
-    },
+    cors: { origin: dominiosPermitidos, methods: ["GET", "POST", "OPTIONS"], credentials: true },
     transports: ['websocket', 'polling']
 });
 
-// 2. CORS para Express (API Rest: GET, POST)
-app.use(cors({ 
-    origin: dominiosPermitidos, 
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    credentials: true
-}));
+app.use(cors({ origin: dominiosPermitidos, methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], credentials: true }));
 app.options('*', cors());
 app.use(express.json({ limit: '10mb' }));
-
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_KEY;
@@ -105,9 +94,11 @@ async function actualizarCacheDesdeGoogle() {
 
         let resDiagGAS = {
             vencimientosObj: [], fotosImgur: {}, observaciones: {}, aptosMedicos: {},
-            documentos: {}, habilitaciones: {}, dnis: {}, certificados: {}, telefonos: {}, flota: {},
-            novedades: [] // 👉 NUEVA RAM
+            documentos: {}, habilitaciones: {}, dnis: {}, certificados: {}, telefonos: {}, flota: {}
         };
+
+        // 👉 DELEGAMOS LA CARGA DE NOVEDADES AL MÓDULO EXTERNO
+        await cargarNovedades(fetchRango, ID_SPREADSHEET_MASTER, cacheDatosGlobales);
 
         let choferesRouter = {};
         try {
@@ -119,10 +110,6 @@ async function actualizarCacheDesdeGoogle() {
             });
             cacheDatosGlobales.choferesRouter = choferesRouter; 
         } catch (e) {}
-
-        // 👉 CARGA DE NOVEDADES
-   // Llamamos al archivo externo para que cargue la RAM
-        await cargarNovedades(fetchRango, ID_SPREADSHEET_MASTER, cacheDatosGlobales);
 
         let listaChoferesMaestros = [];
         try {
@@ -291,12 +278,14 @@ async function actualizarCacheDesdeGoogle() {
             diagramas: diagramasHibridos, nuevaSeccionViajes: nuevaSeccionViajes, documentos: resDiagGAS.documentos, habilitaciones: resDiagGAS.habilitaciones, certificados: resDiagGAS.certificados,
             dnis: resDiagGAS.dnis, telefonos: resDiagGAS.telefonos, observaciones: resDiagGAS.observaciones, aptosMedicos: resDiagGAS.aptosMedicos, vencimientosObj: resDiagGAS.vencimientosObj, fotosImgur: resDiagGAS.fotosImgur
         };
-        cacheDatosGlobales.novedades = resDiagGAS.novedades; // Mantenemos Novedades en RAM
         cacheDatosGlobales.tds = { campo:{}, infinia:{}, liviano:{}, euro:{}, estados:{}, codigosExtra:{} };
         cacheDatosGlobales.ultimaActualizacion = new Date().toISOString();
         
         io.emit('datos_actualizados', cacheDatosGlobales);
-        io.emit('novedades_actualizadas', cacheDatosGlobales.novedades);
+        
+        // 👉 SE EMITE AL NUEVO DASHBOARD CADA VEZ QUE LA RAM SE RE-ENSAMBLA
+        if(cacheDatosGlobales.novedades.length > 0) io.emit('novedades_actualizadas', cacheDatosGlobales.novedades);
+        
         console.log(`✅ RAM Ensamblada Completa.`);
         
     } catch (error) { console.error("❌ Error RAM:", error); } 
@@ -310,8 +299,10 @@ app.get('/api/datos', (req, res) => {
     res.json({ success: true, diagramas: cacheDatosGlobales.diagramas, tds: cacheDatosGlobales.tds, timestamp: cacheDatosGlobales.ultimaActualizacion });
 });
 
-// 👉 RUTAS EXTERNAS DE NOVEDADES
+// 👉 RUTAS EXTERNAS DE NOVEDADES (AQUÍ ENLAZAMOS EL ARCHIVO NUEVO)
 app.use('/api/novedades', createNovedadesRouter(cacheDatosGlobales, io, serviceAccountAuth, ID_SPREADSHEET_MASTER, fetchRango));
+
+
 // ==========================================
 // 🛡️ API PROXY: ESCRITURA DIRECTA DIAGRAMAS
 // ==========================================
