@@ -2829,10 +2829,10 @@ window.guardarEstadoDesdeRango = function(startIso, endIso) {
     if (btnFloat) { btnFloat.innerHTML = spinHtml; btnFloat.disabled = true; }
 
     const usuarioLogueado = localStorage.getItem('usuarioActivo') || "Sesión Perdida";
-    let peticiones = [];
     let fStart = new Date(startIso + "T12:00:00");
     let fEnd = new Date(endIso + "T12:00:00");
     let idsToUpdate = window.seleccionMultipleIds || [];
+    let itemsLote = [];
 
     idsToUpdate.forEach(safeId => {
         const chofer = datosGlobales.find(c => String(c._safeId) === String(safeId));
@@ -2873,18 +2873,25 @@ window.guardarEstadoDesdeRango = function(startIso, endIso) {
             optCur.setDate(optCur.getDate() + 1); idxOpt++;
         }
 
-        // 👉 Lanzamos la petición al servidor (Node.js puede manejar múltiples POSTs a la vez sin problemas)
-        peticiones.push(fetch(API_URL, {
-            method: 'POST',
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: 'actualizarEstado', nombre: chofer.nom, startIso: startIso, endIso: endIso, est: payloadEst, usuario: usuarioLogueado })
-        }).then(r => r.json()));
+        itemsLote.push({
+            nombre: chofer.nom,
+            startIso: startIso,
+            endIso: endIso,
+            est: payloadEst,
+            usuario: usuarioLogueado
+        });
     });
+
+    if (itemsLote.length === 0) {
+        if (btnMain) { btnMain.innerHTML = 'Aplicar'; btnMain.disabled = false; }
+        if (btnFloat) { btnFloat.innerHTML = 'Aplicar'; btnFloat.disabled = false; }
+        return;
+    }
 
     // 1. Limpiamos la UI y quitamos selecciones inmediatamente
     cerrarPanelesAcciones(); 
     
-    // 2. Repintamos la tabla (que ahora tiene los datos en RAM actualizados)
+    // 2. Repintamos la tabla (que ahora tiene los datos en RAM actualizados por Optimistic UI)
     filtrarTabla(); 
     
     if (vistaActual === 'individual' && idsToUpdate.length === 1) {
@@ -2896,12 +2903,19 @@ window.guardarEstadoDesdeRango = function(startIso, endIso) {
     window.seleccionFinContext = null;
     window.seleccionMultipleIds = [];
 
-    // 4. Confirmamos resultado del servidor
-    Promise.all(peticiones)
-    .then(results => {
-        let errors = results.filter(r => !r.success);
-        if(errors.length > 0) showToast(`Hubo errores en ${errors.length} asignaciones en lote.`, "error");
-        else showToast(`Lote procesado: ${idsToUpdate.length} conductores actualizados.`, "success");
+    // 4. Enviamos 1 única petición en lote al servidor para evitar saturación de preflights y bloqueos CORS
+    fetch(API_URL, {
+        method: 'POST',
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: 'actualizarEstadoLote', items: itemsLote })
+    })
+    .then(r => r.json())
+    .then(res => {
+        if (res.success) {
+            showToast(`Lote procesado: ${itemsLote.length} conductores actualizados.`, "success");
+        } else {
+            showToast("Error al procesar el lote en el servidor.", "error");
+        }
     })
     .catch(err => showToast("Error de red al guardar lote: " + err.message, "error"))
     .finally(() => { 

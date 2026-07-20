@@ -22,17 +22,28 @@ const server = http.createServer(app);
 // ==============================================================
 const dominiosPermitidos = [
     "https://diagramas-hp1p.onrender.com", 
+    "https://diagramasnode.onrender.com",
     "http://localhost:3000", 
     "https://dash-aa1f.onrender.com" 
 ];
 
+const checkOrigin = function(origin, callback) {
+    if (!origin) return callback(null, true);
+    if (dominiosPermitidos.includes(origin) || origin.endsWith('.onrender.com') || origin.includes('localhost') || origin.includes('127.0.0.1')) {
+        return callback(null, true);
+    }
+    return callback(null, true);
+};
+
+const corsConfig = { origin: checkOrigin, methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'], credentials: true };
+
 const io = new Server(server, { 
-    cors: { origin: dominiosPermitidos, methods: ["GET", "POST", "OPTIONS"], credentials: true },
+    cors: corsConfig,
     transports: ['websocket', 'polling']
 });
 
-app.use(cors({ origin: dominiosPermitidos, methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], credentials: true }));
-app.options('*', cors());
+app.use(cors(corsConfig));
+app.options('*', cors(corsConfig));
 app.use(express.json({ limit: '10mb' }));
 
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -391,46 +402,73 @@ app.post('/api/proxy', async (req, res) => {
             return res.json({ success: true, message: "OK" });
         }
 
-        if (body && body.action === 'actualizarEstado') {
-            let nBuscado = normalizar(body.nombre); 
-            let cur = new Date(body.startIso + "T12:00:00"); 
-            let fFin = new Date(body.endIso + "T12:00:00");
-            let idxEst = 0; let updatesBySheet = {};
-            
-            while(cur <= fFin) {
-                let tName = mesesAbrev[cur.getMonth()] + "-" + String(cur.getFullYear()).slice(-2);
-                if (!updatesBySheet[tName]) updatesBySheet[tName] = {};
-                let val = Array.isArray(body.est) ? body.est[idxEst] : body.est; 
-                if (val === 'BORRAR') val = ''; 
-                updatesBySheet[tName][cur.getDate()] = val;
-                let isoStr = cur.toISOString().split('T')[0];
-                if (cacheDatosGlobales.diagramas?.diagramas) { 
-                    let ch = cacheDatosGlobales.diagramas.diagramas.find(c => normalizar(c.nom) === nBuscado); 
-                    if (ch) { 
-                        if (!ch._diasIso) ch._diasIso = {}; ch._diasIso[isoStr] = val; 
-                        if (!ch.dias) ch.dias = {}; if (!ch.dias[tName]) ch.dias[tName] = new Array(31).fill('-').join(',');
-                        let tiraDias = ch.dias[tName].split(',');
-                        tiraDias[cur.getDate() - 1] = val === '' ? '-' : val; 
-                        ch.dias[tName] = tiraDias.join(',');
-                    } 
+        if (body && (body.action === 'actualizarEstado' || body.action === 'actualizarEstadoLote')) {
+            let items = (body.action === 'actualizarEstadoLote' && Array.isArray(body.items)) 
+                ? body.items 
+                : (Array.isArray(body.items) ? body.items : [body]);
+
+            // 1. Inyección inmediata en RAM para todos los ítems e inyección vía WebSockets
+            items.forEach(item => {
+                let nBuscado = normalizar(item.nombre);
+                let cur = new Date(item.startIso + "T12:00:00");
+                let fFin = new Date(item.endIso + "T12:00:00");
+                let idxEst = 0;
+
+                while (cur <= fFin) {
+                    let tName = mesesAbrev[cur.getMonth()] + "-" + String(cur.getFullYear()).slice(-2);
+                    let val = Array.isArray(item.est) ? item.est[idxEst] : item.est;
+                    if (val === 'BORRAR') val = '';
+                    let isoStr = cur.toISOString().split('T')[0];
+
+                    if (cacheDatosGlobales.diagramas?.diagramas) {
+                        let ch = cacheDatosGlobales.diagramas.diagramas.find(c => normalizar(c.nom) === nBuscado);
+                        if (ch) {
+                            if (!ch._diasIso) ch._diasIso = {}; ch._diasIso[isoStr] = val;
+                            if (!ch.dias) ch.dias = {}; if (!ch.dias[tName]) ch.dias[tName] = new Array(31).fill('-').join(',');
+                            let tiraDias = ch.dias[tName].split(',');
+                            tiraDias[cur.getDate() - 1] = val === '' ? '-' : val;
+                            ch.dias[tName] = tiraDias.join(',');
+                        }
+                    }
+                    cur.setDate(cur.getDate() + 1); idxEst++;
                 }
-                cur.setDate(cur.getDate() + 1); idxEst++;
-            }
+            });
+
             io.emit('datos_actualizados', cacheDatosGlobales);
 
-            for (let tab in updatesBySheet) {
-                try {
-                    const rowsTab = (await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_DIAGRAMAS}/values/'${tab}'!A:C` })).data.values || [];
-                    let rIdx = -1; for(let i=0; i<rowsTab.length; i++) { if(normalizar(rowsTab[i][1]) === nBuscado) { rIdx = i + 1; break; } }
-                    if (rIdx !== -1) {
-                        let rowData = (await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_DIAGRAMAS}/values/'${tab}'!E${rIdx}:AI${rIdx}` })).data.values?.[0] || [];
-                        while(rowData.length < 31) rowData.push(''); 
-                        for (let day in updatesBySheet[tab]) { rowData[parseInt(day)-1] = updatesBySheet[tab][day]; }
-                        await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_DIAGRAMAS}/values/'${tab}'!E${rIdx}:AI${rIdx}?valueInputOption=USER_ENTERED`, method: 'PUT', data: { values: [rowData] } });
+            // 2. Persistencia asíncrona a Google Sheets por lote en segundo plano
+            (async () => {
+                for (let item of items) {
+                    let nBuscado = normalizar(item.nombre);
+                    let cur = new Date(item.startIso + "T12:00:00");
+                    let fFin = new Date(item.endIso + "T12:00:00");
+                    let idxEst = 0; let updatesBySheet = {};
+
+                    while (cur <= fFin) {
+                        let tName = mesesAbrev[cur.getMonth()] + "-" + String(cur.getFullYear()).slice(-2);
+                        if (!updatesBySheet[tName]) updatesBySheet[tName] = {};
+                        let val = Array.isArray(item.est) ? item.est[idxEst] : item.est;
+                        if (val === 'BORRAR') val = '';
+                        updatesBySheet[tName][cur.getDate()] = val;
+                        cur.setDate(cur.getDate() + 1); idxEst++;
                     }
-                } catch(e) {}
-            }
-            return res.json({ success: true, message: "OK" });
+
+                    for (let tab in updatesBySheet) {
+                        try {
+                            const rowsTab = (await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_DIAGRAMAS}/values/'${tab}'!A:C` })).data.values || [];
+                            let rIdx = -1; for(let i=0; i<rowsTab.length; i++) { if(normalizar(rowsTab[i][1]) === nBuscado) { rIdx = i + 1; break; } }
+                            if (rIdx !== -1) {
+                                let rowData = (await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_DIAGRAMAS}/values/'${tab}'!E${rIdx}:AI${rIdx}` })).data.values?.[0] || [];
+                                while(rowData.length < 31) rowData.push(''); 
+                                for (let day in updatesBySheet[tab]) { rowData[parseInt(day)-1] = updatesBySheet[tab][day]; }
+                                await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_DIAGRAMAS}/values/'${tab}'!E${rIdx}:AI${rIdx}?valueInputOption=USER_ENTERED`, method: 'PUT', data: { values: [rowData] } });
+                            }
+                        } catch(e) {}
+                    }
+                }
+            })().catch(e => console.error("Error guardando lote en Google Sheets:", e));
+
+            return res.json({ success: true, message: "OK", count: items.length });
         }
 
         if (body && body.action === 'guardarHojaRutaRango') {
