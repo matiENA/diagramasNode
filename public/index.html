@@ -509,7 +509,7 @@ document.addEventListener('click', (e) => {
     if (isPanelVisible) {
         const clicEnPanel = panelAcciones && panelAcciones.contains(e.target);
         const clicEnFloat = floatPanel && floatPanel.contains(e.target);
-        const clicEnCelda = e.target.closest('.celda-calendario');
+        const clicEnCelda = e.target.closest('.celda-calendario') || e.target.closest('th[id^="header-day-"]');
         const clicEnZoom = e.target.closest('button') && 
                            e.target.closest('button').getAttribute('onclick') && 
                            e.target.closest('button').getAttribute('onclick').includes('cambiarZoomIndividual');
@@ -1638,7 +1638,10 @@ window.renderizarGrillaSemanal = function(choferes, container) {
         let mesDate = new Date(fBaseObj.getFullYear(), fBaseObj.getMonth() + mOffset, 1);
         let diasEnMes = new Date(mesDate.getFullYear(), mesDate.getMonth() + 1, 0).getDate();
         let bgMes = mOffset === 0 ? 'bg-indigo-100 text-indigo-900' : 'bg-gray-200 text-gray-600';
-        headerMesesHtml += `<th colspan="${diasEnMes}" class="p-2 border border-gray-300 text-center text-xs font-black uppercase tracking-widest ${bgMes}">${nombresMeses[mesDate.getMonth()]} ${mesDate.getFullYear()}</th>`;
+        let isoMonthStart = formatIsoShort(mesDate);
+        let isoMonthEnd = formatIsoShort(new Date(mesDate.getFullYear(), mesDate.getMonth(), diasEnMes));
+
+        headerMesesHtml += `<th colspan="${diasEnMes}" onclick="manejarSeleccionMes('${isoMonthStart}', '${isoMonthEnd}', event)" title="Clic para seleccionar mes completo" class="p-2 border border-gray-300 text-center text-xs font-black uppercase tracking-widest cursor-pointer hover:bg-indigo-200 hover:text-indigo-950 transition-colors select-none ${bgMes}">${nombresMeses[mesDate.getMonth()]} ${mesDate.getFullYear()}</th>`;
 
         for(let i = 1; i <= diasEnMes; i++) {
             let currentD = new Date(mesDate.getFullYear(), mesDate.getMonth(), i);
@@ -1646,7 +1649,7 @@ window.renderizarGrillaSemanal = function(choferes, container) {
             arrayFechasIteracion.push(currentD);
             
             let isToday = (currentD.getDate() === new Date().getDate() && currentD.getMonth() === new Date().getMonth() && currentD.getFullYear() === new Date().getFullYear()) ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600';
-            headerDiasHtml += `<th id="header-day-${isoStr}" onmouseover="hoverGrid(null, '${isoStr}')" class="p-0 border border-gray-300 text-center w-8 min-w-[32px] max-w-[32px] h-7 text-[10px] font-bold ${isToday} cursor-default">${i}</th>`;
+            headerDiasHtml += `<th id="header-day-${isoStr}" onmouseover="hoverGrid(null, '${isoStr}')" onclick="manejarSeleccionColumna('${isoStr}', event)" title="Clic para seleccionar columna (Shift+Clic para rango)" class="p-0 border border-gray-300 text-center w-8 min-w-[32px] max-w-[32px] h-7 text-[10px] font-bold ${isToday} cursor-pointer hover:bg-indigo-300 hover:text-indigo-950 transition-colors select-none">${i}</th>`;
         }
     });
 
@@ -2330,6 +2333,54 @@ window.manejarSeleccionCalendario = function(isoStr, event, safeId) {
     
     let rango = window.pintarCeldas2D(window.seleccionInicioContext, window.seleccionFinContext); 
     window.mostrarPanelAcciones(rango.startIso, rango.endIso); // Ignoramos safeId, usamos la matriz global
+};
+
+window.manejarSeleccionColumna = function(isoStr, event) {
+    if (event) event.stopPropagation();
+    window.getSelection().removeAllRanges(); 
+
+    const tableRows = Array.from(document.querySelectorAll('tbody tr'));
+    if (tableRows.length === 0) return;
+
+    let firstCell = tableRows[0].querySelector('.celda-calendario');
+    let lastCell = tableRows[tableRows.length - 1].querySelector('.celda-calendario');
+
+    if (!firstCell || !lastCell) return;
+
+    let firstRowId = firstCell.getAttribute('data-row');
+    let lastRowId = lastCell.getAttribute('data-row');
+
+    if (!window.seleccionInicioContext || !event.shiftKey) { 
+        window.seleccionInicioContext = { rowId: firstRowId, colIso: isoStr };
+        window.seleccionFinContext = { rowId: lastRowId, colIso: isoStr };
+    } else { 
+        window.seleccionFinContext = { rowId: lastRowId, colIso: isoStr };
+    }
+
+    let rango = window.pintarCeldas2D(window.seleccionInicioContext, window.seleccionFinContext); 
+    window.mostrarPanelAcciones(rango.startIso, rango.endIso);
+};
+
+window.manejarSeleccionMes = function(startIso, endIso, event) {
+    if (event) event.stopPropagation();
+    window.getSelection().removeAllRanges(); 
+
+    const tableRows = Array.from(document.querySelectorAll('tbody tr'));
+    if (tableRows.length === 0) return;
+
+    let firstCell = tableRows[0].querySelector('.celda-calendario');
+    let lastCell = tableRows[tableRows.length - 1].querySelector('.celda-calendario');
+
+    if (!firstCell || !lastCell) return;
+
+    let firstRowId = firstCell.getAttribute('data-row');
+    let lastRowId = lastCell.getAttribute('data-row');
+
+    window.seleccionInicioContext = { rowId: firstRowId, colIso: startIso };
+    window.seleccionFinContext = { rowId: lastRowId, colIso: endIso };
+
+    let rango = window.pintarCeldas2D(window.seleccionInicioContext, window.seleccionFinContext); 
+    window.mostrarPanelAcciones(rango.startIso, rango.endIso);
 };
 
 window.pintarCeldas2D = function(startCtx, endCtx) {
