@@ -1680,6 +1680,8 @@ window.renderizarGrillaSemanal = function(choferes, container) {
             </div>
         </div>
         
+        <div id="panel-acciones-rango" class="hidden mb-3 w-full"></div>
+        
         <div class="overflow-x-auto overflow-y-auto max-h-[calc(100vh-200px)] bg-white rounded-xl shadow-sm border border-gray-300 custom-scrollbar relative">
         <table class="w-max text-left border-collapse min-w-full" onmouseleave="clearHoverGrid()">
             <thead class="sticky top-0 z-30 bg-white outline outline-1 outline-gray-200">
@@ -1724,8 +1726,7 @@ window.renderizarGrillaSemanal = function(choferes, container) {
         tablaHtml += tr + '</tr>';
     });
     
-    let htmlFinal = tablaHtml + `</tbody></table></div>
-    <div id="panel-acciones-rango" class="hidden fixed bottom-4 right-4 z-[60] shadow-2xl w-[calc(100%-2rem)] max-w-lg sm:max-w-xl"></div>`;
+    let htmlFinal = tablaHtml + `</tbody></table></div>`;
 
     window.actualizarSinBlink('contenedor-lista-principal', htmlFinal);
     
