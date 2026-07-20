@@ -410,6 +410,7 @@ app.post('/api/proxy', async (req, res) => {
             // 1. Inyección inmediata en RAM para todos los ítems e inyección vía WebSockets
             items.forEach(item => {
                 let nBuscado = normalizar(item.nombre);
+                let safeIdItem = item._safeId || item.safeId;
                 let cur = new Date(item.startIso + "T12:00:00");
                 let fFin = new Date(item.endIso + "T12:00:00");
                 let idxEst = 0;
@@ -421,7 +422,9 @@ app.post('/api/proxy', async (req, res) => {
                     let isoStr = cur.toISOString().split('T')[0];
 
                     if (cacheDatosGlobales.diagramas?.diagramas) {
-                        let ch = cacheDatosGlobales.diagramas.diagramas.find(c => normalizar(c.nom) === nBuscado);
+                        let ch = cacheDatosGlobales.diagramas.diagramas.find(c => 
+                            (safeIdItem && c._safeId === safeIdItem) || normalizar(c.nom) === nBuscado
+                        );
                         if (ch) {
                             if (!ch._diasIso) ch._diasIso = {}; ch._diasIso[isoStr] = val;
                             if (!ch.dias) ch.dias = {}; if (!ch.dias[tName]) ch.dias[tName] = new Array(31).fill('-').join(',');
@@ -436,34 +439,75 @@ app.post('/api/proxy', async (req, res) => {
 
             io.emit('datos_actualizados', cacheDatosGlobales);
 
-            // 2. Persistencia asíncrona a Google Sheets por lote en segundo plano
+            // 2. Persistencia asíncrona optimizada a Google Sheets agrupando por pestaña (1 llamada batchUpdate por tab)
             (async () => {
+                let updatesByTab = {};
+
                 for (let item of items) {
                     let nBuscado = normalizar(item.nombre);
                     let cur = new Date(item.startIso + "T12:00:00");
                     let fFin = new Date(item.endIso + "T12:00:00");
-                    let idxEst = 0; let updatesBySheet = {};
+                    let idxEst = 0;
 
                     while (cur <= fFin) {
                         let tName = mesesAbrev[cur.getMonth()] + "-" + String(cur.getFullYear()).slice(-2);
-                        if (!updatesBySheet[tName]) updatesBySheet[tName] = {};
+                        if (!updatesByTab[tName]) updatesByTab[tName] = {};
+                        if (!updatesByTab[tName][nBuscado]) updatesByTab[tName][nBuscado] = {};
+
                         let val = Array.isArray(item.est) ? item.est[idxEst] : item.est;
                         if (val === 'BORRAR') val = '';
-                        updatesBySheet[tName][cur.getDate()] = val;
+                        updatesByTab[tName][nBuscado][cur.getDate()] = val;
                         cur.setDate(cur.getDate() + 1); idxEst++;
                     }
+                }
 
-                    for (let tab in updatesBySheet) {
-                        try {
-                            const rowsTab = (await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_DIAGRAMAS}/values/'${tab}'!A:C` })).data.values || [];
-                            let rIdx = -1; for(let i=0; i<rowsTab.length; i++) { if(normalizar(rowsTab[i][1]) === nBuscado) { rIdx = i + 1; break; } }
-                            if (rIdx !== -1) {
-                                let rowData = (await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_DIAGRAMAS}/values/'${tab}'!E${rIdx}:AI${rIdx}` })).data.values?.[0] || [];
-                                while(rowData.length < 31) rowData.push(''); 
-                                for (let day in updatesBySheet[tab]) { rowData[parseInt(day)-1] = updatesBySheet[tab][day]; }
-                                await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_DIAGRAMAS}/values/'${tab}'!E${rIdx}:AI${rIdx}?valueInputOption=USER_ENTERED`, method: 'PUT', data: { values: [rowData] } });
+                for (let tab in updatesByTab) {
+                    try {
+                        const resSheet = await serviceAccountAuth.request({ 
+                            url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_DIAGRAMAS}/values/'${tab}'!A:AI` 
+                        });
+                        const rowsTab = resSheet.data.values || [];
+                        if (rowsTab.length === 0) continue;
+
+                        let batchDataUpdates = [];
+
+                        for (let nBuscado in updatesByTab[tab]) {
+                            let rIdx = -1;
+                            for (let i = 0; i < rowsTab.length; i++) {
+                                if (normalizar(rowsTab[i][1]) === nBuscado) {
+                                    rIdx = i + 1;
+                                    break;
+                                }
                             }
-                        } catch(e) {}
+
+                            if (rIdx !== -1) {
+                                let rowData = rowsTab[rIdx - 1].slice(4, 35) || [];
+                                while (rowData.length < 31) rowData.push('');
+
+                                let diasModificados = updatesByTab[tab][nBuscado];
+                                for (let day in diasModificados) {
+                                    rowData[parseInt(day) - 1] = diasModificados[day];
+                                }
+
+                                batchDataUpdates.push({
+                                    range: `'${tab}'!E${rIdx}:AI${rIdx}`,
+                                    values: [rowData]
+                                });
+                            }
+                        }
+
+                        if (batchDataUpdates.length > 0) {
+                            await serviceAccountAuth.request({
+                                url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_DIAGRAMAS}/values:batchUpdate`,
+                                method: 'POST',
+                                data: {
+                                    valueInputOption: 'USER_ENTERED',
+                                    data: batchDataUpdates
+                                }
+                            });
+                        }
+                    } catch (errTab) {
+                        console.error(`Error en actualización masiva de la pestaña ${tab}:`, errTab.message);
                     }
                 }
             })().catch(e => console.error("Error guardando lote en Google Sheets:", e));
