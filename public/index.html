@@ -462,6 +462,35 @@ function desbloquearSistema() {
    
 }
 
+window.cerrarPanelesAcciones = function() {
+    window.seleccionInicioContext = null;
+    window.seleccionFinContext = null;
+    window.seleccionMultipleIds = [];
+    seleccionInicioIso = null;
+    currentEndIso = null;
+
+    const panelAcciones = document.getElementById('panel-acciones-rango');
+    if (panelAcciones) panelAcciones.classList.add('hidden');
+
+    const floatPanel = document.getElementById('floating-quick-actions');
+    if (floatPanel) floatPanel.classList.add('hidden');
+
+    const headerKm = document.getElementById('header-km-rango');
+    if (headerKm) headerKm.classList.add('hidden');
+
+    document.querySelectorAll('.celda-calendario').forEach(el => {
+        el.classList.remove('seleccionada', 'brightness-110');
+    });
+
+    if (conductorSeleccionadoId) {
+        const choferActivo = datosGlobales.find(c => String(c._safeId) === String(conductorSeleccionadoId));
+        if (choferActivo) {
+            if (typeof renderizarHistorialEventos === 'function') renderizarHistorialEventos(choferActivo.nom);
+            if (typeof renderizarAptosMedicos === 'function') renderizarAptosMedicos(choferActivo.nom); 
+        }
+    }
+};
+
 document.addEventListener('click', (e) => {
     // 1. Cerrar dropdown de búsqueda individual
     const containerSelect = document.getElementById('custom-select-container');
@@ -472,45 +501,21 @@ document.addEventListener('click', (e) => {
 
     // 2. Deshacer selección del calendario al hacer clic fuera
     const panelAcciones = document.getElementById('panel-acciones-rango');
+    const floatPanel = document.getElementById('floating-quick-actions');
     
-    if (panelAcciones && !panelAcciones.classList.contains('hidden')) {
-        const clicEnPanel = panelAcciones.contains(e.target);
+    const isPanelVisible = (panelAcciones && !panelAcciones.classList.contains('hidden')) || 
+                           (floatPanel && !floatPanel.classList.contains('hidden'));
+
+    if (isPanelVisible) {
+        const clicEnPanel = panelAcciones && panelAcciones.contains(e.target);
+        const clicEnFloat = floatPanel && floatPanel.contains(e.target);
         const clicEnCelda = e.target.closest('.celda-calendario');
         const clicEnZoom = e.target.closest('button') && 
                            e.target.closest('button').getAttribute('onclick') && 
                            e.target.closest('button').getAttribute('onclick').includes('cambiarZoomIndividual');
 
-        if (!clicEnPanel && !clicEnCelda && !clicEnZoom) {
-            
-            // 👉 AQUI LIMPIAMOS LAS NUEVAS VARIABLES MATRICIALES (y las antiguas por compatibilidad)
-            window.seleccionInicioContext = null;
-            window.seleccionFinContext = null;
-            window.seleccionMultipleIds = [];
-            
-            // Mantenemos estas por compatibilidad con la vista individual si hace falta
-            seleccionInicioIso = null;
-            currentEndIso = null;
-            
-            panelAcciones.classList.add('hidden');
-            const headerKm = document.getElementById('header-km-rango');
-            if (headerKm) headerKm.classList.add('hidden');
-
-            document.querySelectorAll('.celda-calendario').forEach(el => {
-                el.classList.remove('seleccionada', 'brightness-110');
-            });
-
-            if (conductorSeleccionadoId) {
-                const choferActivo = datosGlobales.find(c => String(c._safeId) === String(conductorSeleccionadoId));
-                
-                if (choferActivo) {
-                    if (typeof renderizarHistorialEventos === 'function') {
-                        renderizarHistorialEventos(choferActivo.nom);
-                    }
-                    if (typeof renderizarAptosMedicos === 'function') {
-                        renderizarAptosMedicos(choferActivo.nom); 
-                    }
-                }
-            }
+        if (!clicEnPanel && !clicEnFloat && !clicEnCelda && !clicEnZoom) {
+            window.cerrarPanelesAcciones();
         }
     }
 });
@@ -1683,6 +1688,7 @@ window.renderizarGrillaSemanal = function(choferes, container) {
         <div id="panel-acciones-rango" class="hidden mb-3 w-full"></div>
         
         <div class="overflow-x-auto overflow-y-auto max-h-[calc(100vh-200px)] bg-white rounded-xl shadow-sm border border-gray-300 custom-scrollbar relative">
+        <div id="floating-quick-actions" class="hidden fixed bottom-4 right-4 z-[70]"></div>
         <table class="w-max text-left border-collapse min-w-full" onmouseleave="clearHoverGrid()">
             <thead class="sticky top-0 z-30 bg-white outline outline-1 outline-gray-200">
                 <tr>
@@ -2706,13 +2712,13 @@ window.mostrarPanelAcciones = function(startIso, endIso) {
                     <span class="text-base sm:text-lg font-black tracking-wide">${textoFecha}</span>
                 </div>
                 <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto shrink-0 items-center bg-indigo-800/50 p-1.5 rounded-xl border border-indigo-700/50 shadow-inner">
-                    <select id="quick-estado-multi" class="bg-indigo-950 border-none text-white text-xs sm:text-sm rounded-lg focus:ring-2 focus:ring-indigo-400 block w-full sm:w-auto p-2 outline-none font-bold cursor-pointer text-left min-w-[150px]">
+                    <select id="quick-estado-multi" class="bg-indigo-950 border-none text-white text-xs sm:text-sm rounded-lg focus:ring-2 focus:ring-indigo-400 block w-full sm:w-auto p-2 outline-none font-bold cursor-pointer text-left min-w-[150px]" onchange="if(document.getElementById('quick-estado-multi-float')) document.getElementById('quick-estado-multi-float').value = this.value;">
                         <option value="" disabled selected>👉 Elegir Estado...</option><option value="OPERATIVO">✅ Activo</option><option value="F">🔵 Franco (F)</option><option value="FSF">🔵 Franco SF (FSF)</option><option value="V">🟡 Vacaciones (V)</option><option value="VSF">🟡 Vacac. SF (VSF)</option><option value="IND">🔴 Indisp. (IND)</option><option value="A">🔴 Ausencia (A)</option><option value="E">🔴 Enfermedad (E)</option><option value="ART">🟣 ART</option><option value="S">🟠 Suspensión (S)</option><option value="BORRAR">🗑️ Borrar Celda</option>
                     </select>
                     <button id="btn-quick-save" onclick="guardarEstadoDesdeRango('${startIso}', '${endIso}')" class="w-full sm:w-auto px-4 py-2 bg-white text-indigo-900 text-xs sm:text-sm font-black rounded-lg hover:bg-indigo-50 hover:scale-[1.02] transition-all flex justify-center items-center gap-1.5 shadow-md">Aplicar</button>
                 </div>
             </div>
-            <button onclick="document.getElementById('panel-acciones-rango').classList.add('hidden')" class="absolute top-3.5 right-3.5 text-indigo-300 hover:text-white p-1 rounded-lg hover:bg-indigo-800/60 transition-colors" title="Cerrar panel">
+            <button onclick="cerrarPanelesAcciones()" class="absolute top-3.5 right-3.5 text-indigo-300 hover:text-white p-1 rounded-lg hover:bg-indigo-800/60 transition-colors" title="Cerrar panel">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
             </button>
 
@@ -2731,6 +2737,28 @@ window.mostrarPanelAcciones = function(startIso, endIso) {
         </div>`;
     
     panel.classList.remove('hidden');
+
+    const floatPanel = document.getElementById('floating-quick-actions');
+    if (floatPanel) {
+        floatPanel.innerHTML = `
+            <div class="bg-indigo-950/95 backdrop-blur-md text-white p-3 rounded-2xl shadow-2xl border border-indigo-700/80 flex flex-col sm:flex-row items-center gap-3 animate-[fadeInUp_0.2s_ease-out] relative">
+                <div class="flex flex-col pr-6 sm:pr-0">
+                    <span class="text-indigo-300 text-[9px] font-bold uppercase tracking-wider block">Rango (${diffDays}d) ${isMulti ? '• MULTIPLE' : ''}</span>
+                    <span class="text-xs sm:text-sm font-black tracking-wide whitespace-nowrap">${textoFecha}</span>
+                </div>
+                <div class="flex items-center gap-2 bg-indigo-900/80 p-1.5 rounded-xl border border-indigo-700/50 shadow-inner w-full sm:w-auto">
+                    <select id="quick-estado-multi-float" class="bg-indigo-950 border-none text-white text-xs sm:text-sm rounded-lg focus:ring-2 focus:ring-indigo-400 block w-full sm:w-auto p-2 outline-none font-bold cursor-pointer text-left min-w-[145px]" onchange="if(document.getElementById('quick-estado-multi')) document.getElementById('quick-estado-multi').value = this.value;">
+                        <option value="" disabled selected>👉 Elegir Estado...</option><option value="OPERATIVO">✅ Activo</option><option value="F">🔵 Franco (F)</option><option value="FSF">🔵 Franco SF (FSF)</option><option value="V">🟡 Vacaciones (V)</option><option value="VSF">🟡 Vacac. SF (VSF)</option><option value="IND">🔴 Indisp. (IND)</option><option value="A">🔴 Ausencia (A)</option><option value="E">🔴 Enfermedad (E)</option><option value="ART">🟣 ART</option><option value="S">🟠 Suspensión (S)</option><option value="BORRAR">🗑️ Borrar Celda</option>
+                    </select>
+                    <button id="btn-quick-save-float" onclick="guardarEstadoDesdeRango('${startIso}', '${endIso}')" class="px-4 py-2 bg-white text-indigo-950 text-xs sm:text-sm font-black rounded-lg hover:bg-indigo-50 hover:scale-[1.03] active:scale-95 transition-all flex justify-center items-center gap-1.5 shadow-md shrink-0">Aplicar</button>
+                </div>
+                <button onclick="cerrarPanelesAcciones()" class="absolute top-2 right-2 text-indigo-300 hover:text-white p-1 rounded-lg hover:bg-indigo-800/60 transition-colors" title="Cerrar">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>`;
+        floatPanel.classList.remove('hidden');
+    }
+
     if(document.getElementById('header-km-rango-val')) { 
         document.getElementById('header-km-rango-val').innerHTML = `${totalKmRango.toLocaleString('es-AR')} <span class="text-xs text-indigo-500 font-bold">km</span>`; 
         document.getElementById('header-km-rango').classList.remove('hidden'); 
@@ -2738,12 +2766,16 @@ window.mostrarPanelAcciones = function(startIso, endIso) {
 };
 
 window.guardarEstadoDesdeRango = function(startIso, endIso) {
-    const est = document.getElementById(`quick-estado-multi`).value;
+    const estFloat = document.getElementById('quick-estado-multi-float');
+    const estMain = document.getElementById('quick-estado-multi');
+    const est = (estFloat && estFloat.value) || (estMain && estMain.value);
     if (!est) return showToast("Por favor, seleccione un estado.", "error");
 
-    const btn = document.getElementById('btn-quick-save');
-    btn.innerHTML = `<span class="animate-spin inline-block w-4 h-4 border-2 border-indigo-900 border-t-transparent rounded-full"></span>`;
-    btn.disabled = true;
+    const btnMain = document.getElementById('btn-quick-save');
+    const btnFloat = document.getElementById('btn-quick-save-float');
+    const spinHtml = `<span class="animate-spin inline-block w-4 h-4 border-2 border-indigo-900 border-t-transparent rounded-full"></span>`;
+    if (btnMain) { btnMain.innerHTML = spinHtml; btnMain.disabled = true; }
+    if (btnFloat) { btnFloat.innerHTML = spinHtml; btnFloat.disabled = true; }
 
     const usuarioLogueado = localStorage.getItem('usuarioActivo') || "Sesión Perdida";
     let peticiones = [];
@@ -2799,8 +2831,7 @@ window.guardarEstadoDesdeRango = function(startIso, endIso) {
     });
 
     // 1. Limpiamos la UI y quitamos selecciones inmediatamente
-    document.getElementById('panel-acciones-rango').classList.add('hidden'); 
-    document.querySelectorAll('.celda-calendario').forEach(el => el.classList.remove('seleccionada', 'brightness-110')); 
+    cerrarPanelesAcciones(); 
     
     // 2. Repintamos la tabla (que ahora tiene los datos en RAM actualizados)
     filtrarTabla(); 
@@ -2822,8 +2853,11 @@ window.guardarEstadoDesdeRango = function(startIso, endIso) {
         else showToast(`Lote procesado: ${idsToUpdate.length} conductores actualizados.`, "success");
     })
     .catch(err => showToast("Error de red al guardar lote: " + err.message, "error"))
-    .finally(() => { btn.innerHTML = 'Aplicar'; btn.disabled = false; });
-    };
+    .finally(() => { 
+        if (btnMain) { btnMain.innerHTML = 'Aplicar'; btnMain.disabled = false; }
+        if (btnFloat) { btnFloat.innerHTML = 'Aplicar'; btnFloat.disabled = false; }
+    });
+};
 
     window.guardarDocs = function(nombre) {
         const exVen = document.getElementById('doc-exam-ven').value; 
