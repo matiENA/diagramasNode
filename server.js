@@ -119,7 +119,7 @@ async function actualizarCacheDesdeGoogle() {
             rowsDB.forEach(row => {
                 let id = String(row[0] || "").trim();
                 if (!id) return;
-                choferesRouter[id] = { id: id, nombre: String(row[1] || "").trim(), dni: String(row[2] || "").replace(/\D/g, ''), cuil: String(row[4] || "").replace(/\D/g, ''), dniFallback: String(row[6] || "").replace(/\D/g, '') };
+                choferesRouter[id] = { id: id, nombre: String(row[1] || "").trim(), dni: String(row[2] || "").replace(/\D/g, ''), cuil: String(row[4] || "").replace(/\D/g, ''), nombreDiagrama: String(row[5] || "").trim(), dniFallback: String(row[6] || "").replace(/\D/g, '') };
             });
             cacheDatosGlobales.choferesRouter = choferesRouter; 
         } catch (e) {}
@@ -258,12 +258,25 @@ async function actualizarCacheDesdeGoogle() {
 
             let traductorCuil = {}; let traductorDni = {};
             let cuilToDni = {}; let dniToRouterName = {};
+            let cuilToDiagramaName = {}; let dniToDiagramaName = {};
             
             if (cacheDatosGlobales.choferesRouter) {
                 for (let key in cacheDatosGlobales.choferesRouter) {
-                    let c = cacheDatosGlobales.choferesRouter[key]; let nombreOficial = normalizar(c.nombre);
-                    if (c.cuil) { traductorCuil[c.cuil] = nombreOficial; if (c.dni) cuilToDni[c.cuil] = String(parseInt(c.dni, 10)); }
-                    if (c.dni) { let d = String(parseInt(c.dni, 10)); traductorDni[d] = nombreOficial; dniToRouterName[d] = nombreOficial; }
+                    let c = cacheDatosGlobales.choferesRouter[key]; 
+                    let nombreOficial = normalizar(c.nombre);
+                    let nombreDiagrama = normalizar(c.nombreDiagrama);
+                    
+                    if (c.cuil) { 
+                        traductorCuil[c.cuil] = nombreOficial; 
+                        if (c.dni) cuilToDni[c.cuil] = String(parseInt(c.dni, 10)); 
+                        if (nombreDiagrama) cuilToDiagramaName[c.cuil] = nombreDiagrama;
+                    }
+                    if (c.dni) { 
+                        let d = String(parseInt(c.dni, 10)); 
+                        traductorDni[d] = nombreOficial; 
+                        dniToRouterName[d] = nombreOficial; 
+                        if (nombreDiagrama) dniToDiagramaName[d] = nombreDiagrama;
+                    }
                 }
             }
 
@@ -278,6 +291,7 @@ async function actualizarCacheDesdeGoogle() {
                 let cuilCelda = String(r[4] || "").replace(/\D/g, ''); 
                 let dniCelda = cuilToDni[cuilCelda];
                 let diagName = dniCelda ? dniToDiagramasName[dniCelda] : null;
+                let explicitDiagName = cuilToDiagramaName[cuilCelda];
                 let routerName = dniCelda ? dniToRouterName[dniCelda] : null;
                 let fallbackRouterName = traductorCuil[cuilCelda];
                 let sheetName = normalizar(r[1]);
@@ -287,6 +301,7 @@ async function actualizarCacheDesdeGoogle() {
                     let obj = { ven: v, estado: calcEst(r[8]) };
                     if (sheetName) resDiagGAS.documentos[sheetName] = obj;
                     if (diagName) resDiagGAS.documentos[diagName] = obj;
+                    if (explicitDiagName) resDiagGAS.documentos[explicitDiagName] = obj;
                     if (routerName) resDiagGAS.documentos[routerName] = obj;
                     if (fallbackRouterName) resDiagGAS.documentos[fallbackRouterName] = obj;
                 }
@@ -297,6 +312,7 @@ async function actualizarCacheDesdeGoogle() {
                 let dniCelda = rawDni ? String(parseInt(rawDni, 10)) : "";
                 
                 let diagName = dniCelda ? dniToDiagramasName[dniCelda] : null;
+                let explicitDiagName = dniCelda ? dniToDiagramaName[dniCelda] : null;
                 let routerName = dniCelda ? dniToRouterName[dniCelda] : null;
                 let fallbackRouterName = traductorDni[dniCelda];
                 let sheetName = normalizar(r[1]);
@@ -306,6 +322,7 @@ async function actualizarCacheDesdeGoogle() {
                     let obj = { ven: c, estado: calcEst(r[3]) };
                     if (sheetName) resDiagGAS.certificados[sheetName] = obj;
                     if (diagName) resDiagGAS.certificados[diagName] = obj;
+                    if (explicitDiagName) resDiagGAS.certificados[explicitDiagName] = obj;
                     if (routerName) resDiagGAS.certificados[routerName] = obj;
                     if (fallbackRouterName) resDiagGAS.certificados[fallbackRouterName] = obj;
                 } 
@@ -313,6 +330,7 @@ async function actualizarCacheDesdeGoogle() {
                     let obj = { ven: l, estado: calcEst(r[4]) };
                     if (sheetName) resDiagGAS.habilitaciones[sheetName] = obj;
                     if (diagName) resDiagGAS.habilitaciones[diagName] = obj;
+                    if (explicitDiagName) resDiagGAS.habilitaciones[explicitDiagName] = obj;
                     if (routerName) resDiagGAS.habilitaciones[routerName] = obj;
                     if (fallbackRouterName) resDiagGAS.habilitaciones[fallbackRouterName] = obj;
                 } 
