@@ -257,17 +257,67 @@ async function actualizarCacheDesdeGoogle() {
             const calcEst = (s) => { if (!s) return 'OK'; let p = String(s).split('/'); if(p.length !== 3) return 'OK'; let d = Math.ceil((new Date(p[2], p[1]-1, p[0]) - new Date()) / 86400000); return d < 0 ? 'VENCIDO' : (d <= 30 ? 'POR_VENCER' : 'VIGENTE'); };
 
             let traductorCuil = {}; let traductorDni = {};
+            let cuilToDni = {}; let dniToRouterName = {};
+            
             if (cacheDatosGlobales.choferesRouter) {
                 for (let key in cacheDatosGlobales.choferesRouter) {
                     let c = cacheDatosGlobales.choferesRouter[key]; let nombreOficial = normalizar(c.nombre);
-                    if (c.cuil) traductorCuil[c.cuil] = nombreOficial;
-                    if (c.dni) traductorDni[c.dni] = nombreOficial;
+                    if (c.cuil) { traductorCuil[c.cuil] = nombreOficial; if (c.dni) cuilToDni[c.cuil] = String(parseInt(c.dni, 10)); }
+                    if (c.dni) { let d = String(parseInt(c.dni, 10)); traductorDni[d] = nombreOficial; dniToRouterName[d] = nombreOficial; }
                 }
             }
 
-            rowsDoc.forEach(r => { let cuilCelda = String(r[4] || "").replace(/\D/g, ''); let n = traductorCuil[cuilCelda] || normalizar(r[1]); let v = fRev(r[8]); if (n && v) resDiagGAS.documentos[n] = { ven: v, estado: calcEst(r[8]) }; });
-            rowsHab.forEach(r => { let dniCelda = String(r[2] || "").replace(/\D/g, ''); let n = traductorDni[dniCelda] || normalizar(r[1]); let c = fRev(r[3]); let l = fRev(r[4]); if (n) { if (c) resDiagGAS.certificados[n] = { ven: c, estado: calcEst(r[3]) }; if (l) resDiagGAS.habilitaciones[n] = { ven: l, estado: calcEst(r[4]) }; } });
-        } catch(e) {}
+            let dniToDiagramasName = {};
+            for (let norm in dnisMap) {
+                if (dnisMap[norm] && dnisMap[norm].dni) {
+                    dniToDiagramasName[dnisMap[norm].dni] = norm;
+                }
+            }
+
+            rowsDoc.forEach(r => { 
+                let cuilCelda = String(r[4] || "").replace(/\D/g, ''); 
+                let dniCelda = cuilToDni[cuilCelda];
+                let diagName = dniCelda ? dniToDiagramasName[dniCelda] : null;
+                let routerName = dniCelda ? dniToRouterName[dniCelda] : null;
+                let fallbackRouterName = traductorCuil[cuilCelda];
+                let sheetName = normalizar(r[1]);
+                let v = fRev(r[8]); 
+
+                if (v) {
+                    let obj = { ven: v, estado: calcEst(r[8]) };
+                    if (sheetName) resDiagGAS.documentos[sheetName] = obj;
+                    if (diagName) resDiagGAS.documentos[diagName] = obj;
+                    if (routerName) resDiagGAS.documentos[routerName] = obj;
+                    if (fallbackRouterName) resDiagGAS.documentos[fallbackRouterName] = obj;
+                }
+            });
+
+            rowsHab.forEach(r => { 
+                let rawDni = String(r[2] || "").replace(/\D/g, '');
+                let dniCelda = rawDni ? String(parseInt(rawDni, 10)) : "";
+                
+                let diagName = dniCelda ? dniToDiagramasName[dniCelda] : null;
+                let routerName = dniCelda ? dniToRouterName[dniCelda] : null;
+                let fallbackRouterName = traductorDni[dniCelda];
+                let sheetName = normalizar(r[1]);
+                let c = fRev(r[3]); let l = fRev(r[4]); 
+
+                if (c) { 
+                    let obj = { ven: c, estado: calcEst(r[3]) };
+                    if (sheetName) resDiagGAS.certificados[sheetName] = obj;
+                    if (diagName) resDiagGAS.certificados[diagName] = obj;
+                    if (routerName) resDiagGAS.certificados[routerName] = obj;
+                    if (fallbackRouterName) resDiagGAS.certificados[fallbackRouterName] = obj;
+                } 
+                if (l) { 
+                    let obj = { ven: l, estado: calcEst(r[4]) };
+                    if (sheetName) resDiagGAS.habilitaciones[sheetName] = obj;
+                    if (diagName) resDiagGAS.habilitaciones[diagName] = obj;
+                    if (routerName) resDiagGAS.habilitaciones[routerName] = obj;
+                    if (fallbackRouterName) resDiagGAS.habilitaciones[fallbackRouterName] = obj;
+                } 
+            });
+        } catch(e) { console.error("Error cargando docs/habs:", e); }
 
         let hoyAr2 = new Date(new Date().toLocaleString("en-US", {timeZone: "America/Argentina/Buenos_Aires"}));
         let offsetsMeses = [-1, 0, 1, 2, 3]; 
