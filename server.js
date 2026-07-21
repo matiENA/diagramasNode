@@ -387,6 +387,44 @@ app.get('/api/datos', (req, res) => {
 app.use('/api/novedades', createNovedadesRouter(cacheDatosGlobales, io, serviceAccountAuth, ID_SPREADSHEET_MASTER, fetchRango));
 
 
+app.post('/api/auth/login', async (req, res) => {
+    try {
+        const { usuario, password } = req.body || {};
+        if (!usuario || !password) {
+            return res.json({ success: false, error: "Usuario y contraseña requeridos" });
+        }
+        const uClean = String(usuario).trim().toLowerCase();
+        const pClean = String(password).trim();
+
+        try {
+            const rowsUsers = await fetchRango(ID_SPREADSHEET_MASTER, "'DB_Usuarios'!A:C");
+            for (let i = 0; i < rowsUsers.length; i++) {
+                let rowU = String(rowsUsers[i][0] || "").trim().toLowerCase();
+                let rowP = String(rowsUsers[i][1] || "").trim();
+                let rol = String(rowsUsers[i][2] || "USER").trim();
+                
+                if (rowU === uClean && rowP === pClean) {
+                    const usuarioNombre = String(rowsUsers[i][0] || "").trim().toUpperCase();
+                    return res.json({ success: true, usuario: usuarioNombre, rol: rol });
+                }
+            }
+        } catch (eSheets) {
+            console.error("Error consultando DB_Usuarios en Sheets:", eSheets);
+        }
+
+        try {
+            const { data: user } = await supabase.from('usuarios_auth').select('id, usuario, rol').eq('usuario', usuario).eq('password', password).single();
+            if (user) {
+                return res.json({ success: true, usuario: String(user.usuario).toUpperCase(), rol: user.rol });
+            }
+        } catch (eSupa) {}
+
+        return res.json({ success: false, error: "Usuario o contraseña incorrectos" });
+    } catch (err) {
+        return res.status(500).json({ success: false, error: "Error en login de servidor" });
+    }
+});
+
 // ==========================================
 // 🛡️ API PROXY: ESCRITURA DIRECTA DIAGRAMAS
 // ==========================================
@@ -397,8 +435,19 @@ app.post('/api/proxy', async (req, res) => {
 
         if (body && body.action === 'login') {
             try {
+                const uClean = String(body.usuario || "").trim().toLowerCase();
+                const pClean = String(body.password || "").trim();
+                const rowsUsers = await fetchRango(ID_SPREADSHEET_MASTER, "'DB_Usuarios'!A:C");
+                for (let i = 0; i < rowsUsers.length; i++) {
+                    let rowU = String(rowsUsers[i][0] || "").trim().toLowerCase();
+                    let rowP = String(rowsUsers[i][1] || "").trim();
+                    let rol = String(rowsUsers[i][2] || "USER").trim();
+                    if (rowU === uClean && rowP === pClean) {
+                        return res.json({ success: true, token: 'auth_' + Date.now(), usuario: rowsUsers[i][0].toUpperCase(), rol: rol });
+                    }
+                }
                 const { data: user } = await supabase.from('usuarios_auth').select('id, usuario, rol').eq('usuario', body.usuario).eq('password', body.password).single();
-                return user ? res.json({ success: true, token: 'auth_' + user.id + '_' + Date.now(), rol: user.rol }) : res.json({ success: false, error: "Incorrecto." });
+                return user ? res.json({ success: true, token: 'auth_' + user.id + '_' + Date.now(), usuario: user.usuario.toUpperCase(), rol: user.rol }) : res.json({ success: false, error: "Incorrecto." });
             } catch(e) { return res.json({ success: false, error: "Error Auth" }); }
         }
 
