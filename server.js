@@ -11,7 +11,7 @@ const webhookRouter = require('./webhook');
 const { createClient } = require('@supabase/supabase-js');
 
 // 👉 IMPORTAMOS EL MÓDULO DE NOVEDADES
-const { cargarNovedades, createNovedadesRouter } = require('./novedades'); 
+const { cargarNovedades, iniciarPollingNovedades, createNovedadesRouter } = require('./novedades'); 
 
 const app = express();
 app.use(compression()); 
@@ -94,7 +94,10 @@ async function flujoEncoladoGlobal() {
     finally { ejecutandoGlobal = false; if (pendienteGlobal) { pendienteGlobal = false; flujoEncoladoGlobal(); } }
 }
 
-setTimeout(() => { flujoEncoladoGlobal(); }, 3000); 
+setTimeout(() => { 
+    flujoEncoladoGlobal(); 
+    iniciarPollingNovedades(fetchRango, ID_SPREADSHEET_MASTER, cacheDatosGlobales, io, 30000);
+}, 3000); 
 setInterval(() => { console.log("⏱️ Escaneo periódico (15 min)..."); flujoEncoladoGlobal(); }, 15 * 60 * 1000); 
 
 // ==========================================
@@ -372,7 +375,7 @@ async function actualizarCacheDesdeGoogle() {
     } catch (error) { console.error("❌ Error RAM:", error); } 
 }
 
-app.use('/api/webhook', webhookRouter(cacheDatosGlobales, io));
+app.use('/api/webhook', webhookRouter(cacheDatosGlobales, io, cargarNovedades, fetchRango, ID_SPREADSHEET_MASTER));
 app.get('/health', (req, res) => res.status(200).send('OK'));
 
 app.get('/api/datos', (req, res) => {

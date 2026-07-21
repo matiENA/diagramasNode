@@ -1,9 +1,9 @@
 const express = require('express');
 
-module.exports = function(cacheDatosGlobales, io) {
+module.exports = function(cacheDatosGlobales, io, cargarNovedades, fetchRango, ID_SPREADSHEET_MASTER) {
     const router = express.Router();
 
-    router.post('/google', (req, res) => {
+    router.post('/google', async (req, res) => {
         try {
             const body = req.body;
             const normalizar = (n) => String(n || '').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
@@ -39,7 +39,7 @@ module.exports = function(cacheDatosGlobales, io) {
                         const choferObj = cacheDatosGlobales.diagramas.diagramas.find(c => normalizar(c.nom) === nBuscado);
                         
                         if (choferObj) {
-                            const estadoLimpio = estado === "" ? "" : estado; // 👈 Si viene vacío, lo dejamos vacío
+                            const estadoLimpio = estado === "" ? "" : estado;
 
                             if (!choferObj._diasIso) choferObj._diasIso = {};
                             choferObj._diasIso[fechaIso] = estadoLimpio;
@@ -59,6 +59,45 @@ module.exports = function(cacheDatosGlobales, io) {
                     io.emit('datos_actualizados', cacheDatosGlobales);
                 }
                 return res.status(200).json({ success: true, message: "Batch de estados inyectado en RAM" });
+            }
+
+            // ==============================================================
+            // 3. WEBHOOK: NOVEDAD INDIVIDUAL O BATCH DE NOVEDADES
+            // ==============================================================
+            if (body && (body.action === 'webhook_update_novedad' || body.action === 'webhook_novedades_batch')) {
+                if (!cacheDatosGlobales.novedades) cacheDatosGlobales.novedades = [];
+                
+                const lista = body.action === 'webhook_novedades_batch' ? (body.novedades || []) : [body.novedad || body.payload || body];
+                let actualizados = 0;
+
+                lista.forEach(nov => {
+                    if (!nov || !nov.id) return;
+                    let idx = cacheDatosGlobales.novedades.findIndex(n => String(n.id) === String(nov.id));
+                    if (idx > -1) {
+                        cacheDatosGlobales.novedades[idx] = { ...cacheDatosGlobales.novedades[idx], ...nov };
+                    } else {
+                        cacheDatosGlobales.novedades.unshift({ resuelto: false, timestamp: new Date().toISOString(), ...nov });
+                    }
+                    actualizados++;
+                });
+
+                if (actualizados > 0) {
+                    console.log(`⚡ [Webhook] ${actualizados} novedad(es) actualizada(s) en RAM.`);
+                    io.emit('novedades_actualizadas', cacheDatosGlobales.novedades);
+                }
+                return res.status(200).json({ success: true, message: `${actualizados} novedad(es) inyectada(s) en RAM` });
+            }
+
+            // ==============================================================
+            // 4. WEBHOOK: RECARGA COMPLETA DE NOVEDADES DESDE GOOGLE SHEETS
+            // ==============================================================
+            if (body && body.action === 'webhook_reload_novedades') {
+                if (typeof cargarNovedades === 'function' && fetchRango && ID_SPREADSHEET_MASTER) {
+                    await cargarNovedades(fetchRango, ID_SPREADSHEET_MASTER, cacheDatosGlobales);
+                    io.emit('novedades_actualizadas', cacheDatosGlobales.novedades);
+                    console.log("⚡ [Webhook] Novedades recargadas completamente desde Google Sheets.");
+                    return res.status(200).json({ success: true, message: "Novedades recargadas" });
+                }
             }
 
             return res.status(200).json({ success: true, message: "Ping ignorado" });

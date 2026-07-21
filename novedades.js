@@ -2,15 +2,14 @@ const express = require('express');
 const { GoogleSpreadsheet } = require('google-spreadsheet');
 
 // ==============================================================
-// 1. CARGA INICIAL A LA RAM (Lectura del JSON desde Sheets)
+// 1. CARGA E INSPECCIÓN DE NOVEDADES EN RAM
 // ==============================================================
 async function cargarNovedades(fetchRango, ID_SPREADSHEET_MASTER, cacheDatosGlobales) {
     try {
-        cacheDatosGlobales.novedades = []; // Vaciamos para recargar
         const rowsNov = await fetchRango(ID_SPREADSHEET_MASTER, "'novedades'!A:B");
         
+        let temporalNovedades = [];
         if (rowsNov.length > 0) {
-            let temporalNovedades = [];
             rowsNov.forEach(row => {
                 let id = row[0];
                 let jsonStr = row[1];
@@ -24,15 +23,42 @@ async function cargarNovedades(fetchRango, ID_SPREADSHEET_MASTER, cacheDatosGlob
                     console.error(`Error parseando el JSON del ID ${id}:`, parseError);
                 }
             });
-            cacheDatosGlobales.novedades = temporalNovedades;
         }
+
+        // Verificamos si cambió el contenido con respecto a la RAM previa
+        const previoStr = JSON.stringify(cacheDatosGlobales.novedades || []);
+        const nuevoStr = JSON.stringify(temporalNovedades);
+        const huboCambio = previoStr !== nuevoStr;
+
+        cacheDatosGlobales.novedades = temporalNovedades;
+        return huboCambio;
     } catch (e) { 
         console.error("Error leyendo Novedades:", e); 
+        return false;
     }
 }
 
 // ==============================================================
-// 2. ENDPOINTS DE LA API (Router)
+// 2. POLLING PERIÓDICO DE NOVEDADES
+// ==============================================================
+function iniciarPollingNovedades(fetchRango, ID_SPREADSHEET_MASTER, cacheDatosGlobales, io, intervaloMs = 30000) {
+    console.log(`⏱️ Polling de Novedades activado (frecuencia: ${Math.round(intervaloMs / 1000)}s)...`);
+    
+    return setInterval(async () => {
+        try {
+            const huboCambio = await cargarNovedades(fetchRango, ID_SPREADSHEET_MASTER, cacheDatosGlobales);
+            if (huboCambio) {
+                console.log("⚡ [Polling Novedades] Se detectaron cambios externos en DB / Google Sheets. Notificando a clientes...");
+                io.emit('novedades_actualizadas', cacheDatosGlobales.novedades);
+            }
+        } catch (error) {
+            console.error("❌ Error en Polling Novedades:", error);
+        }
+    }, intervaloMs);
+}
+
+// ==============================================================
+// 3. ENDPOINTS DE LA API (Router)
 // ==============================================================
 function createNovedadesRouter(cacheDatosGlobales, io, serviceAccountAuth, ID_SPREADSHEET_MASTER, fetchRango) {
     const router = express.Router();
@@ -102,4 +128,4 @@ function createNovedadesRouter(cacheDatosGlobales, io, serviceAccountAuth, ID_SP
     return router;
 }
 
-module.exports = { cargarNovedades, createNovedadesRouter };
+module.exports = { cargarNovedades, iniciarPollingNovedades, createNovedadesRouter };
