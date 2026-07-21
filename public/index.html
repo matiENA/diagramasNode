@@ -389,6 +389,8 @@ window.sincronizarBackend = function() {
     }
     
     // --- [TAG: STATE] ---
+    window.normalizarGlobal = function(nom) { return String(nom || '').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' '); };
+    
     let zoomIndividualNivel = 3; 
     let currentEndIso = null;    
     let datosGlobales = []; 
@@ -1024,7 +1026,7 @@ window.toggleVencimientosUnidad = function(safeId) {
         const esVistaTabla = vistaActual === 'semanal';
 
         const filtrados = datosGlobales.filter(c => {
-            let nKey = (c.nom || '').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
+            let nKey = window.normalizarGlobal(c.nom);
             let datosDni = dnisGlobales[nKey];
             let dniString = datosDni ? String(datosDni.dni || datosDni).toLowerCase() : "";
 
@@ -1078,7 +1080,7 @@ window.toggleVencimientosUnidad = function(safeId) {
                 }
 
                 if (filtrosActivos.documentos && filtrosActivos.documentos.length > 0) {
-                    let n = c.nom.toLowerCase();
+                    let n = window.normalizarGlobal(c.nom);
                     let d = docsGlobales[n] || {}; let h = habsGlobales[n] || {}; let cert = certsGlobales[n] || {};
                     let dEst = evaluarEstadoDoc(d.ven, fBaseObj);
                     let hEst = evaluarEstadoDoc(h.ven, fBaseObj);
@@ -1197,7 +1199,7 @@ window.renderizarPanelFiltros = function(containerId = 'contenedor-filtros-later
     datosGlobales.forEach(c => {
         let retObj = calcularRetorno(c.dias, fechaGlobalContexto);
         if (retObj) { let iso = formatIsoShort(retObj); mapRetornos[iso] = (mapRetornos[iso] || 0) + 1; }
-        let n = c.nom.toLowerCase();
+        let n = window.normalizarGlobal(c.nom);
         let d = docsGlobales[n] || {}; let h = habsGlobales[n] || {}; let cert = certsGlobales[n] || {};
         
         let dEst = evaluarEstadoDoc(d.ven, fBaseObj);
@@ -1357,7 +1359,7 @@ window.renderizarPanelFiltros = function(containerId = 'contenedor-filtros-later
     let formatVen = (v) => v ? v.split('-').reverse().join('/') : 'S/D';
 
     datos.forEach(item => {
-        let n = item.nom.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");    
+        let n = window.normalizarGlobal(item.nom);    
         let doc = docsGlobales[n] || {ven:'', estado:'OK'}; 
         let hab = habsGlobales[n] || {ven:'', estado:'OK'};
         let cert = certsGlobales[n] || {ven:'', estado:'OK'}; 
@@ -1862,7 +1864,7 @@ window.mostrarDetalleConductor = function(safeId, mantenerSeleccion = false) {
     const chofer = datosGlobales.find(c => String(c._safeId) === String(safeId));
     if (!chofer) return;
 
-    let n = String(chofer.nom).trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
+    let n = window.normalizarGlobal(chofer.nom);
 
     let datosDni = dnisGlobales[n];
     let dniDelChofer = datosDni ? (datosDni.dni || datosDni) : null;
@@ -3070,7 +3072,7 @@ function obtenerEstadisticasConDetalle() {
             
             window.datosMetricasGlobales.TOTAL.push({_safeId: c._safeId, nom: c.nom, val: "Registrado", srv: srv});
             
-            let n = c.nom.toLowerCase();
+            let n = window.normalizarGlobal(c.nom);
             let doc = docsGlobales[n] || {}; let hab = habsGlobales[n] || {}; let cert = certsGlobales[n] || {};
             let formatVen = (v) => v ? v.split('-').reverse().join('/') : 'S/D';
 
@@ -3276,7 +3278,7 @@ function renderizarVistaMetricas(container) {
             cInact++; 
         }
         
-        let n = c.nom.toLowerCase();
+        let n = window.normalizarGlobal(c.nom);
         let dDoc = docsGlobales[n] || {};
         let dHab = habsGlobales[n] || {};
         let dCert = certsGlobales[n] || {};

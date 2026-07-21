@@ -5,6 +5,7 @@
 /notas/
 /anotaciones/
 /borradores/
+/_dbdocs/
 
 # Ignora archivos específicos sueltos en cualquier parte del proyecto:
 TODO.md
@@ -42,3 +43,5 @@ package-lock.json
 # Archivos basura del sistema operativo
 .DS_Store
 Thumbs.db
+
+cursor
