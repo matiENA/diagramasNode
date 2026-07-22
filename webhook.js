@@ -3,6 +3,15 @@ const express = require('express');
 module.exports = function(cacheDatosGlobales, io, cargarNovedades, fetchRango, ID_SPREADSHEET_MASTER) {
     const router = express.Router();
 
+    let emitTimeout = null;
+    const debouncedEmitDatos = (cache) => {
+        if (emitTimeout) clearTimeout(emitTimeout);
+        emitTimeout = setTimeout(() => {
+            io.emit('datos_actualizados', cache);
+            console.log("📡 [Socket] Broadcast debounced emitido a los clientes.");
+        }, 1500);
+    };
+
     router.post('/google', async (req, res) => {
         try {
             const body = req.body;
@@ -21,7 +30,7 @@ module.exports = function(cacheDatosGlobales, io, cargarNovedades, fetchRango, I
                         ...(cacheDatosGlobales.diagramas.nuevaSeccionViajes[chofer][fecha] || {}),
                         ...datos
                     };
-                    io.emit('datos_actualizados', cacheDatosGlobales);
+                    debouncedEmitDatos(cacheDatosGlobales);
                 }
                 return res.status(200).json({ success: true, message: "Viaje inyectado" });
             }
@@ -56,7 +65,7 @@ module.exports = function(cacheDatosGlobales, io, cargarNovedades, fetchRango, I
                         }
                     });
                     console.log(`⚡ [Webhook] Se sincronizaron ${updates.length} celdas en RAM.`);
-                    io.emit('datos_actualizados', cacheDatosGlobales);
+                    debouncedEmitDatos(cacheDatosGlobales);
                 }
                 return res.status(200).json({ success: true, message: "Batch de estados inyectado en RAM" });
             }
