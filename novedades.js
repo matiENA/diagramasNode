@@ -4,9 +4,15 @@ const { GoogleSpreadsheet } = require('google-spreadsheet');
 // ==============================================================
 // 1. CARGA E INSPECCIÓN DE NOVEDADES EN RAM
 // ==============================================================
-async function cargarNovedades(fetchRango, ID_SPREADSHEET_MASTER, cacheDatosGlobales) {
+const normalizar = (n) => String(n || '').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
+
+// ==============================================================
+// 1. CARGA E INSPECCIÓN DE NOVEDADES EN RAM
+// ==============================================================
+async function cargarNovedades(fetchRango, ID_SPREADSHEET_MASTER, cacheDatosGlobales, mapaChoferesInput = null) {
     try {
         const rowsNov = await fetchRango(ID_SPREADSHEET_MASTER, "'novedades'!A:B");
+        const mapaChoferes = mapaChoferesInput || cacheDatosGlobales.mapaNombreDiagramaAId || {};
         
         let temporalNovedades = [];
         if (rowsNov.length > 0) {
@@ -18,6 +24,18 @@ async function cargarNovedades(fetchRango, ID_SPREADSHEET_MASTER, cacheDatosGlob
                 
                 try {
                     let novedadParseada = JSON.parse(jsonStr);
+                    
+                    // 👉 Parsear con Col F (nombreDiagrama) de DB_CHOFERES para obtener id de Col A
+                    let nomChofer = novedadParseada.nom || novedadParseada.nombre || novedadParseada.chofer;
+                    if (nomChofer && mapaChoferes) {
+                        let norm = normalizar(nomChofer);
+                        let choferIdFound = mapaChoferes[norm];
+                        if (choferIdFound) {
+                            novedadParseada.chofer_id = choferIdFound;
+                            novedadParseada.id_chofer = choferIdFound;
+                        }
+                    }
+
                     temporalNovedades.push(novedadParseada);
                 } catch(parseError) {
                     console.error(`Error parseando el JSON del ID ${id}:`, parseError);
@@ -46,7 +64,7 @@ function iniciarPollingNovedades(fetchRango, ID_SPREADSHEET_MASTER, cacheDatosGl
     
     return setInterval(async () => {
         try {
-            const huboCambio = await cargarNovedades(fetchRango, ID_SPREADSHEET_MASTER, cacheDatosGlobales);
+            const huboCambio = await cargarNovedades(fetchRango, ID_SPREADSHEET_MASTER, cacheDatosGlobales, cacheDatosGlobales.mapaNombreDiagramaAId);
             if (huboCambio) {
                 console.log("⚡ [Polling Novedades] Se detectaron cambios externos en DB / Google Sheets. Notificando a clientes...");
                 io.emit('novedades_actualizadas', cacheDatosGlobales.novedades);
@@ -75,7 +93,23 @@ function createNovedadesRouter(cacheDatosGlobales, io, serviceAccountAuth, ID_SP
             if (!cacheDatosGlobales.novedades) cacheDatosGlobales.novedades = [];
 
             if (action === 'nueva') {
-                const nuevaNovedad = { id: String(Date.now()), resuelto: false, ...payload, timestamp: new Date().toISOString() };
+                let nomChofer = payload.nom || payload.nombre || payload.chofer;
+                let choferIdFound = null;
+                if (nomChofer && cacheDatosGlobales.mapaNombreDiagramaAId) {
+                    let norm = normalizar(nomChofer);
+                    choferIdFound = cacheDatosGlobales.mapaNombreDiagramaAId[norm] || null;
+                }
+
+                const choferIdFinal = choferIdFound || payload.chofer_id || payload.id_chofer || null;
+
+                const nuevaNovedad = { 
+                    id: String(Date.now()), 
+                    resuelto: false, 
+                    chofer_id: choferIdFinal,
+                    id_chofer: choferIdFinal,
+                    ...payload, 
+                    timestamp: new Date().toISOString() 
+                };
                 
                 // Optimistic Server RAM
                 cacheDatosGlobales.novedades.unshift(nuevaNovedad);

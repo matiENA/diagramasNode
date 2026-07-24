@@ -113,19 +113,26 @@ async function actualizarCacheDesdeGoogle() {
             documentos: {}, habilitaciones: {}, dnis: {}, certificados: {}, telefonos: {}, flota: {}
         };
 
-        // 👉 DELEGAMOS LA CARGA DE NOVEDADES AL MÓDULO EXTERNO
-        await cargarNovedades(fetchRango, ID_SPREADSHEET_MASTER, cacheDatosGlobales);
-
         let choferesRouter = {};
+        let mapaNombreDiagramaAId = {};
         try {
             const rowsDB = await fetchRango(ID_SPREADSHEET_MASTER, "'DB_CHOFERES'!A2:G1000");
             rowsDB.forEach(row => {
                 let id = String(row[0] || "").trim();
                 if (!id) return;
-                choferesRouter[id] = { id: id, nombre: String(row[1] || "").trim(), dni: String(row[2] || "").replace(/\D/g, ''), cuil: String(row[4] || "").replace(/\D/g, ''), nombreDiagrama: String(row[5] || "").trim(), dniFallback: String(row[6] || "").replace(/\D/g, '') };
+                let nombre = String(row[1] || "").trim();
+                let nombreDiagrama = String(row[5] || "").trim();
+                choferesRouter[id] = { id: id, nombre: nombre, dni: String(row[2] || "").replace(/\D/g, ''), cuil: String(row[4] || "").replace(/\D/g, ''), nombreDiagrama: nombreDiagrama, dniFallback: String(row[6] || "").replace(/\D/g, '') };
+
+                if (nombreDiagrama) mapaNombreDiagramaAId[normalizar(nombreDiagrama)] = id;
+                if (nombre && !mapaNombreDiagramaAId[normalizar(nombre)]) mapaNombreDiagramaAId[normalizar(nombre)] = id;
             });
             cacheDatosGlobales.choferesRouter = choferesRouter; 
+            cacheDatosGlobales.mapaNombreDiagramaAId = mapaNombreDiagramaAId;
         } catch (e) {}
+
+        // 👉 DELEGAMOS LA CARGA DE NOVEDADES AL MÓDULO EXTERNO (PASANDO EL MAPA DE CHOFERES)
+        await cargarNovedades(fetchRango, ID_SPREADSHEET_MASTER, cacheDatosGlobales, mapaNombreDiagramaAId);
 
         let listaChoferesMaestros = [];
         try {
