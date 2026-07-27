@@ -4,13 +4,30 @@ const { GoogleSpreadsheet } = require('google-spreadsheet');
 // ==============================================================
 // 🔑 AUTENTICACIÓN CON CREDENCIALES DE RUTEO
 // ==============================================================
+function formatPrivateKey(rawKey) {
+    if (!rawKey) return '';
+    let key = String(rawKey).trim();
+    if ((key.startsWith('"') && key.endsWith('"')) || (key.startsWith("'") && key.endsWith("'"))) {
+        key = key.substring(1, key.length - 1).trim();
+    }
+    return key.replace(/\\n/g, '\n');
+}
+
 const emailRuteo = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL_RUTEO || process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-const keyRuteoRaw = process.env.GOOGLE_PRIVATE_KEY_RUTEO || process.env.GOOGLE_PRIVATE_KEY;
-const keyRuteo = keyRuteoRaw ? keyRuteoRaw.replace(/\\n/g, '\n') : '';
+const keyRuteo = formatPrivateKey(process.env.GOOGLE_PRIVATE_KEY_RUTEO) || formatPrivateKey(process.env.GOOGLE_PRIVATE_KEY);
 
 const serviceAccountAuthRuteo = new JWT({
     email: emailRuteo,
     key: keyRuteo,
+    scopes: [
+        'https://www.googleapis.com/auth/spreadsheets',
+        'https://www.googleapis.com/auth/drive.readonly'
+    ],
+});
+
+const serviceAccountAuthMain = new JWT({
+    email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+    key: formatPrivateKey(process.env.GOOGLE_PRIVATE_KEY),
     scopes: [
         'https://www.googleapis.com/auth/spreadsheets',
         'https://www.googleapis.com/auth/drive.readonly'
@@ -25,17 +42,31 @@ const FOLDERS_RUTEO = [
 ];
 
 /**
- * Petición HTTP autenticada liviana para la API de Google Drive
+ * Petición HTTP autenticada liviana para la API de Google Drive (con fallback si falla la clave)
  */
 async function driveRequest(url) {
+    let token = null;
     try {
         const tokenResponse = await serviceAccountAuthRuteo.getAccessToken();
+        token = tokenResponse.token;
+    } catch (err) {
+        console.warn("⚠️ Falló token con credenciales Ruteo. Reintentando con Service Account principal:", err.message);
+        try {
+            const tokenResponseMain = await serviceAccountAuthMain.getAccessToken();
+            token = tokenResponseMain.token;
+        } catch (errMain) {
+            console.error("❌ Fallaron ambas credenciales para Google Drive:", errMain.message);
+            return null;
+        }
+    }
+
+    try {
         const res = await fetch(url, {
-            headers: { Authorization: `Bearer ${tokenResponse.token}` }
+            headers: { Authorization: `Bearer ${token}` }
         });
         return await res.json();
     } catch (err) {
-        console.error("❌ Error en Drive Request:", err.message);
+        console.error("❌ Error en Drive Request HTTP:", err.message);
         return null;
     }
 }
