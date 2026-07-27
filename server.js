@@ -10,9 +10,8 @@ const { JWT } = require('google-auth-library');
 const webhookRouter = require('./webhook');
 const { createClient } = require('@supabase/supabase-js');
 
-// 👉 IMPORTAMOS EL MÓDULO DE NOVEDADES Y RUTEO DISPO
+// 👉 IMPORTAMOS EL MÓDULO DE NOVEDADES
 const { cargarNovedades, iniciarPollingNovedades, createNovedadesRouter } = require('./novedades'); 
-const { iniciarPollingDispo } = require('./ruteoDispo'); 
 
 const app = express();
 app.use(compression()); 
@@ -69,7 +68,7 @@ const ID_SHEET_MOVIMIENTOS = process.env.MES_MOVIMIENTOS_ID || '1y5r-d6DFz6djGXr
 const mesesAbrev = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 const mesesLargo = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 
-let cacheDatosGlobales = { diagramas: null, tds: null, nombresMesActual: [], ultimaActualizacion: null, novedades: [], dispo: [] };
+let cacheDatosGlobales = { diagramas: null, tds: null, nombresMesActual: [], ultimaActualizacion: null, novedades: [] };
 
 async function fetchRango(spreadsheetId, rango, reintentos = 3) {
     for (let i = 0; i < reintentos; i++) {
@@ -98,14 +97,8 @@ async function flujoEncoladoGlobal() {
 setTimeout(() => { 
     flujoEncoladoGlobal(); 
     iniciarPollingNovedades(fetchRango, ID_SPREADSHEET_MASTER, cacheDatosGlobales, io, 30000);
-    iniciarPollingDispo(ID_SPREADSHEET_MASTER, cacheDatosGlobales, io, 10 * 60 * 1000);
 }, 3000); 
 setInterval(() => { console.log("⏱️ Escaneo periódico (15 min)..."); flujoEncoladoGlobal(); }, 15 * 60 * 1000); 
-
-// 👉 ENDPOINT HTTP PARA LECTURA DE DISPO DIARIO
-app.get('/api/dispo', (req, res) => {
-    res.json({ success: true, data: cacheDatosGlobales.dispo || [] });
-}); 
 
 // ==========================================
 // 🧠 EL CEREBRO: CONSTRUCCIÓN NATIVA
