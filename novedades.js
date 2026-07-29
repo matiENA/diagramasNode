@@ -125,7 +125,39 @@ function createNovedadesRouter(cacheDatosGlobales, io, serviceAccountAuth, ID_SP
                     if (!sheet) sheet = await docNov.addSheet({ title: 'novedades', headerValues: ['id', 'json_data'] });
                     await sheet.addRow([ nuevaNovedad.id, JSON.stringify(nuevaNovedad) ]);
                 } catch(e) { console.error("Error Escribiendo JSON Novedades:", e); }
-            } 
+            }
+            else if (action === 'editar') {
+                let index = cacheDatosGlobales.novedades.findIndex(n => String(n.id) === String(id_novedad));
+                if(index > -1) {
+                    cacheDatosGlobales.novedades[index] = {
+                        ...cacheDatosGlobales.novedades[index],
+                        ...payload,
+                        fecha_edicion: new Date().toISOString()
+                    };
+                    let novedadActualizada = cacheDatosGlobales.novedades[index];
+                    
+                    io.emit('novedades_actualizadas', cacheDatosGlobales.novedades);
+                    res.json({ success: true, data: novedadActualizada });
+
+                    try {
+                        const rowsNov = await fetchRango(ID_SPREADSHEET_MASTER, "'novedades'!A:B");
+                        let rIdx = -1;
+                        for (let i = 0; i < rowsNov.length; i++) { 
+                            if (String(rowsNov[i][0]) === String(id_novedad)) { rIdx = i + 1; break; } 
+                        }
+                        
+                        if (rIdx !== -1) {
+                            await serviceAccountAuth.request({ 
+                                url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_MASTER}/values/'novedades'!B${rIdx}?valueInputOption=USER_ENTERED`, 
+                                method: 'PUT', 
+                                data: { values: [[JSON.stringify(novedadActualizada)]] } 
+                            });
+                        }
+                    } catch(e) { console.error("Error Editando Novedad en Sheets:", e); }
+                } else { 
+                    res.status(404).json({ success: false, error: "No encontrada" }); 
+                }
+            }
             else if (action === 'resolver') {
                 let index = cacheDatosGlobales.novedades.findIndex(n => String(n.id) === String(id_novedad));
                 if(index > -1) {
