@@ -27,12 +27,18 @@ async function cargarNovedades(fetchRango, ID_SPREADSHEET_MASTER, cacheDatosGlob
                     
                     // 👉 Parsear con Col F (nombreDiagrama) de DB_CHOFERES para obtener id de Col A
                     let nomChofer = novedadParseada.nom || novedadParseada.nombre || novedadParseada.chofer;
-                    if (nomChofer && mapaChoferes) {
+                    if (nomChofer) {
                         let norm = normalizar(nomChofer);
-                        let choferIdFound = mapaChoferes[norm];
-                        if (choferIdFound) {
-                            novedadParseada.chofer_id = choferIdFound;
-                            novedadParseada.id_chofer = choferIdFound;
+                        if (mapaChoferes && mapaChoferes[norm]) {
+                            novedadParseada.chofer_id = mapaChoferes[norm];
+                            novedadParseada.id_chofer = mapaChoferes[norm];
+                        }
+                        // 👉 Auto-actualizar n_ute, tractor y srv desde la RAM de flota si están disponibles
+                        if (cacheDatosGlobales && cacheDatosGlobales.diagramas && cacheDatosGlobales.diagramas.flota && cacheDatosGlobales.diagramas.flota[norm]) {
+                            const infoF = cacheDatosGlobales.diagramas.flota[norm];
+                            if (infoF.n_ute) novedadParseada.n_ute = infoF.n_ute;
+                            if (infoF.tractor) novedadParseada.tractor = infoF.tractor;
+                            if (infoF.servicio) novedadParseada.srv = infoF.servicio;
                         }
                     }
 
