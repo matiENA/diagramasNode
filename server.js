@@ -372,6 +372,18 @@ async function actualizarCacheDesdeGoogle() {
         cacheDatosGlobales.tds = { campo:{}, infinia:{}, liviano:{}, euro:{}, estados:{}, codigosExtra:{} };
         cacheDatosGlobales.ultimaActualizacion = new Date().toISOString();
         
+        // Load users for mentions autocomplete
+        try {
+            const rowsUsuarios = await fetchRango(ID_SPREADSHEET_MASTER, "'DB_Usuarios'!A:C");
+            cacheDatosGlobales.usuarios = rowsUsuarios
+                .filter(row => row[0] && String(row[0]).trim().toLowerCase() !== 'usuario')
+                .map(row => String(row[0]).trim().toUpperCase());
+            console.log(`👥 Usuarios cargados para menciones: ${cacheDatosGlobales.usuarios.length}`);
+        } catch (eUsers) {
+            console.error('Error cargando usuarios:', eUsers);
+            if (!cacheDatosGlobales.usuarios) cacheDatosGlobales.usuarios = [];
+        }
+        
         // 👉 Auto-enriquecer novedades con los tractores / n_ute de la flota recién ensamblada y persistir en Sheets
         try {
             await enriquecerNovedadesConFlota(cacheDatosGlobales, serviceAccountAuth, ID_SPREADSHEET_MASTER, fetchRango);
@@ -394,7 +406,7 @@ app.get('/health', (req, res) => res.status(200).send('OK'));
 
 app.get('/api/datos', (req, res) => {
     if (!cacheDatosGlobales.diagramas) return res.status(503).json({ error: "Cargando DB..." });
-    res.json({ success: true, diagramas: cacheDatosGlobales.diagramas, tds: cacheDatosGlobales.tds, timestamp: cacheDatosGlobales.ultimaActualizacion });
+    res.json({ success: true, diagramas: cacheDatosGlobales.diagramas, tds: cacheDatosGlobales.tds, timestamp: cacheDatosGlobales.ultimaActualizacion, usuarios: cacheDatosGlobales.usuarios || [] });
 });
 
 // 👉 RUTAS EXTERNAS DE NOVEDADES (AQUÍ ENLAZAMOS EL ARCHIVO NUEVO)
