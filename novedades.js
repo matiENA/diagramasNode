@@ -63,16 +63,103 @@ async function cargarNovedades(fetchRango, ID_SPREADSHEET_MASTER, cacheDatosGlob
 }
 
 // ==============================================================
+// 1.B AUTO-ENRIQUECIMIENTO EN RAM Y GOOGLE SHEETS
+// ==============================================================
+/**
+ * Auto-enriquece en RAM (y opcionalmente en Google Sheets) las novedades
+ * cruzándolas con los datos de flota vigentes (n_ute, tractor, srv).
+ */
+async function enriquecerNovedadesConFlota(cacheDatosGlobales, serviceAccountAuth = null, ID_SPREADSHEET_MASTER = null, fetchRango = null) {
+    if (!cacheDatosGlobales || !cacheDatosGlobales.novedades || !cacheDatosGlobales.diagramas || !cacheDatosGlobales.diagramas.flota) {
+        return false;
+    }
+
+    const flotaMap = cacheDatosGlobales.diagramas.flota;
+    const mapaChoferes = cacheDatosGlobales.mapaNombreDiagramaAId || {};
+    let novedadesModificadas = [];
+
+    cacheDatosGlobales.novedades.forEach(nov => {
+        let nomChofer = nov.nom || nov.nombre || nov.chofer;
+        if (!nomChofer) return;
+        let norm = normalizar(nomChofer);
+
+        let modificado = false;
+        
+        // Auto-asociar chofer_id e id_chofer si faltaban
+        if (!nov.chofer_id && mapaChoferes[norm]) {
+            nov.chofer_id = mapaChoferes[norm];
+            nov.id_chofer = mapaChoferes[norm];
+            modificado = true;
+        }
+
+        const infoF = flotaMap[norm];
+        if (infoF) {
+            if (infoF.n_ute && nov.n_ute !== infoF.n_ute) {
+                nov.n_ute = infoF.n_ute;
+                modificado = true;
+            }
+            if (infoF.tractor && nov.tractor !== infoF.tractor) {
+                nov.tractor = infoF.tractor;
+                modificado = true;
+            }
+            if (infoF.servicio && nov.srv !== infoF.servicio && infoF.servicio !== 'S/A') {
+                nov.srv = infoF.servicio;
+                modificado = true;
+            }
+        }
+
+        if (modificado) {
+            novedadesModificadas.push(nov);
+        }
+    });
+
+    // Si hubo novedades enriquecidas y tenemos credenciales para Sheets, persistimos en la hoja 'novedades'
+    if (novedadesModificadas.length > 0 && serviceAccountAuth && ID_SPREADSHEET_MASTER && fetchRango) {
+        try {
+            const rowsNov = await fetchRango(ID_SPREADSHEET_MASTER, "'novedades'!A:B");
+            const batchUpdates = [];
+
+            novedadesModificadas.forEach(nov => {
+                for (let i = 0; i < rowsNov.length; i++) {
+                    if (String(rowsNov[i][0]) === String(nov.id)) {
+                        let rIdx = i + 1;
+                        batchUpdates.push(
+                            serviceAccountAuth.request({
+                                url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_MASTER}/values/'novedades'!B${rIdx}?valueInputOption=USER_ENTERED`,
+                                method: 'PUT',
+                                data: { values: [[JSON.stringify(nov)]] }
+                            })
+                        );
+                        break;
+                    }
+                }
+            });
+
+            if (batchUpdates.length > 0) {
+                await Promise.all(batchUpdates);
+                console.log(`✅ [RAM -> Sheets] Se persistieron ${batchUpdates.length} novedades con nuevo n_ute / tractor en Google Sheets.`);
+            }
+        } catch (err) {
+            console.error("Error persistiendo novedades enriquecidas en Google Sheets:", err.message);
+        }
+    }
+
+    return novedadesModificadas.length > 0;
+}
+
+// ==============================================================
 // 2. POLLING PERIÓDICO DE NOVEDADES
 // ==============================================================
-function iniciarPollingNovedades(fetchRango, ID_SPREADSHEET_MASTER, cacheDatosGlobales, io, intervaloMs = 30000) {
+function iniciarPollingNovedades(fetchRango, ID_SPREADSHEET_MASTER, cacheDatosGlobales, io, serviceAccountAuth = null, intervaloMs = 30000) {
     console.log(`⏱️ Polling de Novedades activado (frecuencia: ${Math.round(intervaloMs / 1000)}s)...`);
     
     return setInterval(async () => {
         try {
-            const huboCambio = await cargarNovedades(fetchRango, ID_SPREADSHEET_MASTER, cacheDatosGlobales, cacheDatosGlobales.mapaNombreDiagramaAId);
-            if (huboCambio) {
-                console.log("⚡ [Polling Novedades] Se detectaron cambios externos en DB / Google Sheets. Notificando a clientes...");
+            const huboCambioNov = await cargarNovedades(fetchRango, ID_SPREADSHEET_MASTER, cacheDatosGlobales, cacheDatosGlobales.mapaNombreDiagramaAId);
+            const huboCambioEnrich = await enriquecerNovedadesConFlota(cacheDatosGlobales, serviceAccountAuth, ID_SPREADSHEET_MASTER, fetchRango);
+
+            if (huboCambioNov || huboCambioEnrich) {
+                console.log("⚡ [Polling Novedades] Se detectaron cambios externos o nuevos datos de flota. Notificando a clientes...");
                 io.emit('novedades_actualizadas', cacheDatosGlobales.novedades);
             }
         } catch (error) {
@@ -101,9 +188,18 @@ function createNovedadesRouter(cacheDatosGlobales, io, serviceAccountAuth, ID_SP
             if (action === 'nueva') {
                 let nomChofer = payload.nom || payload.nombre || payload.chofer;
                 let choferIdFound = null;
-                if (nomChofer && cacheDatosGlobales.mapaNombreDiagramaAId) {
-                    let norm = normalizar(nomChofer);
-                    choferIdFound = cacheDatosGlobales.mapaNombreDiagramaAId[norm] || null;
+                let norm = nomChofer ? normalizar(nomChofer) : null;
+
+                if (norm) {
+                    if (cacheDatosGlobales.mapaNombreDiagramaAId) {
+                        choferIdFound = cacheDatosGlobales.mapaNombreDiagramaAId[norm] || null;
+                    }
+                    if (cacheDatosGlobales.diagramas && cacheDatosGlobales.diagramas.flota && cacheDatosGlobales.diagramas.flota[norm]) {
+                        const infoF = cacheDatosGlobales.diagramas.flota[norm];
+                        if (infoF.n_ute && (!payload.n_ute || payload.n_ute === 'S/D')) payload.n_ute = infoF.n_ute;
+                        if (infoF.tractor && !payload.tractor) payload.tractor = infoF.tractor;
+                        if (infoF.servicio && (!payload.srv || payload.srv === 'S/A')) payload.srv = infoF.servicio;
+                    }
                 }
 
                 const choferIdFinal = choferIdFound || payload.chofer_id || payload.id_chofer || null;
@@ -200,4 +296,4 @@ function createNovedadesRouter(cacheDatosGlobales, io, serviceAccountAuth, ID_SP
     return router;
 }
 
-module.exports = { cargarNovedades, iniciarPollingNovedades, createNovedadesRouter };
+module.exports = { cargarNovedades, enriquecerNovedadesConFlota, iniciarPollingNovedades, createNovedadesRouter };

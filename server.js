@@ -11,7 +11,7 @@ const webhookRouter = require('./webhook');
 const { createClient } = require('@supabase/supabase-js');
 
 // 👉 IMPORTAMOS EL MÓDULO DE NOVEDADES
-const { cargarNovedades, iniciarPollingNovedades, createNovedadesRouter } = require('./novedades'); 
+const { cargarNovedades, enriquecerNovedadesConFlota, iniciarPollingNovedades, createNovedadesRouter } = require('./novedades'); 
 
 const app = express();
 app.use(compression()); 
@@ -366,16 +366,23 @@ async function actualizarCacheDesdeGoogle() {
         });
 
         cacheDatosGlobales.diagramas = { 
-            diagramas: diagramasHibridos, nuevaSeccionViajes: nuevaSeccionViajes, documentos: resDiagGAS.documentos, habilitaciones: resDiagGAS.habilitaciones, certificados: resDiagGAS.certificados,
+            diagramas: diagramasHibridos, flota: resDiagGAS.flota, nuevaSeccionViajes: nuevaSeccionViajes, documentos: resDiagGAS.documentos, habilitaciones: resDiagGAS.habilitaciones, certificados: resDiagGAS.certificados,
             dnis: resDiagGAS.dnis, telefonos: resDiagGAS.telefonos, observaciones: resDiagGAS.observaciones, aptosMedicos: resDiagGAS.aptosMedicos, vencimientosObj: resDiagGAS.vencimientosObj, fotosImgur: resDiagGAS.fotosImgur
         };
         cacheDatosGlobales.tds = { campo:{}, infinia:{}, liviano:{}, euro:{}, estados:{}, codigosExtra:{} };
         cacheDatosGlobales.ultimaActualizacion = new Date().toISOString();
         
+        // 👉 Auto-enriquecer novedades con los tractores / n_ute de la flota recién ensamblada y persistir en Sheets
+        try {
+            await enriquecerNovedadesConFlota(cacheDatosGlobales, serviceAccountAuth, ID_SPREADSHEET_MASTER, fetchRango);
+        } catch (eEnrich) {
+            console.error("Error al enriquecer novedades con la flota:", eEnrich);
+        }
+
         io.emit('datos_actualizados', cacheDatosGlobales);
         
         // 👉 SE EMITE AL NUEVO DASHBOARD CADA VEZ QUE LA RAM SE RE-ENSAMBLA
-        if(cacheDatosGlobales.novedades.length > 0) io.emit('novedades_actualizadas', cacheDatosGlobales.novedades);
+        if(cacheDatosGlobales.novedades && cacheDatosGlobales.novedades.length > 0) io.emit('novedades_actualizadas', cacheDatosGlobales.novedades);
         
         console.log(`✅ RAM Ensamblada Completa.`);
         
