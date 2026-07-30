@@ -70,6 +70,12 @@ const mesesLargo = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "juli
 
 let cacheDatosGlobales = { diagramas: null, tds: null, nombresMesActual: [], ultimaActualizacion: null, novedades: [] };
 
+function getFechaArgentina() {
+    const now = new Date();
+    const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+    return new Date(utc - (3 * 3600000));
+}
+
 async function fetchRango(spreadsheetId, rango, reintentos = 3) {
     for (let i = 0; i < reintentos; i++) {
         try { return (await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(rango)}` })).data.values || []; } 
@@ -81,8 +87,30 @@ async function fetchRango(spreadsheetId, rango, reintentos = 3) {
 async function getTabName(spreadsheetId, keyword, defaultName) {
     try {
         const resMeta = await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}` });
-        const found = (resMeta.data.sheets || []).find(s => s.properties.title.toLowerCase().replace(/\s+/g, '').includes(keyword.toLowerCase().replace(/\s+/g, '')));
-        return found ? found.properties.title : defaultName;
+        const sheets = (resMeta.data.sheets || []).map(s => s.properties.title);
+        if (!sheets || sheets.length === 0) return defaultName;
+
+        let hoyAr = getFechaArgentina();
+        let mesNombre = mesesLargo[hoyAr.getMonth()].toLowerCase();
+        let mesAbrev = mesesAbrev[hoyAr.getMonth()].toLowerCase();
+
+        const normKw = keyword.toLowerCase().replace(/\s+/g, '');
+        
+        let foundCurrent = sheets.slice().reverse().find(s => {
+            let low = s.toLowerCase();
+            return (low.includes(mesNombre) || low.includes(mesAbrev)) && low.replace(/\s+/g, '').includes(normKw);
+        });
+        if (foundCurrent) return foundCurrent;
+
+        let foundLast = sheets.slice().reverse().find(s => s.toLowerCase().replace(/\s+/g, '').includes(normKw));
+        if (foundLast) return foundLast;
+
+        if (normKw.includes("mov")) {
+            let foundMov = sheets.slice().reverse().find(s => s.toLowerCase().includes("mov"));
+            if (foundMov) return foundMov;
+        }
+
+        return sheets[0] || defaultName;
     } catch(e) { return defaultName; }
 }
 
@@ -136,7 +164,7 @@ async function actualizarCacheDesdeGoogle() {
 
         let listaChoferesMaestros = [];
         try {
-            let hoyAr = new Date(new Date().toLocaleString("en-US", {timeZone: "America/Argentina/Buenos_Aires"}));
+            let hoyAr = getFechaArgentina();
             let anio = hoyAr.getFullYear(); 
             let nombreHojaActual = mesesAbrev[hoyAr.getMonth()] + "-" + String(anio).slice(-2);
             
@@ -152,14 +180,14 @@ async function actualizarCacheDesdeGoogle() {
             
             if (rowsMov.length > 0) {
                 let colFecha = -1, colNom = -1;
-                for (let offset = 0; offset >= -3; offset--) {
+                for (let offset = 0; offset >= -10; offset--) {
                     let d = new Date(hoyAr); d.setDate(d.getDate() + offset);
                     let tD = d.getDate(); let tM = d.getMonth(); let tY = d.getFullYear();
                     let tD_pad = String(tD).padStart(2, '0'); let tM_pad = String(tM + 1).padStart(2, '0'); let tY_short = String(tY).slice(-2);
                     let regexFechas = [ new RegExp(`\\b0?${tD}[\\s/\\-de]+${mesesLargo[tM]}\\b`, 'i'), new RegExp(`\\b0?${tD}[\\s/\\-]+${mesesAbrev[tM]}\\b`, 'i'), new RegExp(`\\b${tD_pad}/${tM_pad}/${tY}\\b`), new RegExp(`\\b${tD}/${tM+1}/${tY}\\b`), new RegExp(`\\b${tD_pad}/${tM_pad}/${tY_short}\\b`), new RegExp(`\\b${tD}/${tM+1}/${tY_short}\\b`) ];
                     for (let r = 0; r < Math.min(5, rowsMov.length); r++) {
                         for (let c = 3; c < rowsMov[r].length; c++) {
-                            let val = String(rowsMov[r][c] || "").toLowerCase().trim();
+                            let val = String(rowsMov[r][c] || "").toLowerCase().replace(/\s+/g, ' ').trim();
                             if (regexFechas.some(rx => rx.test(val))) { 
                                 colFecha = c; 
                                 for (let searchCol = colFecha; searchCol >= 0; searchCol--) {
@@ -179,6 +207,29 @@ async function actualizarCacheDesdeGoogle() {
                     if (colFecha !== -1) break; 
                 }
 
+                if (colFecha === -1) {
+                    const regexAnyDate = /\b\d{1,2}[\s/\-de]+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre|ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)\b/i;
+                    for (let r = 0; r < Math.min(5, rowsMov.length); r++) {
+                        for (let c = rowsMov[r].length - 1; c >= 3; c--) {
+                            let val = String(rowsMov[r][c] || "").toLowerCase().replace(/\s+/g, ' ').trim();
+                            if (regexAnyDate.test(val)) {
+                                colFecha = c;
+                                for (let searchCol = colFecha; searchCol >= 0; searchCol--) {
+                                    let encontrado = false;
+                                    for (let searchRow = 0; searchRow < 6; searchRow++) {
+                                        let cellVal = String(rowsMov[searchRow]?.[searchCol] || "").toLowerCase().trim();
+                                        if (cellVal === "chofer" || cellVal === "choferes" || cellVal.includes("apellido y nombre")) { colNom = searchCol; encontrado = true; break; }
+                                    }
+                                    if (encontrado) break;
+                                }
+                                if (colNom === -1) colNom = c - 3;
+                                break;
+                            }
+                        }
+                        if (colFecha !== -1) break;
+                    }
+                }
+
                 if (colNom !== -1) {
                     for (let i = 2; i < rowsMov.length; i++) {
                         let n_ute = String(rowsMov[i][2] || "").trim(), tractor = String(rowsMov[i][4] || "").trim(), semi = String(rowsMov[i][5] || "").trim(); 
@@ -186,7 +237,22 @@ async function actualizarCacheDesdeGoogle() {
                         let nomRaw = String(rowsMov[i][colNom] || "").trim();
                         if (!nomRaw || nomRaw === "1" || !/[a-zA-Záéíóú]/.test(nomRaw)) continue;
                         let norm = normalizar(nomRaw);
-                        if (resDiagGAS.flota[norm]) { resDiagGAS.flota[norm].n_ute = n_ute; resDiagGAS.flota[norm].tractor = tractor; resDiagGAS.flota[norm].semi = semi; } 
+                        
+                        let targetKey = norm;
+                        if (!resDiagGAS.flota[targetKey] && mapaNombreDiagramaAId) {
+                            let choferId = mapaNombreDiagramaAId[norm];
+                            if (choferId && choferesRouter[choferId]) {
+                                let diagName = normalizar(choferesRouter[choferId].nombreDiagrama || choferesRouter[choferId].nombre);
+                                if (resDiagGAS.flota[diagName]) targetKey = diagName;
+                            }
+                        }
+                        if (!resDiagGAS.flota[targetKey]) {
+                            let keys = Object.keys(resDiagGAS.flota);
+                            let foundKey = keys.find(k => k === norm || k.includes(norm) || norm.includes(k));
+                            if (foundKey) targetKey = foundKey;
+                        }
+
+                        if (resDiagGAS.flota[targetKey]) { resDiagGAS.flota[targetKey].n_ute = n_ute; resDiagGAS.flota[targetKey].tractor = tractor; resDiagGAS.flota[targetKey].semi = semi; } 
                         else { resDiagGAS.flota[norm] = { tractor: tractor, semi: semi, servicio: 'S/A', n_ute: n_ute, td: '-', hex1: '', hex2: '' }; listaChoferesMaestros.push({ nombre: nomRaw, norm }); }
                     }
                 } 

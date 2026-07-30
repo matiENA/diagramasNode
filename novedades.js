@@ -342,6 +342,45 @@ function createNovedadesRouter(cacheDatosGlobales, io, serviceAccountAuth, ID_SP
         }
     });
 
+    // POST: Quick update terminal for a novelty card
+    router.post('/terminal', async (req, res) => {
+        try {
+            const { id_novedad, terminal } = req.body;
+            if (!id_novedad) {
+                return res.status(400).json({ success: false, error: 'Id de novedad requerido' });
+            }
+            
+            let index = cacheDatosGlobales.novedades.findIndex(n => String(n.id) === String(id_novedad));
+            if (index === -1) {
+                return res.status(404).json({ success: false, error: 'Novedad no encontrada' });
+            }
+            
+            let nov = cacheDatosGlobales.novedades[index];
+            nov.terminal = String(terminal || '').toUpperCase().trim();
+            
+            io.emit('novedades_actualizadas', cacheDatosGlobales.novedades);
+            res.json({ success: true, data: nov });
+            
+            // Persist to Sheets
+            try {
+                const rowsNov = await fetchRango(ID_SPREADSHEET_MASTER, "'novedades'!A:B");
+                let rIdx = -1;
+                for (let i = 0; i < rowsNov.length; i++) {
+                    if (String(rowsNov[i][0]) === String(id_novedad)) { rIdx = i + 1; break; }
+                }
+                if (rIdx !== -1) {
+                    await serviceAccountAuth.request({
+                        url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_MASTER}/values/'novedades'!B${rIdx}?valueInputOption=USER_ENTERED`,
+                        method: 'PUT',
+                        data: { values: [[JSON.stringify(nov)]] }
+                    });
+                }
+            } catch(e) { console.error('Error persistiendo terminal en Sheets:', e); }
+        } catch (err) {
+            res.status(500).json({ success: false, error: 'Error en servidor' });
+        }
+    });
+
     return router;
 }
 
