@@ -6,6 +6,7 @@
 /anotaciones/
 /borradores/
 /_dbdocs/
+/_figma_snapshots/
 
 # Ignora archivos específicos sueltos en cualquier parte del proyecto:
 TODO.md

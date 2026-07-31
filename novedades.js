@@ -1,10 +1,6 @@
 const express = require('express');
 const { GoogleSpreadsheet } = require('google-spreadsheet');
-
-// ==============================================================
-// 1. CARGA E INSPECCIÓN DE NOVEDADES EN RAM
-// ==============================================================
-const normalizar = (n) => String(n || '').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
+const { normalizar } = require('./utils/shared');
 
 // ==============================================================
 // 1. CARGA E INSPECCIÓN DE NOVEDADES EN RAM

@@ -1,4 +1,5 @@
 const express = require('express');
+const { normalizar } = require('./utils/shared');
 
 module.exports = function(cacheDatosGlobales, io, cargarNovedades, fetchRango, ID_SPREADSHEET_MASTER) {
     const router = express.Router();
@@ -15,7 +16,6 @@ module.exports = function(cacheDatosGlobales, io, cargarNovedades, fetchRango, I
     router.post('/google', async (req, res) => {
         try {
             const body = req.body;
-            const normalizar = (n) => String(n || '').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
 
             // ==============================================================
             // 1. WEBHOOK: KILÓMETROS
