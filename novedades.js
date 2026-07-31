@@ -263,12 +263,17 @@ function createNovedadesRouter(cacheDatosGlobales, io, serviceAccountAuth, ID_SP
             else if (action === 'resolver') {
                 let index = cacheDatosGlobales.novedades.findIndex(n => String(n.id) === String(id_novedad));
                 if(index > -1) {
-                    cacheDatosGlobales.novedades[index].resuelto = true;
-                    cacheDatosGlobales.novedades[index].fecha_resolucion = new Date().toISOString();
+                    const fechaRes = new Date().toISOString();
+                    cacheDatosGlobales.novedades[index] = {
+                        ...cacheDatosGlobales.novedades[index],
+                        ...(payload || {}),
+                        resuelto: true,
+                        fecha_resolucion: fechaRes
+                    };
                     let novedadActualizada = cacheDatosGlobales.novedades[index];
                     
                     io.emit('novedades_actualizadas', cacheDatosGlobales.novedades);
-                    res.json({ success: true });
+                    res.json({ success: true, data: novedadActualizada });
 
                     // Re-escritura en Sheets
                     try {
