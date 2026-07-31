@@ -413,14 +413,57 @@ async function actualizarCacheDesdeGoogle() {
             });
         } catch(e) { console.error("Error cargando docs/habs:", e); }
 
-        let hoyAr2 = new Date(new Date().toLocaleString("en-US", {timeZone: "America/Argentina/Buenos_Aires"}));
+        let hoyAr2 = getFechaArgentina();
         let offsetsMeses = [-1, 0, 1, 2, 3]; 
         for (let i of offsetsMeses) {
-            let d = new Date(hoyAr2.getFullYear(), hoyAr2.getMonth() + i, 1); let anio = d.getFullYear(); let mesStr = String(d.getMonth() + 1).padStart(2, '0');
-            let nombreHoja = mesesAbrev[d.getMonth()] + "-" + String(anio).slice(-2); hojasInfo.push({ nombre: nombreHoja, anio, mesStr });
-            (await fetchRango(ID_SPREADSHEET_DIAGRAMAS, `'${nombreHoja}'!A6:AL1000`)).forEach(row => {
-                let n = row[1]; if (!n || n === "APELLIDO Y NOMBRE" || n === "Personal Activo") return; let nomNorm = normalizar(n); if (!diasLegacyIso[nomNorm]) diasLegacyIso[nomNorm] = {};
-                for (let dia = 1; dia <= 31; dia++) { let est = row[dia + 3]; if (est && est !== '-') diasLegacyIso[nomNorm][`${anio}-${mesStr}-${String(dia).padStart(2, '0')}`] = String(est).toUpperCase().trim(); }
+            let d = new Date(hoyAr2.getFullYear(), hoyAr2.getMonth() + i, 1); 
+            let anio = d.getFullYear(); 
+            let mesStr = String(d.getMonth() + 1).padStart(2, '0');
+            let nombreHoja = mesesAbrev[d.getMonth()] + "-" + String(anio).slice(-2); 
+            hojasInfo.push({ nombre: nombreHoja, anio, mesStr });
+
+            const rowsSheet = await fetchRango(ID_SPREADSHEET_DIAGRAMAS, `'${nombreHoja}'!A1:AL1000`);
+            if (rowsSheet.length === 0) continue;
+
+            let dayColMap = {};
+            for (let r = 0; r < Math.min(10, rowsSheet.length); r++) {
+                let tempMap = {};
+                let matchesCount = 0;
+                if (!rowsSheet[r]) continue;
+
+                for (let c = 0; c < rowsSheet[r].length; c++) {
+                    let cellVal = String(rowsSheet[r][c] || "").trim();
+                    let m = cellVal.match(/^0*([1-9]|[12][0-9]|3[01])[\/\-]\d{1,2}$/);
+                    if (m) {
+                        let dayNum = parseInt(m[1], 10);
+                        tempMap[dayNum] = c;
+                        matchesCount++;
+                    }
+                }
+
+                if (matchesCount >= 15) {
+                    dayColMap = tempMap;
+                    break;
+                }
+            }
+
+            if (Object.keys(dayColMap).length === 0) {
+                for (let dia = 1; dia <= 31; dia++) dayColMap[dia] = dia + 3;
+            }
+
+            rowsSheet.forEach(row => {
+                let n = row[1]; 
+                if (!n || ["APELLIDO Y NOMBRE", "Personal Activo", "LEGAJO"].includes(String(n).trim())) return; 
+                let nomNorm = normalizar(n); 
+                if (!diasLegacyIso[nomNorm]) diasLegacyIso[nomNorm] = {};
+
+                for (let dia = 1; dia <= 31; dia++) { 
+                    let colIdx = dayColMap[dia];
+                    let est = colIdx !== undefined ? row[colIdx] : undefined; 
+                    if (est && est !== '-') {
+                        diasLegacyIso[nomNorm][`${anio}-${mesStr}-${String(dia).padStart(2, '0')}`] = String(est).toUpperCase().trim(); 
+                    }
+                }
             });
         }
 
