@@ -109,6 +109,16 @@ module.exports = function(cacheDatosGlobales, io, ioDash, cargarNovedades, fetch
                 }
             }
 
+            // ==============================================================
+            // 5. WEBHOOK: SINCRONIZACIÓN COMPLETA DE DIAGRAMAS -> MASTER
+            // ==============================================================
+            if (body && (body.action === 'sync_diagramas' || body.action === 'webhook_sync_diagramas')) {
+                const { syncAllDiagramasToMaster } = require('./cache/builder');
+                syncAllDiagramasToMaster(cacheDatosGlobales, io).catch(e => console.error("Error en sync webhook:", e));
+                console.log("⚡ [Webhook] Sincronización de diagramas iniciada hacia Master.");
+                return res.status(200).json({ success: true, message: "Sincronización de diagramas a Master iniciada" });
+            }
+
             return res.status(200).json({ success: true, message: "Ping ignorado" });
 
         } catch (error) {

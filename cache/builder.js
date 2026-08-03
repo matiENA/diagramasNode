@@ -310,14 +310,30 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
             });
         } catch(e) { console.error("Error cargando docs/habs:", e); }
 
+        // 1. Cargar cache histórico de diagramas desde Master (CACHE_DIAGRAMAS tab)
+        diasLegacyIso = {};
+        try {
+            const rowsMasterCache = await fetchRango(ID_SPREADSHEET_MASTER, "'CACHE_DIAGRAMAS'!A2:C1000");
+            rowsMasterCache.forEach(r => {
+                let norm = normalizar(r[0]);
+                if (norm && r[1]) {
+                    try {
+                        diasLegacyIso[norm] = JSON.parse(r[1]);
+                    } catch(eJson) {}
+                }
+            });
+            console.log(`📦 Cache de diagramas cargado desde Master: ${Object.keys(diasLegacyIso).length} choferes.`);
+        } catch(eMasterCache) {
+            console.error("Error leyendo CACHE_DIAGRAMAS de Master:", eMasterCache);
+        }
+
         let hoyAr2 = getFechaArgentina();
-        let offsetsMeses = [-1, 0, 1, 2, 3]; 
+        let offsetsMeses = [-1, 0, 1, 2]; 
         for (let i of offsetsMeses) {
             let d = new Date(hoyAr2.getFullYear(), hoyAr2.getMonth() + i, 1); 
             let anio = d.getFullYear(); 
             let mesStr = String(d.getMonth() + 1).padStart(2, '0');
             let nombreHoja = mesesAbrev[d.getMonth()] + "-" + String(anio).slice(-2); 
-            hojasInfo.push({ nombre: nombreHoja, anio, mesStr });
 
             const rowsSheet = await fetchRango(ID_SPREADSHEET_DIAGRAMAS, `'${nombreHoja}'!A1:AL1000`);
             if (rowsSheet.length === 0) continue;
@@ -364,6 +380,22 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
             });
         }
 
+        // Construir hojasInfo para TODOS los meses del año (para que el front tenga la tira completa de cada mes)
+        let baseYear = hoyAr2.getFullYear();
+        hojasInfo = [];
+        let mesesTotal = [
+            { anio: baseYear - 1, mes: 11 }, { anio: baseYear - 1, mes: 12 },
+            { anio: baseYear, mes: 1 }, { anio: baseYear, mes: 2 }, { anio: baseYear, mes: 3 }, { anio: baseYear, mes: 4 },
+            { anio: baseYear, mes: 5 }, { anio: baseYear, mes: 6 }, { anio: baseYear, mes: 7 }, { anio: baseYear, mes: 8 },
+            { anio: baseYear, mes: 9 }, { anio: baseYear, mes: 10 }, { anio: baseYear, mes: 11 }, { anio: baseYear, mes: 12 },
+            { anio: baseYear + 1, mes: 1 }, { anio: baseYear + 1, mes: 2 }
+        ];
+        mesesTotal.forEach(m => {
+            let mesStr = String(m.mes).padStart(2, '0');
+            let nombreHoja = mesesAbrev[m.mes - 1] + "-" + String(m.anio).slice(-2);
+            hojasInfo.push({ nombre: nombreHoja, anio: m.anio, mesStr });
+        });
+
         let diagramasHibridos = []; 
         listaChoferesMaestros.forEach(ch => {
             let nomNorm = ch.norm; let flota = resDiagGAS.flota[nomNorm] || {}; let mergeIso = diasLegacyIso[nomNorm] || {}; let diasFront = {};
@@ -407,6 +439,114 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
     } catch (error) { console.error("❌ Error RAM:", error); } 
 }
 
+async function syncAllDiagramasToMaster(cacheDatosGlobales = null, io = null) {
+    try {
+        console.log("🔄 INICIANDO SINCRONIZACIÓN COMPLETA DE DIAGRAMAS -> MASTER (1eQ9Y5diL5fwxYTxvseNgZJFbX-lSUQ13axbp3cLiqPc)...");
+        const resMeta = await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_DIAGRAMAS}` });
+        const allSheets = (resMeta.data.sheets || []).map(s => s.properties.title);
+
+        const monthTabs = allSheets.filter(s => {
+            let low = s.toLowerCase();
+            return mesesAbrev.some(m => low.includes(m.toLowerCase())) && /\d{2}/.test(s);
+        });
+
+        let diasLegacyIso = {};
+
+        for (let nombreHoja of monthTabs) {
+            let parts = nombreHoja.split('-');
+            if (parts.length < 2) continue;
+            let mIdx = mesesAbrev.findIndex(m => m.toLowerCase() === parts[0].toLowerCase());
+            if (mIdx === -1) continue;
+            let anioStr = "20" + parts[1].replace(/\D/g, '');
+            let mesStr = String(mIdx + 1).padStart(2, '0');
+            let anio = parseInt(anioStr, 10);
+
+            const rowsSheet = await fetchRango(ID_SPREADSHEET_DIAGRAMAS, `'${nombreHoja}'!A1:AL1000`);
+            if (rowsSheet.length === 0) continue;
+
+            let dayColMap = {};
+            for (let r = 0; r < Math.min(10, rowsSheet.length); r++) {
+                let tempMap = {};
+                let matchesCount = 0;
+                if (!rowsSheet[r]) continue;
+
+                for (let c = 0; c < rowsSheet[r].length; c++) {
+                    let cellVal = String(rowsSheet[r][c] || "").trim();
+                    let m = cellVal.match(/^0*([1-9]|[12][0-9]|3[01])[\/\-]\d{1,2}$/);
+                    if (m) {
+                        let dayNum = parseInt(m[1], 10);
+                        tempMap[dayNum] = c;
+                        matchesCount++;
+                    }
+                }
+
+                if (matchesCount >= 15) {
+                    dayColMap = tempMap;
+                    break;
+                }
+            }
+
+            if (Object.keys(dayColMap).length === 0) {
+                for (let dia = 1; dia <= 31; dia++) dayColMap[dia] = dia + 3;
+            }
+
+            rowsSheet.forEach(row => {
+                let n = row[1]; 
+                if (!n || ["APELLIDO Y NOMBRE", "Personal Activo", "LEGAJO"].includes(String(n).trim())) return; 
+                let nomNorm = normalizar(n); 
+                if (!diasLegacyIso[nomNorm]) diasLegacyIso[nomNorm] = {};
+
+                for (let dia = 1; dia <= 31; dia++) { 
+                    let colIdx = dayColMap[dia];
+                    let est = colIdx !== undefined ? row[colIdx] : undefined; 
+                    if (est && est !== '-') {
+                        diasLegacyIso[nomNorm][`${anio}-${mesStr}-${String(dia).padStart(2, '0')}`] = String(est).toUpperCase().trim(); 
+                    }
+                }
+            });
+        }
+
+        const nowIso = new Date().toISOString();
+        const rowsToWrite = [["CHOFER_NORM", "DIAGRAMAS_JSON", "ULTIMA_ACTUALIZACION"]];
+        for (let normKey in diasLegacyIso) {
+            rowsToWrite.push([normKey, JSON.stringify(diasLegacyIso[normKey]), nowIso]);
+        }
+
+        try {
+            const resMasterMeta = await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_MASTER}` });
+            const masterSheets = (resMasterMeta.data.sheets || []).map(s => s.properties.title);
+            if (!masterSheets.includes("CACHE_DIAGRAMAS")) {
+                await serviceAccountAuth.request({
+                    url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_MASTER}:batchUpdate`,
+                    method: 'POST',
+                    data: { requests: [{ addSheet: { properties: { title: "CACHE_DIAGRAMAS" } } }] }
+                });
+            }
+        } catch(eTab) {}
+
+        await serviceAccountAuth.request({
+            url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_MASTER}/values/'CACHE_DIAGRAMAS'!A1:Z:clear`,
+            method: 'POST'
+        });
+
+        await serviceAccountAuth.request({
+            url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SPREADSHEET_MASTER}/values/'CACHE_DIAGRAMAS'!A1?valueInputOption=USER_ENTERED`,
+            method: 'PUT',
+            data: { values: rowsToWrite }
+        });
+
+        console.log(`✅ Sincronización guardada en 'CACHE_DIAGRAMAS' en Master (${rowsToWrite.length - 1} choferes).`);
+
+        if (cacheDatosGlobales && io) {
+            await actualizarCacheDesdeGoogle(cacheDatosGlobales, io);
+        }
+        return true;
+    } catch(e) {
+        console.error("❌ Error en syncAllDiagramasToMaster:", e);
+        return false;
+    }
+}
+
 function iniciarCachePolling(cacheDatosGlobales, io, ioDash) {
     setTimeout(() => { 
         flujoEncoladoGlobal(cacheDatosGlobales, io, ioDash); 
@@ -415,4 +555,4 @@ function iniciarCachePolling(cacheDatosGlobales, io, ioDash) {
     setInterval(() => { console.log("⏱️ Escaneo periódico (15 min)..."); flujoEncoladoGlobal(cacheDatosGlobales, io, ioDash); }, 15 * 60 * 1000);
 }
 
-module.exports = { iniciarCachePolling };
+module.exports = { iniciarCachePolling, syncAllDiagramasToMaster, actualizarCacheDesdeGoogle };

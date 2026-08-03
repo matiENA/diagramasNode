@@ -15,6 +15,16 @@ const {
 module.exports = function createProxyRouter(cacheDatosGlobales, io) {
     const router = express.Router();
 
+    router.all('/sync-diagramas', async (req, res) => {
+        try {
+            const { syncAllDiagramasToMaster } = require('../cache/builder');
+            syncAllDiagramasToMaster(cacheDatosGlobales, io).catch(e => console.error("Error en sync-diagramas:", e));
+            res.json({ success: true, message: "Sincronización de diagramas históricos a Master iniciada." });
+        } catch(e) {
+            res.status(500).json({ success: false, error: e.message });
+        }
+    });
+
     router.post('/', async (req, res) => {
         try {
             const body = req.body;
