@@ -16,6 +16,7 @@ const { iniciarCachePolling } = require('./cache/builder');
 const createAuthRouter = require('./routes/auth');
 const createProxyRouter = require('./routes/proxy');
 const createFotosRouter = require('./routes/fotos');
+const createDashRouter = require('./routes/dash');
 
 // ==============================================================
 // 🚀 EXPRESS + SOCKET.IO
@@ -98,6 +99,9 @@ app.get('/api/datos', (req, res) => {
 
 // Auth — Login unificado (Sheets + Supabase)
 app.use('/api/auth', createAuthRouter());
+
+// DASH — API ligera (solo flota + usuarios, sin días)
+app.use('/api/dash', createDashRouter(cacheDatosGlobales));
 
 // Novedades — CRUD + Polling
 app.use('/api/novedades', createNovedadesRouter(cacheDatosGlobales, io, ioDash, serviceAccountAuth, ID_SPREADSHEET_MASTER, fetchRango));

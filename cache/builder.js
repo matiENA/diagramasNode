@@ -72,7 +72,7 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
             (await fetchRango(ID_SPREADSHEET_DIAGRAMAS, `'${nombreHojaActual}'!A6:C1000`)).forEach(row => {
                 if (row[1] && !["APELLIDO Y NOMBRE", "Personal Activo"].includes(row[1])) {
                     let norm = normalizar(row[1]);
-                    if (!resDiagGAS.flota[norm]) { resDiagGAS.flota[norm] = { tractor: '', semi: '', servicio: row[2] || 'S/A', n_ute: '', td: '-', hex1: '', hex2: '' }; listaChoferesMaestros.push({ nombre: String(row[1]).trim(), norm }); }
+                    if (!resDiagGAS.flota[norm]) { resDiagGAS.flota[norm] = { tractor: '', semi: '', servicio: row[2] || 'S/A', n_ute: '' }; listaChoferesMaestros.push({ nombre: String(row[1]).trim(), norm }); }
                 }
             });
 
@@ -154,15 +154,11 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
                         }
 
                         if (resDiagGAS.flota[targetKey]) { resDiagGAS.flota[targetKey].n_ute = n_ute; resDiagGAS.flota[targetKey].tractor = tractor; resDiagGAS.flota[targetKey].semi = semi; } 
-                        else { resDiagGAS.flota[norm] = { tractor: tractor, semi: semi, servicio: 'S/A', n_ute: n_ute, td: '-', hex1: '', hex2: '' }; listaChoferesMaestros.push({ nombre: nomRaw, norm }); }
+                        else { resDiagGAS.flota[norm] = { tractor: tractor, semi: semi, servicio: 'S/A', n_ute: n_ute }; listaChoferesMaestros.push({ nombre: nomRaw, norm }); }
                     }
                 } 
             }
 
-            let nombrePestañaViajes = await getTabName(ID_SHEET_MOVIMIENTOS, "Tabla de viajes", "Tabla de viajes");
-            let mapaTD = {};
-            (await fetchRango(ID_SHEET_MOVIMIENTOS, `'${nombrePestañaViajes}'!D2:G1000`)).forEach(row => { if (String(row[0] || "").trim()) mapaTD[String(row[0] || "").trim()] = { td: String(row[1] || "").trim(), hex: String(row[3] || "").trim() }; });
-            for (let key in resDiagGAS.flota) { let tr = resDiagGAS.flota[key].tractor; if (tr && mapaTD[tr]) { resDiagGAS.flota[key].td = mapaTD[tr].td; resDiagGAS.flota[key].hex1 = mapaTD[tr].hex; resDiagGAS.flota[key].hex2 = mapaTD[tr].hex; } }
         } catch (e) { }
 
         let dnisMap = {}; let telefonosMap = {};
@@ -372,7 +368,7 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
         listaChoferesMaestros.forEach(ch => {
             let nomNorm = ch.norm; let flota = resDiagGAS.flota[nomNorm] || {}; let mergeIso = diasLegacyIso[nomNorm] || {}; let diasFront = {};
             hojasInfo.forEach(info => { let tira = []; for (let dia = 1; dia <= 31; dia++) { tira.push(mergeIso[`${info.anio}-${info.mesStr}-${String(dia).padStart(2, '0')}`] || "-"); } diasFront[info.nombre] = tira.join(","); });
-            diagramasHibridos.push({ _safeId: "drv_" + nomNorm.replace(/[^a-z0-9]/g, "_"), nom: ch.nombre, tractor: flota.tractor || '', semi: flota.semi || '', srv: flota.servicio || '', n_ute: flota.n_ute || '', td: flota.td || '-', hex1: flota.hex1 || '', hex2: flota.hex2 || '', hex_1: "#ffffff", hex_2: "#ffffff", dias: diasFront, _diasIso: mergeIso });
+            diagramasHibridos.push({ _safeId: "drv_" + nomNorm.replace(/[^a-z0-9]/g, "_"), nom: ch.nombre, tractor: flota.tractor || '', semi: flota.semi || '', srv: flota.servicio || '', n_ute: flota.n_ute || '', dias: diasFront, _diasIso: mergeIso });
         });
 
         cacheDatosGlobales.diagramas = { 
