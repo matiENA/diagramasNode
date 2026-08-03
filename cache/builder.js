@@ -19,14 +19,14 @@ const { cargarNovedades, enriquecerNovedadesConFlota, iniciarPollingNovedades } 
 
 let ejecutandoGlobal = false, pendienteGlobal = false; 
 
-async function flujoEncoladoGlobal(cacheDatosGlobales, io) {
+async function flujoEncoladoGlobal(cacheDatosGlobales, io, ioDash) {
     if (ejecutandoGlobal) { pendienteGlobal = true; return; }
     ejecutandoGlobal = true;
-    try { await actualizarCacheDesdeGoogle(cacheDatosGlobales, io); } 
-    finally { ejecutandoGlobal = false; if (pendienteGlobal) { pendienteGlobal = false; flujoEncoladoGlobal(cacheDatosGlobales, io); } }
+    try { await actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash); } 
+    finally { ejecutandoGlobal = false; if (pendienteGlobal) { pendienteGlobal = false; flujoEncoladoGlobal(cacheDatosGlobales, io, ioDash); } }
 }
 
-async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io) {
+async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
     try {
         console.log("🚀 INICIANDO DESCARGA CRUDA: Ensamblando RAM protegida...");
 
@@ -55,6 +55,13 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io) {
 
         // 👉 DELEGAMOS LA CARGA DE NOVEDADES AL MÓDULO EXTERNO (PASANDO EL MAPA DE CHOFERES)
         await cargarNovedades(fetchRango, ID_SPREADSHEET_MASTER, cacheDatosGlobales, mapaNombreDiagramaAId);
+
+        // Poda: mantener solo novedades activas + resueltas de los últimos 7 días
+        const LIMITE_RESUELTAS_MS = 7 * 24 * 60 * 60 * 1000;
+        const ahora = Date.now();
+        cacheDatosGlobales.novedades = (cacheDatosGlobales.novedades || []).filter(n => 
+            !n.resuelto || !n.fecha_resolucion || (ahora - new Date(n.fecha_resolucion).getTime()) < LIMITE_RESUELTAS_MS
+        );
 
         let listaChoferesMaestros = [];
         try {
@@ -397,19 +404,19 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io) {
         io.emit('datos_actualizados', cacheDatosGlobales);
         
         // 👉 SE EMITE AL NUEVO DASHBOARD CADA VEZ QUE LA RAM SE RE-ENSAMBLA
-        if(cacheDatosGlobales.novedades && cacheDatosGlobales.novedades.length > 0) io.emit('novedades_actualizadas', cacheDatosGlobales.novedades);
+        if(cacheDatosGlobales.novedades && cacheDatosGlobales.novedades.length > 0) ioDash.emit('novedades_actualizadas', cacheDatosGlobales.novedades);
         
         console.log(`✅ RAM Ensamblada Completa.`);
         
     } catch (error) { console.error("❌ Error RAM:", error); } 
 }
 
-function iniciarCachePolling(cacheDatosGlobales, io) {
+function iniciarCachePolling(cacheDatosGlobales, io, ioDash) {
     setTimeout(() => { 
-        flujoEncoladoGlobal(cacheDatosGlobales, io); 
-        iniciarPollingNovedades(fetchRango, ID_SPREADSHEET_MASTER, cacheDatosGlobales, io, 30000);
+        flujoEncoladoGlobal(cacheDatosGlobales, io, ioDash); 
+        iniciarPollingNovedades(fetchRango, ID_SPREADSHEET_MASTER, cacheDatosGlobales, io, ioDash, 30000);
     }, 3000); 
-    setInterval(() => { console.log("⏱️ Escaneo periódico (15 min)..."); flujoEncoladoGlobal(cacheDatosGlobales, io); }, 15 * 60 * 1000);
+    setInterval(() => { console.log("⏱️ Escaneo periódico (15 min)..."); flujoEncoladoGlobal(cacheDatosGlobales, io, ioDash); }, 15 * 60 * 1000);
 }
 
 module.exports = { iniciarCachePolling };

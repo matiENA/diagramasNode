@@ -1,6 +1,6 @@
 const express = require('express');
 const { GoogleSpreadsheet } = require('google-spreadsheet');
-const { normalizar } = require('./utils/shared');
+const { normalizar, serviceAccountAuth, fetchRango: sharedFetchRango, ID_SPREADSHEET_MASTER: SHARED_ID_MASTER } = require('./utils/shared');
 
 // ==============================================================
 // 1. CARGA E INSPECCIÓN DE NOVEDADES EN RAM
@@ -46,9 +46,9 @@ async function cargarNovedades(fetchRango, ID_SPREADSHEET_MASTER, cacheDatosGlob
         }
 
         // Verificamos si cambió el contenido con respecto a la RAM previa
-        const previoStr = JSON.stringify(cacheDatosGlobales.novedades || []);
-        const nuevoStr = JSON.stringify(temporalNovedades);
-        const huboCambio = previoStr !== nuevoStr;
+        // Hash ligero: comparar IDs + timestamps en vez de serializar toda la RAM
+        const buildHash = (arr) => arr.map(n => n.id + ':' + (n.fecha_edicion || n.fecha_resolucion || n.timestamp || '')).join('|');
+        const huboCambio = buildHash(cacheDatosGlobales.novedades || []) !== buildHash(temporalNovedades);
 
         cacheDatosGlobales.novedades = temporalNovedades;
         return huboCambio;
@@ -146,17 +146,17 @@ async function enriquecerNovedadesConFlota(cacheDatosGlobales, serviceAccountAut
 // ==============================================================
 // 2. POLLING PERIÓDICO DE NOVEDADES
 // ==============================================================
-function iniciarPollingNovedades(fetchRango, ID_SPREADSHEET_MASTER, cacheDatosGlobales, io, serviceAccountAuth = null, intervaloMs = 30000) {
+function iniciarPollingNovedades(fetchRango, ID_SPREADSHEET_MASTER, cacheDatosGlobales, io, ioDash, intervaloMs = 30000) {
     console.log(`⏱️ Polling de Novedades activado (frecuencia: ${Math.round(intervaloMs / 1000)}s)...`);
     
     return setInterval(async () => {
         try {
             const huboCambioNov = await cargarNovedades(fetchRango, ID_SPREADSHEET_MASTER, cacheDatosGlobales, cacheDatosGlobales.mapaNombreDiagramaAId);
-            const huboCambioEnrich = await enriquecerNovedadesConFlota(cacheDatosGlobales, serviceAccountAuth, ID_SPREADSHEET_MASTER, fetchRango);
+            const huboCambioEnrich = await enriquecerNovedadesConFlota(cacheDatosGlobales, serviceAccountAuth, SHARED_ID_MASTER, sharedFetchRango);
 
             if (huboCambioNov || huboCambioEnrich) {
                 console.log("⚡ [Polling Novedades] Se detectaron cambios externos o nuevos datos de flota. Notificando a clientes...");
-                io.emit('novedades_actualizadas', cacheDatosGlobales.novedades);
+                ioDash.emit('novedades_actualizadas', cacheDatosGlobales.novedades);
             }
         } catch (error) {
             console.error("❌ Error en Polling Novedades:", error);
@@ -167,7 +167,7 @@ function iniciarPollingNovedades(fetchRango, ID_SPREADSHEET_MASTER, cacheDatosGl
 // ==============================================================
 // 3. ENDPOINTS DE LA API (Router)
 // ==============================================================
-function createNovedadesRouter(cacheDatosGlobales, io, serviceAccountAuth, ID_SPREADSHEET_MASTER, fetchRango) {
+function createNovedadesRouter(cacheDatosGlobales, io, ioDash, serviceAccountAuth, ID_SPREADSHEET_MASTER, fetchRango) {
     const router = express.Router();
 
     // GET: Leer novedades en vivo
@@ -211,7 +211,7 @@ function createNovedadesRouter(cacheDatosGlobales, io, serviceAccountAuth, ID_SP
                 
                 // Optimistic Server RAM
                 cacheDatosGlobales.novedades.unshift(nuevaNovedad);
-                io.emit('novedades_actualizadas', cacheDatosGlobales.novedades);
+                ioDash.emit('novedades_actualizadas', cacheDatosGlobales.novedades);
                 res.json({ success: true, data: nuevaNovedad });
 
                 // Guardado en Sheets (como JSON)
@@ -234,7 +234,7 @@ function createNovedadesRouter(cacheDatosGlobales, io, serviceAccountAuth, ID_SP
                     };
                     let novedadActualizada = cacheDatosGlobales.novedades[index];
                     
-                    io.emit('novedades_actualizadas', cacheDatosGlobales.novedades);
+                    ioDash.emit('novedades_actualizadas', cacheDatosGlobales.novedades);
                     res.json({ success: true, data: novedadActualizada });
 
                     try {
@@ -268,7 +268,7 @@ function createNovedadesRouter(cacheDatosGlobales, io, serviceAccountAuth, ID_SP
                     };
                     let novedadActualizada = cacheDatosGlobales.novedades[index];
                     
-                    io.emit('novedades_actualizadas', cacheDatosGlobales.novedades);
+                    ioDash.emit('novedades_actualizadas', cacheDatosGlobales.novedades);
                     res.json({ success: true, data: novedadActualizada });
 
                     // Re-escritura en Sheets
@@ -320,7 +320,7 @@ function createNovedadesRouter(cacheDatosGlobales, io, serviceAccountAuth, ID_SP
                 nov.menciones = nov.menciones.filter(m => m !== uNorm);
             }
             
-            io.emit('novedades_actualizadas', cacheDatosGlobales.novedades);
+            ioDash.emit('novedades_actualizadas', cacheDatosGlobales.novedades);
             res.json({ success: true, data: nov });
             
             // Persist to Sheets
@@ -359,7 +359,7 @@ function createNovedadesRouter(cacheDatosGlobales, io, serviceAccountAuth, ID_SP
             let nov = cacheDatosGlobales.novedades[index];
             nov.terminal = String(terminal || '').toUpperCase().trim();
             
-            io.emit('novedades_actualizadas', cacheDatosGlobales.novedades);
+            ioDash.emit('novedades_actualizadas', cacheDatosGlobales.novedades);
             res.json({ success: true, data: nov });
             
             // Persist to Sheets

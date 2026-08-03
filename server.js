@@ -54,6 +54,9 @@ const io = new Server(server, {
     transports: ['websocket', 'polling']
 });
 
+// Namespace dedicado para DASH — recibe solo novedades
+const ioDash = io.of('/dash');
+
 app.use(cors(corsConfig));
 app.options('*', cors(corsConfig));
 app.use(express.json({ limit: '10mb' }));
@@ -72,7 +75,7 @@ let cacheDatosGlobales = {
 // ==============================================================
 // ⏱️ INICIAR CACHE + POLLING
 // ==============================================================
-iniciarCachePolling(cacheDatosGlobales, io);
+iniciarCachePolling(cacheDatosGlobales, io, ioDash);
 
 // ==============================================================
 // 🛣️ RUTAS
@@ -97,7 +100,7 @@ app.get('/api/datos', (req, res) => {
 app.use('/api/auth', createAuthRouter());
 
 // Novedades — CRUD + Polling
-app.use('/api/novedades', createNovedadesRouter(cacheDatosGlobales, io, serviceAccountAuth, ID_SPREADSHEET_MASTER, fetchRango));
+app.use('/api/novedades', createNovedadesRouter(cacheDatosGlobales, io, ioDash, serviceAccountAuth, ID_SPREADSHEET_MASTER, fetchRango));
 
 // Proxy — Escritura directa a Google Sheets (observaciones, docs, estados, hojas de ruta)
 app.use('/api/proxy', createProxyRouter(cacheDatosGlobales, io));
@@ -106,7 +109,7 @@ app.use('/api/proxy', createProxyRouter(cacheDatosGlobales, io));
 app.use('/api/subir-foto', createFotosRouter(cacheDatosGlobales, io));
 
 // Webhooks — Inyección en RAM desde Google Sheets
-app.use('/api/webhook', webhookRouter(cacheDatosGlobales, io, cargarNovedades, fetchRango, ID_SPREADSHEET_MASTER));
+app.use('/api/webhook', webhookRouter(cacheDatosGlobales, io, ioDash, cargarNovedades, fetchRango, ID_SPREADSHEET_MASTER));
 
 // ==============================================================
 // 🟢 INICIAR SERVIDOR

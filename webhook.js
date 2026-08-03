@@ -1,7 +1,7 @@
 const express = require('express');
 const { normalizar } = require('./utils/shared');
 
-module.exports = function(cacheDatosGlobales, io, cargarNovedades, fetchRango, ID_SPREADSHEET_MASTER) {
+module.exports = function(cacheDatosGlobales, io, ioDash, cargarNovedades, fetchRango, ID_SPREADSHEET_MASTER) {
     const router = express.Router();
 
     let emitTimeout = null;
@@ -92,7 +92,7 @@ module.exports = function(cacheDatosGlobales, io, cargarNovedades, fetchRango, I
 
                 if (actualizados > 0) {
                     console.log(`⚡ [Webhook] ${actualizados} novedad(es) actualizada(s) en RAM.`);
-                    io.emit('novedades_actualizadas', cacheDatosGlobales.novedades);
+                    ioDash.emit('novedades_actualizadas', cacheDatosGlobales.novedades);
                 }
                 return res.status(200).json({ success: true, message: `${actualizados} novedad(es) inyectada(s) en RAM` });
             }
@@ -103,7 +103,7 @@ module.exports = function(cacheDatosGlobales, io, cargarNovedades, fetchRango, I
             if (body && body.action === 'webhook_reload_novedades') {
                 if (typeof cargarNovedades === 'function' && fetchRango && ID_SPREADSHEET_MASTER) {
                     await cargarNovedades(fetchRango, ID_SPREADSHEET_MASTER, cacheDatosGlobales);
-                    io.emit('novedades_actualizadas', cacheDatosGlobales.novedades);
+                    ioDash.emit('novedades_actualizadas', cacheDatosGlobales.novedades);
                     console.log("⚡ [Webhook] Novedades recargadas completamente desde Google Sheets.");
                     return res.status(200).json({ success: true, message: "Novedades recargadas" });
                 }
