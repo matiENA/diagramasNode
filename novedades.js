@@ -1,6 +1,135 @@
 const express = require('express');
 const { GoogleSpreadsheet } = require('google-spreadsheet');
-const { normalizar, serviceAccountAuth, fetchRango: sharedFetchRango, ID_SPREADSHEET_MASTER: SHARED_ID_MASTER } = require('./utils/shared');
+const { normalizar, serviceAccountAuth, fetchRango: sharedFetchRango, ID_SPREADSHEET_MASTER: SHARED_ID_MASTER, getFechaArgentina } = require('./utils/shared');
+
+async function inyectarServicioEnSheetDispo(tractorPatente, choferNom, servicioDB, serviceAccountAuth, fetchRango) {
+    if (!servicioDB) return;
+    const tractor = (tractorPatente || '').trim().toUpperCase();
+    const nomNorm = choferNom ? normalizar(choferNom) : '';
+
+    const spreadsheetId = '1vYw-Zm51m50PeJmvLqshW4lBDonI7KTvBD14uIJioAU';
+    
+    // Obtener la fecha actual en Argentina
+    const hoyAr = (typeof getFechaArgentina === 'function') ? getFechaArgentina() : new Date();
+    const diaActual = hoyAr.getDate();
+    const mesActual = hoyAr.getMonth();
+    const anioActual = hoyAr.getFullYear();
+
+    const mesesLargo = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+
+    let nombreHoja = null;
+    try {
+        const metaUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}`;
+        const metaRes = await serviceAccountAuth.request({ url: metaUrl });
+        const sheetTitles = metaRes.data.sheets.map(s => s.properties.title);
+        
+        // Pestaña dinámica del mes: ej: "AGOSTO 2026- Mov.Unidades y Choferes"
+        const mesNombreUpper = mesesLargo[mesActual].toUpperCase();
+        nombreHoja = sheetTitles.find(s => s.toUpperCase().includes(mesNombreUpper) && s.toLowerCase().includes('mov.unidades')) ||
+                     sheetTitles.find(s => s.toLowerCase().includes('mov.unidades')) ||
+                     sheetTitles.find(s => s.toLowerCase().includes('dispo')) ||
+                     sheetTitles[0];
+    } catch(e) {
+        console.error("[Dispo] Error obteniendo pestañas:", e);
+        return;
+    }
+
+    if (!nombreHoja) return;
+
+    try {
+        const rows = await fetchRango(spreadsheetId, `'${nombreHoja}'!A1:ZZ500`);
+        if (!rows || rows.length === 0) return;
+
+        let tractorColIdx = 4; // Col E (0-indexed = 4)
+        let choferBaseColIdx = -1;
+        let targetDispoColIdx = -1;
+
+        // 1. Encontrar la columna "Dispo." para la FECHA ACTUAL (ej: "04 agosto 2026")
+        const diaStr = String(diaActual).padStart(2, '0');
+        const regexFechaActual = new RegExp(`\\b0?${diaActual}\\s+${mesesLargo[mesActual]}\\b`, 'i');
+
+        let colFechaHeaderIdx = -1;
+        if (rows[0]) {
+            for (let c = 0; c < rows[0].length; c++) {
+                const cellVal = String(rows[0][c] || '').trim();
+                if (regexFechaActual.test(cellVal) || cellVal.includes(`${diaStr} ${mesesLargo[mesActual]}`)) {
+                    colFechaHeaderIdx = c;
+                    break;
+                }
+            }
+        }
+
+        if (colFechaHeaderIdx !== -1) {
+            // Columna "Dispo." inmediatamente anterior al bloque de fecha o relativa a Chofer
+            targetDispoColIdx = colFechaHeaderIdx - 2;
+            if (targetDispoColIdx < 0) targetDispoColIdx = colFechaHeaderIdx + 1;
+        }
+
+        if (targetDispoColIdx === -1) {
+            for (let r = 0; r < Math.min(5, rows.length); r++) {
+                for (let c = 0; c < rows[r].length; c++) {
+                    const cellVal = String(rows[r][c] || '').trim();
+                    if (cellVal.toLowerCase() === 'tractor') tractorColIdx = c;
+                    if (cellVal.toLowerCase() === 'chofer' || cellVal.toLowerCase() === 'choferes') choferBaseColIdx = c;
+                }
+            }
+
+            if (choferBaseColIdx !== -1) {
+                targetDispoColIdx = choferBaseColIdx + 1; // "UNA ADELANTE DEL NOM" (Columna Dispo.)
+            }
+        }
+
+        if (targetDispoColIdx === -1) {
+            targetDispoColIdx = 26; // Fallback Col AA
+        }
+
+        // 2. Buscar fila por tractor o chofer
+        let targetRowIdx = -1;
+        for (let i = 0; i < rows.length; i++) {
+            const tVal = String(rows[i][tractorColIdx] || '').trim().toUpperCase();
+            if (tractor && tVal === tractor) {
+                targetRowIdx = i + 1;
+                break;
+            }
+
+            if (choferBaseColIdx !== -1 && nomNorm) {
+                const cVal = String(rows[i][choferBaseColIdx] || '').trim();
+                if (cVal && normalizar(cVal) === nomNorm) {
+                    targetRowIdx = i + 1;
+                    break;
+                }
+            }
+        }
+
+        if (targetRowIdx === -1) {
+            console.warn(`[Dispo] Tractor [${tractor}] o Chofer [${choferNom}] no encontrado en hoja ${nombreHoja}`);
+            return;
+        }
+
+        function colToLetter(colIndex) {
+            let temp, letter = '';
+            while (colIndex >= 0) {
+                temp = colIndex % 26;
+                letter = String.fromCharCode(temp + 65) + letter;
+                colIndex = (colIndex - temp) / 26 - 1;
+            }
+            return letter;
+        }
+
+        const colLetter = colToLetter(targetDispoColIdx);
+        const rangeToUpdate = `'${nombreHoja}'!${colLetter}${targetRowIdx}`;
+
+        await serviceAccountAuth.request({
+            url: `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(rangeToUpdate)}?valueInputOption=USER_ENTERED`,
+            method: 'PUT',
+            data: { values: [[servicioDB]] }
+        });
+
+        console.log(`✓ [Dispo] Servicio [${servicioDB}] inyectado en columna Dispo. (${rangeToUpdate}) para tractor ${tractor}`);
+    } catch(e) {
+        console.error("[Dispo] Error inyectando servicio:", e);
+    }
+}
 
 // ==============================================================
 // 1. CARGA E INSPECCIÓN DE NOVEDADES EN RAM
@@ -260,9 +389,16 @@ function createNovedadesRouter(cacheDatosGlobales, io, ioDash, serviceAccountAut
                 let index = cacheDatosGlobales.novedades.findIndex(n => String(n.id) === String(id_novedad));
                 if(index > -1) {
                     const fechaRes = new Date().toISOString();
+
+                    let rawServ = payload ? payload.servicio : null;
+                    let dbServicio = rawServ;
+                    if (rawServ === 'EURO') dbServicio = 'DOCK SUD';
+                    if (rawServ === 'LIVIANO' || rawServ === 'LIV') dbServicio = 'UTE';
+
                     cacheDatosGlobales.novedades[index] = {
                         ...cacheDatosGlobales.novedades[index],
                         ...(payload || {}),
+                        ...(dbServicio ? { servicio: dbServicio } : {}),
                         resuelto: true,
                         fecha_resolucion: fechaRes
                     };
@@ -271,7 +407,7 @@ function createNovedadesRouter(cacheDatosGlobales, io, ioDash, serviceAccountAut
                     ioDash.emit('novedades_actualizadas', cacheDatosGlobales.novedades);
                     res.json({ success: true, data: novedadActualizada });
 
-                    // Re-escritura en Sheets
+                    // Re-escritura en Sheets 'novedades'
                     try {
                         const rowsNov = await fetchRango(ID_SPREADSHEET_MASTER, "'novedades'!A:B");
                         let rIdx = -1;
@@ -287,6 +423,13 @@ function createNovedadesRouter(cacheDatosGlobales, io, ioDash, serviceAccountAut
                             });
                         }
                     } catch(e) { console.error("Error Resolviendo Novedad:", e); }
+
+                    // Inyección en la hoja 'Dispo' de spreadsheet 1vYw-Zm51m50PeJmvLqshW4lBDonI7KTvBD14uIJioAU
+                    if (dbServicio) {
+                        inyectarServicioEnSheetDispo(novedadActualizada.tractor, novedadActualizada.nom, dbServicio, serviceAccountAuth, fetchRango).catch(e => {
+                            console.error("Error inyectando en Dispo:", e);
+                        });
+                    }
                 } else { 
                     res.status(404).json({ success: false, error: "No encontrada" }); 
                 }
