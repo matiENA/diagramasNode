@@ -17,6 +17,7 @@ const createAuthRouter = require('./routes/auth');
 const createProxyRouter = require('./routes/proxy');
 const createFotosRouter = require('./routes/fotos');
 const createDashRouter = require('./routes/dash');
+const createFlotaRouter = require('./routes/flota');
 
 // ==============================================================
 // 🚀 EXPRESS + SOCKET.IO
@@ -102,6 +103,10 @@ app.use('/api/auth', createAuthRouter());
 
 // DASH — API ligera (solo flota + usuarios, sin días)
 app.use('/api/dash', createDashRouter(cacheDatosGlobales));
+
+// FLOTA — Gestión de unidades, choferes y asignaciones
+app.use('/api/flota', createFlotaRouter(cacheDatosGlobales, io));
+app.use('/flota', express.static(require('path').join(__dirname, 'FLOTA', 'dist')));
 
 // Novedades — CRUD + Polling
 app.use('/api/novedades', createNovedadesRouter(cacheDatosGlobales, io, ioDash, serviceAccountAuth, ID_SPREADSHEET_MASTER, fetchRango));
