@@ -216,8 +216,25 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
             });
         } catch(e) {}
 
-        let nombrePestañaVenc = await getTabName(ID_SHEET_MOVIMIENTOS, "Vencimiento", "Vencimientos.");
-        resDiagGAS.vencimientosObj = (await fetchRango(ID_SHEET_MOVIMIENTOS, `'${nombrePestañaVenc}'!A2:N1000`)).map(row => (!row[1] ? null : { col_b: row[1] || "", col_g: row[6] || "", col_h: row[7] || "", col_j: row[9] || "", col_k: row[10] || "", col_l: row[11] || "", col_m: row[12] || "", col_n: row[13] || "" })).filter(Boolean);
+        try {
+            const rowsUniQM = await fetchRango(ID_SHEET_MOVIMIENTOS, "'base datos Uni QM'!A3:F1500");
+            resDiagGAS.vencimientosObj = rowsUniQM.map(row => {
+                let patente = String(row[0] || '').trim();
+                if (!patente || patente.toLowerCase() === 'patente') return null;
+                return {
+                    patente: patente,
+                    mas: String(row[1] || '').trim(),
+                    vtv: String(row[2] || '').trim(),
+                    esp_es: String(row[3] || '').trim(),
+                    vi: String(row[4] || '').trim(),
+                    ve: String(row[5] || '').trim()
+                };
+            }).filter(Boolean);
+            console.log(`🚚 Vencimientos de unidades cargados desde 'base datos Uni QM': ${resDiagGAS.vencimientosObj.length} unidades.`);
+        } catch(eUni) {
+            console.error("Error cargando base datos Uni QM:", eUni);
+            resDiagGAS.vencimientosObj = [];
+        }
 
         resDiagGAS.fotosImgur = {};
         (await fetchRango(ID_SPREADSHEET_MASTER, "'fotos'!A:B")).forEach(row => { 

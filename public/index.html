@@ -554,29 +554,28 @@ function cambiarVistaPrincipal(vista) {
     filtrarTabla();
 }
     
-    window.mapearVencimientos = function(patente, jsonVencimientos) {
-    if (!patente || !jsonVencimientos || !Array.isArray(jsonVencimientos)) return null;
-    
-    const patenteLimpia = String(patente).replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-    
-    const record = jsonVencimientos.find(item => {
-        const patenteItem = String(item.col_b || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-        return patenteItem === patenteLimpia;
-    });
+    window.mapearVencimientos = function(patenteTractor, jsonVencimientos, patenteSemi = null) {
+        if (!jsonVencimientos || !Array.isArray(jsonVencimientos)) return null;
+        
+        const clean = p => String(p || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+        const pTrLimpia = clean(patenteTractor);
+        const pSemiLimpia = clean(patenteSemi);
 
-    if (!record) return null;
-    
-    // 👉 CORRECCIÓN: Alineación exacta con la disposición real de la planilla 'Vencimientos.'
-    return {
-        mass_tr: record.col_g,   // Columna G: MASS TR
-        vtv_tr: record.col_h,    // Columna H: VTV TR
-        mass_semi: record.col_j, // Columna J: MAS SEMI
-        vtv_semi: record.col_k,  // Columna K: VTV SEMI
-        esp_es: record.col_l,    // Columna L: Esp-Es
-        vi: record.col_m,        // Columna M: VI
-        ve: record.col_n         // Columna N: VE
-    };
-};    
+        const recTr = pTrLimpia ? jsonVencimientos.find(item => clean(item.patente || item.col_b) === pTrLimpia) : null;
+        const recSemi = pSemiLimpia ? jsonVencimientos.find(item => clean(item.patente || item.col_b) === pSemiLimpia) : null;
+
+        if (!recTr && !recSemi) return null;
+        
+        return {
+            mass_tr: recTr ? (recTr.mas || recTr.col_g || '') : '',
+            vtv_tr: recTr ? (recTr.vtv || recTr.col_h || '') : '',
+            mass_semi: recSemi ? (recSemi.mas || recSemi.col_j || '') : '',
+            vtv_semi: recSemi ? (recSemi.vtv || recSemi.col_k || '') : '',
+            esp_es: recTr ? (recTr.esp_es || recTr.col_l || '') : (recSemi ? (recSemi.esp_es || recSemi.col_l || '') : ''),
+            vi: recTr ? (recTr.vi || recTr.col_m || '') : (recSemi ? (recSemi.vi || recSemi.col_m || '') : ''),
+            ve: recTr ? (recTr.ve || recTr.col_n || '') : (recSemi ? (recSemi.ve || recSemi.col_n || '') : '')
+        };
+    };    
     window.parseFechaObs = function(fechaStr) {
         if (!fechaStr || fechaStr === '-') return null;
         const partes = fechaStr.trim().split(' ');
@@ -1020,10 +1019,23 @@ window.toggleVencimientosUnidad = function(safeId) {
     }
 };
 
+    let debounceFilterTimer = null;
+    window.debounceFiltrarTabla = function() {
+        clearTimeout(debounceFilterTimer);
+        debounceFilterTimer = setTimeout(() => {
+            filtrarTabla();
+        }, 120);
+    };
+
     function filtrarTabla() {
         const texto = document.getElementById('buscador-nombre') ? document.getElementById('buscador-nombre').value.toLowerCase().trim() : '';
         const fBaseObj = new Date(fechaGlobalContexto + "T12:00:00");
         const esVistaTabla = vistaActual === 'semanal';
+
+        let cacheVenc = window.vencimientosCacheGlobal;
+        if (cacheVenc && typeof cacheVenc === 'string') {
+            try { cacheVenc = JSON.parse(cacheVenc); } catch(e) {}
+        }
 
         const filtrados = datosGlobales.filter(c => {
             let nKey = window.normalizarGlobal(c.nom);
@@ -1045,10 +1057,8 @@ window.toggleVencimientosUnidad = function(safeId) {
             if (vistaActual === 'unidades') {
                 let unidadData = (window.unidadesGlobales && window.unidadesGlobales[c.tractor]) || {};
                 try {
-                    let cache = window.vencimientosCacheGlobal;
-                    if (cache && typeof cache === 'string') { cache = JSON.parse(cache); }
-                    if (cache && Array.isArray(cache) && c.tractor) {
-                        let datosVencimientos = window.mapearVencimientos(c.tractor, cache);
+                    if (cacheVenc && Array.isArray(cacheVenc) && (c.tractor || c.semi)) {
+                        let datosVencimientos = window.mapearVencimientos(c.tractor, cacheVenc, c.semi);
                         if (datosVencimientos) { unidadData = { ...unidadData, ...datosVencimientos }; }
                     }
                 } catch (error) {}
@@ -1058,7 +1068,6 @@ window.toggleVencimientosUnidad = function(safeId) {
                 if (window.filtroFlotaActual === 'vencido' && estadoGlobal !== 'VENCIDO') return false;
                 if (window.filtroFlotaActual === 'por_vencer' && estadoGlobal !== 'POR_VENCER') return false;
                 
-                // Si pasa el filtro de flota, no necesita pasar por los filtros de métricas diarios
                 return true; 
             }
 
@@ -1455,8 +1464,8 @@ window.renderizarPanelFiltros = function(containerId = 'contenedor-filtros-later
         try {
             let cache = window.vencimientosCacheGlobal;
             if (cache && typeof cache === 'string') { cache = JSON.parse(cache); }
-            if (cache && Array.isArray(cache) && item.tractor) {
-                let datosVencimientos = window.mapearVencimientos(item.tractor, cache);
+            if (cache && Array.isArray(cache) && (item.tractor || item.semi)) {
+                let datosVencimientos = window.mapearVencimientos(item.tractor, cache, item.semi);
                 if (datosVencimientos) { unidadData = { ...unidadData, ...datosVencimientos }; }
             }
         } catch (error) {}
@@ -2080,8 +2089,8 @@ window.mostrarDetalleConductor = function(safeId, mantenerSeleccion = false) {
     try {
         let cache = window.vencimientosCacheGlobal;
         if (cache && typeof cache === 'string') { cache = JSON.parse(cache); }
-        if (cache && Array.isArray(cache) && chofer.tractor) {
-            let datosVencimientos = window.mapearVencimientos(chofer.tractor, cache);
+        if (cache && Array.isArray(cache) && (chofer.tractor || chofer.semi)) {
+            let datosVencimientos = window.mapearVencimientos(chofer.tractor, cache, chofer.semi);
             if (datosVencimientos) { unidadData = { ...unidadData, ...datosVencimientos }; }
         }
     } catch (error) { console.error("Error UI al procesar vencimientos de la unidad:", error); }
