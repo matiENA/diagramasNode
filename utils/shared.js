@@ -10,12 +10,14 @@ const { createClient } = require('@supabase/supabase-js');
 const normalizar = (n) => {
     if (!n) return '';
     return String(n)
+        .replace(/__N_TILDE__/gi, 'ñ')
         .trim()
         .toLowerCase()
-        .replace(/ñ/g, '__N_TILDE__')
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .replace(/__n_tilde__/g, 'ñ')
+        .replace(/[áäàâ]/g, 'a')
+        .replace(/[éëèê]/g, 'e')
+        .replace(/[íïìî]/g, 'i')
+        .replace(/[óöòô]/g, 'o')
+        .replace(/[úüùû]/g, 'u')
         .replace(/\s+/g, ' ');
 };
 
