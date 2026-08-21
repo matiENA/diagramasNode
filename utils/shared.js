@@ -7,7 +7,17 @@ const { createClient } = require('@supabase/supabase-js');
 // ==============================================================
 // 📝 Funciones de normalización y fecha
 // ==============================================================
-const normalizar = (n) => String(n || '').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
+const normalizar = (n) => {
+    if (!n) return '';
+    return String(n)
+        .trim()
+        .toLowerCase()
+        .replace(/ñ/g, '__N_TILDE__')
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/__n_tilde__/g, 'ñ')
+        .replace(/\s+/g, ' ');
+};
 
 function getFechaArgentina() {
     const now = new Date();
@@ -32,6 +42,7 @@ const ID_SHEET_KILOMETROS = '1Wr-_P4mDvldif_cAx08sp7yT8uTUrajI2HQAJF6tnGM';
 const ID_SHEET_HABILITACIONES = '1hPDno09tMBtKh7aIdsvzEYcyOY7leYj2B6XnniD0aXg';
 const ID_SHEET_DOCUMENTOS = '1pnYXKDSv70Vq78Rchxus5FHMKdgXdbfltVsEg6vArjo';
 const ID_SHEET_MOVIMIENTOS = process.env.MES_MOVIMIENTOS_ID || '1vYw-Zm51m50PeJmvLqshW4lBDonI7KTvBD14uIJioAU';
+const ID_SHEET_FLOTA_DB = process.env.FLOTA_DB_ID || '1AtolXSqiPAbevXDpHwOXQL2_zKTOqCsl-E4Cs92Y14w';
 
 // ==============================================================
 // 🔐 Instancias de autenticación
@@ -124,6 +135,7 @@ module.exports = {
     ID_SHEET_HABILITACIONES,
     ID_SHEET_DOCUMENTOS,
     ID_SHEET_MOVIMIENTOS,
+    ID_SHEET_FLOTA_DB,
     // Instancias de auth
     serviceAccountAuth,
     supabase

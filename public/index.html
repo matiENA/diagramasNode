@@ -389,7 +389,17 @@ window.sincronizarBackend = function() {
     }
     
     // --- [TAG: STATE] ---
-    window.normalizarGlobal = function(nom) { return String(nom || '').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' '); };
+    window.normalizarGlobal = function(nom) {
+        if (!nom) return '';
+        return String(nom)
+            .trim()
+            .toLowerCase()
+            .replace(/ñ/g, '__N_TILDE__')
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/__n_tilde__/g, 'ñ')
+            .replace(/\s+/g, ' ');
+    };
     
     let zoomIndividualNivel = 3; 
     let currentEndIso = null;    
@@ -525,7 +535,7 @@ document.addEventListener('click', (e) => {
     // --- [TAG: ROUTER PRINCIPAL] ---
 
     window.normalizarNombreTD = function(nom) {
-        return String(nom || "").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
+        return window.normalizarGlobal(nom);
     };
     function normalizarNombreTD(nom) {
         return window.normalizarNombreTD(nom);
