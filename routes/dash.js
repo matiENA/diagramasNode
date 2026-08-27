@@ -20,7 +20,8 @@ module.exports = function createDashRouter(cacheDatosGlobales) {
             tractor: ch.tractor || '',
             semi: ch.semi || '',
             srv: ch.srv || '',
-            n_ute: ch.n_ute || ''
+            n_ute: ch.n_ute || '',
+            _diasIso: ch._diasIso || {}
         }));
 
         res.json({
