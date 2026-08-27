@@ -80,65 +80,22 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
             const rowsMov = await fetchRango(ID_SHEET_MOVIMIENTOS, `'${nombrePestañaMov}'!A1:ZZ1000`);
             
             if (rowsMov.length > 0) {
-                let colFecha = -1, colNom = -1;
-                for (let offset = 0; offset >= -10; offset--) {
-                    let d = new Date(hoyAr); d.setDate(d.getDate() + offset);
-                    let tD = d.getDate(); let tM = d.getMonth(); let tY = d.getFullYear();
-                    let tD_pad = String(tD).padStart(2, '0'); let tM_pad = String(tM + 1).padStart(2, '0'); let tY_short = String(tY).slice(-2);
-                    let regexFechas = [ new RegExp(`\\b0?${tD}[\\s/\\-de]+${mesesLargo[tM]}\\b`, 'i'), new RegExp(`\\b0?${tD}[\\s/\\-]+${mesesAbrev[tM]}\\b`, 'i'), new RegExp(`\\b${tD_pad}/${tM_pad}/${tY}\\b`), new RegExp(`\\b${tD}/${tM+1}/${tY}\\b`), new RegExp(`\\b${tD_pad}/${tM_pad}/${tY_short}\\b`), new RegExp(`\\b${tD}/${tM+1}/${tY_short}\\b`) ];
-                    for (let r = 0; r < Math.min(5, rowsMov.length); r++) {
-                        for (let c = 3; c < rowsMov[r].length; c++) {
-                            let val = String(rowsMov[r][c] || "").toLowerCase().replace(/\s+/g, ' ').trim();
-                            if (regexFechas.some(rx => rx.test(val))) { 
-                                colFecha = c; 
-                                for (let searchCol = colFecha; searchCol >= 0; searchCol--) {
-                                    let encontrado = false;
-                                    for (let searchRow = 0; searchRow < 6; searchRow++) {
-                                        let cellVal = String(rowsMov[searchRow]?.[searchCol] || "").toLowerCase().trim();
-                                        if (cellVal === "chofer" || cellVal === "choferes" || cellVal.includes("apellido y nombre")) { colNom = searchCol; encontrado = true; break; }
-                                    }
-                                    if (encontrado) break;
-                                }
-                                if (colNom === -1) colNom = c - 3; 
-                                break; 
-                            }
-                        }
-                        if (colFecha !== -1) break;
-                    }
-                    if (colFecha !== -1) break; 
-                }
+                for (let i = 2; i < rowsMov.length; i++) {
+                    let row = rowsMov[i];
+                    if (!row || row.length < 5) continue;
 
-                if (colFecha === -1) {
-                    const regexAnyDate = /\b\d{1,2}[\s/\-de]+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre|ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)\b/i;
-                    for (let r = 0; r < Math.min(5, rowsMov.length); r++) {
-                        for (let c = rowsMov[r].length - 1; c >= 3; c--) {
-                            let val = String(rowsMov[r][c] || "").toLowerCase().replace(/\s+/g, ' ').trim();
-                            if (regexAnyDate.test(val)) {
-                                colFecha = c;
-                                for (let searchCol = colFecha; searchCol >= 0; searchCol--) {
-                                    let encontrado = false;
-                                    for (let searchRow = 0; searchRow < 6; searchRow++) {
-                                        let cellVal = String(rowsMov[searchRow]?.[searchCol] || "").toLowerCase().trim();
-                                        if (cellVal === "chofer" || cellVal === "choferes" || cellVal.includes("apellido y nombre")) { colNom = searchCol; encontrado = true; break; }
-                                    }
-                                    if (encontrado) break;
-                                }
-                                if (colNom === -1) colNom = c - 3;
-                                break;
-                            }
-                        }
-                        if (colFecha !== -1) break;
-                    }
-                }
+                    let n_ute = String(row[2] || "").trim();
+                    let tractor = String(row[4] || "").trim();
+                    let semi = String(row[5] || "").trim();
 
-                if (colNom !== -1) {
-                    for (let i = 2; i < rowsMov.length; i++) {
-                        let n_ute = String(rowsMov[i][2] || "").trim(), tractor = String(rowsMov[i][4] || "").trim(), semi = String(rowsMov[i][5] || "").trim(); 
-                        if (!tractor) continue;
-                        let nomRaw = String(rowsMov[i][colNom] || "").trim();
-                        if (!nomRaw || nomRaw === "1" || !/[a-zA-Záéíóú]/.test(nomRaw)) continue;
-                        let norm = normalizar(nomRaw);
-                        
+                    if (!tractor && !semi && !n_ute) continue;
+
+                    for (let c = 6; c < row.length; c++) {
+                        let cellVal = String(row[c] || "").trim();
+                        if (!cellVal || cellVal === "1" || cellVal.length < 3) continue;
+                        if (!/[a-zA-ZáéíóúÁÉÍÓÚñÑ]/.test(cellVal) || cellVal.toLowerCase().includes("reparacion") || cellVal.toLowerCase().includes("viaje") || cellVal.toLowerCase().includes("mantenimiento")) continue;
+
+                        let norm = normalizar(cellVal);
                         let targetKey = norm;
                         if (!resDiagGAS.flota[targetKey] && mapaNombreDiagramaAId) {
                             let choferId = mapaNombreDiagramaAId[norm];
@@ -153,10 +110,16 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
                             if (foundKey) targetKey = foundKey;
                         }
 
-                        if (resDiagGAS.flota[targetKey]) { resDiagGAS.flota[targetKey].n_ute = n_ute; resDiagGAS.flota[targetKey].tractor = tractor; resDiagGAS.flota[targetKey].semi = semi; } 
-                        else { resDiagGAS.flota[norm] = { tractor: tractor, semi: semi, servicio: 'S/A', n_ute: n_ute }; listaChoferesMaestros.push({ nombre: nomRaw, norm }); }
+                        if (resDiagGAS.flota[targetKey]) {
+                            if (n_ute) resDiagGAS.flota[targetKey].n_ute = n_ute;
+                            if (tractor) resDiagGAS.flota[targetKey].tractor = tractor;
+                            if (semi) resDiagGAS.flota[targetKey].semi = semi;
+                        } else {
+                            resDiagGAS.flota[norm] = { tractor: tractor, semi: semi, servicio: 'S/A', n_ute: n_ute };
+                            listaChoferesMaestros.push({ nombre: cellVal, norm });
+                        }
                     }
-                } 
+                }
             }
 
         } catch (e) { }
