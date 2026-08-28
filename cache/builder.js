@@ -114,9 +114,6 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
                             if (n_ute) resDiagGAS.flota[targetKey].n_ute = n_ute;
                             if (tractor) resDiagGAS.flota[targetKey].tractor = tractor;
                             if (semi) resDiagGAS.flota[targetKey].semi = semi;
-                        } else {
-                            resDiagGAS.flota[norm] = { tractor: tractor, semi: semi, servicio: 'S/A', n_ute: n_ute };
-                            listaChoferesMaestros.push({ nombre: cellVal, norm });
                         }
                     }
                 }
