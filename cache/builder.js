@@ -80,22 +80,68 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
             const rowsMov = await fetchRango(ID_SHEET_MOVIMIENTOS, `'${nombrePestañaMov}'!A1:ZZ1000`);
             
             if (rowsMov.length > 0) {
-                for (let i = 2; i < rowsMov.length; i++) {
-                    let row = rowsMov[i];
-                    if (!row || row.length < 5) continue;
+                let dateMap = [];
+                const row0 = rowsMov[0] || [];
 
-                    let n_ute = String(row[2] || "").trim();
-                    let tractor = String(row[4] || "").trim();
-                    let semi = String(row[5] || "").trim();
+                function parseHeaderDate(str) {
+                    if (!str) return null;
+                    let clean = String(str).toLowerCase().replace(/\s+/g, ' ').trim();
+                    let matchWord = clean.match(/(\d{1,2})[\s/\-de]+([a-z]+)[\s/\-de]+(\d{2,4})/);
+                    if (matchWord) {
+                        let day = parseInt(matchWord[1], 10);
+                        let mStr = matchWord[2].substring(0, 3);
+                        let monthIdx = mesesAbrev.map(m => m.toLowerCase()).indexOf(mStr);
+                        if (monthIdx === -1) monthIdx = mesesLargo.map(m => m.toLowerCase()).indexOf(matchWord[2]);
+                        let year = parseInt(matchWord[3], 10);
+                        if (year < 100) year += 2000;
+                        if (monthIdx !== -1 && day >= 1 && day <= 31) return new Date(year, monthIdx, day);
+                    }
+                    let matchSlash = clean.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+                    if (matchSlash) {
+                        let day = parseInt(matchSlash[1], 10);
+                        let monthIdx = parseInt(matchSlash[2], 10) - 1;
+                        let year = parseInt(matchSlash[3], 10);
+                        if (year < 100) year += 2000;
+                        return new Date(year, monthIdx, day);
+                    }
+                    return null;
+                }
 
-                    if (!tractor && !semi && !n_ute) continue;
+                row0.forEach((cell, cIdx) => {
+                    let parsedDate = parseHeaderDate(cell);
+                    if (parsedDate) {
+                        let choferCol = Math.max(0, cIdx - 3);
+                        dateMap.push({ colFecha: cIdx, colNom: choferCol, dateObj: parsedDate });
+                    }
+                });
 
-                    for (let c = 6; c < row.length; c++) {
-                        let cellVal = String(row[c] || "").trim();
-                        if (!cellVal || cellVal === "1" || cellVal.length < 3) continue;
-                        if (!/[a-zA-ZáéíóúÁÉÍÓÚñÑ]/.test(cellVal) || cellVal.toLowerCase().includes("reparacion") || cellVal.toLowerCase().includes("viaje") || cellVal.toLowerCase().includes("mantenimiento")) continue;
+                let todayStr = hoyAr.toISOString().split('T')[0];
+                let selectedDateCol = dateMap.find(d => d.dateObj.toISOString().split('T')[0] === todayStr);
 
-                        let norm = normalizar(cellVal);
+                if (!selectedDateCol) {
+                    let validPast = dateMap.filter(d => d.dateObj <= hoyAr).sort((a,b) => b.dateObj - a.dateObj);
+                    if (validPast.length > 0) selectedDateCol = validPast[0];
+                }
+                if (!selectedDateCol && dateMap.length > 0) {
+                    selectedDateCol = dateMap[dateMap.length - 1];
+                }
+
+                if (selectedDateCol) {
+                    let targetColNom = selectedDateCol.colNom;
+                    for (let i = 2; i < rowsMov.length; i++) {
+                        let row = rowsMov[i];
+                        if (!row || row.length < 5) continue;
+
+                        let n_ute = String(row[2] || "").trim();
+                        let tractor = String(row[4] || "").trim();
+                        let semi = String(row[5] || "").trim();
+
+                        if (!tractor && !semi && !n_ute) continue;
+
+                        let nomRaw = String(row[targetColNom] || "").trim();
+                        if (!nomRaw || nomRaw === "1" || nomRaw.length < 3) continue;
+
+                        let norm = normalizar(nomRaw);
                         let targetKey = norm;
                         if (!resDiagGAS.flota[targetKey] && mapaNombreDiagramaAId) {
                             let choferId = mapaNombreDiagramaAId[norm];
@@ -106,7 +152,7 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
                         }
                         if (!resDiagGAS.flota[targetKey]) {
                             let keys = Object.keys(resDiagGAS.flota);
-                            let foundKey = keys.find(k => k === norm || k.includes(norm) || norm.includes(k));
+                            let foundKey = keys.find(k => k === norm);
                             if (foundKey) targetKey = foundKey;
                         }
 
