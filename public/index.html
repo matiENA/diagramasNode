@@ -1035,8 +1035,8 @@ window.toggleVencimientosUnidad = function(safeId) {
     window.debounceFiltrarTabla = function() {
         clearTimeout(debounceFilterTimer);
         debounceFilterTimer = setTimeout(() => {
-            filtrarTabla();
-        }, 120);
+            requestAnimationFrame(filtrarTabla);
+        }, 180);
     };
 
     function filtrarTabla() {
@@ -4110,27 +4110,29 @@ window.evaluarDeepLinkDeArranque = function() {
                 clearTimeout(debounceSocketTimer); 
                 
                 debounceSocketTimer = setTimeout(() => {
-                    const isInputFocused = document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName);
-                    const isModalOpen = document.getElementById('modal-editor') && !document.getElementById('modal-editor').classList.contains('hidden');
-                    
-                    if (!isInputFocused && !isModalOpen) {
-                        if (typeof vistaActual !== 'undefined' && vistaActual === 'individual' && typeof conductorSeleccionadoId !== 'undefined' && conductorSeleccionadoId) {
-                            if (typeof window.actualizarCabeceraIndividual === 'function') window.actualizarCabeceraIndividual(conductorSeleccionadoId);
-                            const isRangeSelected = typeof seleccionInicioIso !== 'undefined' && seleccionInicioIso !== null;
-                            if (!isRangeSelected && typeof window.mostrarDetalleConductor === 'function') window.mostrarDetalleConductor(conductorSeleccionadoId, true);
-                            else if (isRangeSelected && typeof ejecutarRenderLocalHR === 'function') ejecutarRenderLocalHR(conductorSeleccionadoId);
-                        } else {
-                            if (typeof window.filtrarTabla === 'function') window.filtrarTabla(); 
+                    requestAnimationFrame(() => {
+                        const isInputFocused = document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName);
+                        const isModalOpen = document.getElementById('modal-editor') && !document.getElementById('modal-editor').classList.contains('hidden');
+                        
+                        if (!isInputFocused && !isModalOpen) {
+                            if (typeof vistaActual !== 'undefined' && vistaActual === 'individual' && typeof conductorSeleccionadoId !== 'undefined' && conductorSeleccionadoId) {
+                                if (typeof window.actualizarCabeceraIndividual === 'function') window.actualizarCabeceraIndividual(conductorSeleccionadoId);
+                                const isRangeSelected = typeof seleccionInicioIso !== 'undefined' && seleccionInicioIso !== null;
+                                if (!isRangeSelected && typeof window.mostrarDetalleConductor === 'function') window.mostrarDetalleConductor(conductorSeleccionadoId, true);
+                                else if (isRangeSelected && typeof ejecutarRenderLocalHR === 'function') ejecutarRenderLocalHR(conductorSeleccionadoId);
+                            } else {
+                                if (typeof window.filtrarTabla === 'function') window.filtrarTabla(); 
+                            }
                         }
-                    }
 
-                    // Mini-aviso visual del Socket
-                    let indicator = document.querySelector('.bg-green-500.animate-pulse');
-                    if (indicator) {
-                        indicator.classList.replace('bg-green-500', 'bg-blue-500'); 
-                        setTimeout(() => indicator.classList.replace('bg-blue-500', 'bg-green-500'), 500);
-                    }
-                }, 150); 
+                        // Mini-aviso visual del Socket
+                        let indicator = document.querySelector('.bg-green-500.animate-pulse');
+                        if (indicator) {
+                            indicator.classList.replace('bg-green-500', 'bg-blue-500'); 
+                            setTimeout(() => indicator.classList.replace('bg-blue-500', 'bg-green-500'), 500);
+                        }
+                    });
+                }, 300); 
             }
         } catch (e) { 
             console.warn("Error procesando sockets:", e);
