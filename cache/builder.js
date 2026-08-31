@@ -355,7 +355,8 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
         for (let i of offsetsMeses) {
             let d = new Date(hoyAr2.getFullYear(), hoyAr2.getMonth() + i, 1); 
             let anio = d.getFullYear(); 
-            let mesStr = String(d.getMonth() + 1).padStart(2, '0');
+            let targetMonthNum = d.getMonth() + 1;
+            let mesStr = String(targetMonthNum).padStart(2, '0');
             let nombreHoja = mesesAbrev[d.getMonth()] + "-" + String(anio).slice(-2); 
 
             const rowsSheet = await fetchRango(ID_SPREADSHEET_DIAGRAMAS, `'${nombreHoja}'!A1:AL1000`);
@@ -369,11 +370,16 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
 
                 for (let c = 0; c < rowsSheet[r].length; c++) {
                     let cellVal = String(rowsSheet[r][c] || "").trim();
-                    let m = cellVal.match(/^0*([1-9]|[12][0-9]|3[01])[\/\-]\d{1,2}$/);
+                    let m = cellVal.match(/^0*([1-9]|[12][0-9]|3[01])[\/\-](0*([1-9]|1[0-2]))$/);
                     if (m) {
                         let dayNum = parseInt(m[1], 10);
-                        tempMap[dayNum] = c;
-                        matchesCount++;
+                        let monthNum = parseInt(m[2], 10);
+                        if (monthNum === targetMonthNum) {
+                            if (tempMap[dayNum] === undefined) {
+                                tempMap[dayNum] = c;
+                                matchesCount++;
+                            }
+                        }
                     }
                 }
 
@@ -383,8 +389,22 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
                 }
             }
 
+            const maxDaysInMonth = new Date(anio, targetMonthNum, 0).getDate();
+
             if (Object.keys(dayColMap).length === 0) {
-                for (let dia = 1; dia <= 31; dia++) dayColMap[dia] = dia + 3;
+                let offsetDia1 = 4;
+                const patronDia1 = new RegExp(`^0*1[\\\/\\-]${targetMonthNum}$`);
+                outer: for (let r = 0; r < Math.min(12, rowsSheet.length); r++) {
+                    if (!rowsSheet[r]) continue;
+                    for (let c = 0; c < rowsSheet[r].length; c++) {
+                        let cellVal = String(rowsSheet[r][c] || '').trim();
+                        if (patronDia1.test(cellVal)) {
+                            offsetDia1 = c;
+                            break outer;
+                        }
+                    }
+                }
+                for (let dia = 1; dia <= maxDaysInMonth; dia++) dayColMap[dia] = offsetDia1 + (dia - 1);
             }
 
             rowsSheet.forEach(row => {
@@ -393,7 +413,7 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
                 let nomNorm = normalizar(n); 
                 if (!diasLegacyIso[nomNorm]) diasLegacyIso[nomNorm] = {};
 
-                for (let dia = 1; dia <= 31; dia++) { 
+                for (let dia = 1; dia <= maxDaysInMonth; dia++) { 
                     let colIdx = dayColMap[dia];
                     let est = colIdx !== undefined ? row[colIdx] : undefined; 
                     if (est && est !== '-') {
@@ -481,7 +501,8 @@ async function syncAllDiagramasToMaster(cacheDatosGlobales = null, io = null) {
             let mIdx = mesesAbrev.findIndex(m => m.toLowerCase() === parts[0].toLowerCase());
             if (mIdx === -1) continue;
             let anioStr = "20" + parts[1].replace(/\D/g, '');
-            let mesStr = String(mIdx + 1).padStart(2, '0');
+            let targetMonthNum = mIdx + 1;
+            let mesStr = String(targetMonthNum).padStart(2, '0');
             let anio = parseInt(anioStr, 10);
 
             const rowsSheet = await fetchRango(ID_SPREADSHEET_DIAGRAMAS, `'${nombreHoja}'!A1:AL1000`);
@@ -495,11 +516,16 @@ async function syncAllDiagramasToMaster(cacheDatosGlobales = null, io = null) {
 
                 for (let c = 0; c < rowsSheet[r].length; c++) {
                     let cellVal = String(rowsSheet[r][c] || "").trim();
-                    let m = cellVal.match(/^0*([1-9]|[12][0-9]|3[01])[\/\-]\d{1,2}$/);
+                    let m = cellVal.match(/^0*([1-9]|[12][0-9]|3[01])[\/\-](0*([1-9]|1[0-2]))$/);
                     if (m) {
                         let dayNum = parseInt(m[1], 10);
-                        tempMap[dayNum] = c;
-                        matchesCount++;
+                        let monthNum = parseInt(m[2], 10);
+                        if (monthNum === targetMonthNum) {
+                            if (tempMap[dayNum] === undefined) {
+                                tempMap[dayNum] = c;
+                                matchesCount++;
+                            }
+                        }
                     }
                 }
 
@@ -509,8 +535,22 @@ async function syncAllDiagramasToMaster(cacheDatosGlobales = null, io = null) {
                 }
             }
 
+            const maxDaysInMonth = new Date(anio, targetMonthNum, 0).getDate();
+
             if (Object.keys(dayColMap).length === 0) {
-                for (let dia = 1; dia <= 31; dia++) dayColMap[dia] = dia + 3;
+                let offsetDia1 = 4;
+                const patronDia1 = new RegExp(`^0*1[\\\/\\-]${targetMonthNum}$`);
+                outer: for (let r = 0; r < Math.min(12, rowsSheet.length); r++) {
+                    if (!rowsSheet[r]) continue;
+                    for (let c = 0; c < rowsSheet[r].length; c++) {
+                        let cellVal = String(rowsSheet[r][c] || '').trim();
+                        if (patronDia1.test(cellVal)) {
+                            offsetDia1 = c;
+                            break outer;
+                        }
+                    }
+                }
+                for (let dia = 1; dia <= maxDaysInMonth; dia++) dayColMap[dia] = offsetDia1 + (dia - 1);
             }
 
             rowsSheet.forEach(row => {
@@ -519,7 +559,7 @@ async function syncAllDiagramasToMaster(cacheDatosGlobales = null, io = null) {
                 let nomNorm = normalizar(n); 
                 if (!diasLegacyIso[nomNorm]) diasLegacyIso[nomNorm] = {};
 
-                for (let dia = 1; dia <= 31; dia++) { 
+                for (let dia = 1; dia <= maxDaysInMonth; dia++) { 
                     let colIdx = dayColMap[dia];
                     let est = colIdx !== undefined ? row[colIdx] : undefined; 
                     if (est && est !== '-') {
