@@ -91,6 +91,8 @@ app.get('/api/datos', (req, res) => {
     res.json({
         success: true,
         diagramas: cacheDatosGlobales.diagramas,
+        cisternado: cacheDatosGlobales.diagramas.cisternado || {},
+        cisternadoObj: cacheDatosGlobales.diagramas.cisternadoObj || [],
         tds: cacheDatosGlobales.tds,
         timestamp: cacheDatosGlobales.ultimaActualizacion,
         usuarios: cacheDatosGlobales.usuarios || []

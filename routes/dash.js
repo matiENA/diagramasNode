@@ -21,6 +21,7 @@ module.exports = function createDashRouter(cacheDatosGlobales) {
             semi: ch.semi || '',
             srv: ch.srv || '',
             n_ute: ch.n_ute || '',
+            cisternado: ch.cisternado || '',
             _diasIso: ch._diasIso || {}
         }));
 
@@ -29,6 +30,7 @@ module.exports = function createDashRouter(cacheDatosGlobales) {
             flota: flotaLite,
             // Flota indexada por nombre normalizado para búsqueda rápida
             flotaMap: cacheDatosGlobales.diagramas.flota || {},
+            cisternado: cacheDatosGlobales.diagramas.cisternado || {},
             usuarios: cacheDatosGlobales.usuarios || [],
             timestamp: cacheDatosGlobales.ultimaActualizacion
         });

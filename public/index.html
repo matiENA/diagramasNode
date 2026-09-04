@@ -986,6 +986,8 @@ async function cargarDatosDesdeCache() {
             aptosMedicos:   v => aptosGlobales = normalize(v),
             viajesCampo:    v => viajesGlobales = normalize(v),
             vencimientosObj: v => window.vencimientosCacheGlobal = v, 
+            cisternado:     v => window.cisternadoCacheGlobal = v,
+            cisternadoObj:  v => window.cisternadoObjCacheGlobal = v,
             nuevaSeccionViajes: v => {
                 if (v && typeof v === 'object' && !Array.isArray(v)) {
                     viajesDetalleGlobal = v;
@@ -4092,6 +4094,8 @@ window.evaluarDeepLinkDeArranque = function() {
             aptosGlobales = normalize(dataDiag.aptosMedicos);
             viajesGlobales = normalize(dataDiag.viajesCampo);
             window.vencimientosCacheGlobal = dataDiag.vencimientosObj;
+            window.cisternadoCacheGlobal = dataDiag.cisternado || {};
+            window.cisternadoObjCacheGlobal = dataDiag.cisternadoObj || [];
             fotosGlobales = dataDiag.fotosImgur || {};
 
             if (dataDiag.nuevaSeccionViajes && typeof dataDiag.nuevaSeccionViajes === 'object' && !Array.isArray(dataDiag.nuevaSeccionViajes)) {
