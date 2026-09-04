@@ -47,8 +47,16 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
                 let nombreDiagrama = String(row[5] || "").trim();
                 choferesRouter[id] = { id: id, nombre: nombre, dni: String(row[2] || "").replace(/\D/g, ''), cuil: String(row[4] || "").replace(/\D/g, ''), nombreDiagrama: nombreDiagrama, dniFallback: String(row[6] || "").replace(/\D/g, '') };
 
-                if (nombreDiagrama) mapaNombreDiagramaAId[normalizar(nombreDiagrama)] = id;
-                if (nombre && !mapaNombreDiagramaAId[normalizar(nombre)]) mapaNombreDiagramaAId[normalizar(nombre)] = id;
+                if (nombreDiagrama) {
+                    let nd = normalizar(nombreDiagrama);
+                    mapaNombreDiagramaAId[nd] = id;
+                    if (nd.includes('ñ')) mapaNombreDiagramaAId[nd.replace(/ñ/g, 'n')] = id;
+                }
+                if (nombre) {
+                    let nm = normalizar(nombre);
+                    if (!mapaNombreDiagramaAId[nm]) mapaNombreDiagramaAId[nm] = id;
+                    if (nm.includes('ñ') && !mapaNombreDiagramaAId[nm.replace(/ñ/g, 'n')]) mapaNombreDiagramaAId[nm.replace(/ñ/g, 'n')] = id;
+                }
             });
             cacheDatosGlobales.choferesRouter = choferesRouter; 
             cacheDatosGlobales.mapaNombreDiagramaAId = mapaNombreDiagramaAId;
@@ -73,7 +81,12 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
             (await fetchRango(ID_SPREADSHEET_DIAGRAMAS, `'${nombreHojaActual}'!A6:C1000`)).forEach(row => {
                 if (row[1] && !["APELLIDO Y NOMBRE", "Personal Activo"].includes(row[1])) {
                     let norm = normalizar(row[1]);
-                    if (!resDiagGAS.flota[norm]) { resDiagGAS.flota[norm] = { tractor: '', semi: '', servicio: row[2] || 'S/A', n_ute: '', cisternado: '' }; listaChoferesMaestros.push({ nombre: String(row[1]).trim(), norm }); }
+                    if (!resDiagGAS.flota[norm]) { 
+                        let objFlota = { tractor: '', semi: '', servicio: row[2] || 'S/A', n_ute: '', cisternado: '' };
+                        resDiagGAS.flota[norm] = objFlota; 
+                        if (norm.includes('ñ')) resDiagGAS.flota[norm.replace(/ñ/g, 'n')] = objFlota;
+                        listaChoferesMaestros.push({ nombre: String(row[1]).trim(), norm }); 
+                    }
                 }
             });
 
@@ -170,15 +183,16 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
                         let norm = normalizar(nomRaw);
                         let targetKey = norm;
                         if (!resDiagGAS.flota[targetKey] && mapaNombreDiagramaAId) {
-                            let choferId = mapaNombreDiagramaAId[norm];
+                            let choferId = mapaNombreDiagramaAId[norm] || (norm.includes('ñ') ? mapaNombreDiagramaAId[norm.replace(/ñ/g, 'n')] : null);
                             if (choferId && choferesRouter[choferId]) {
                                 let diagName = normalizar(choferesRouter[choferId].nombreDiagrama || choferesRouter[choferId].nombre);
                                 if (resDiagGAS.flota[diagName]) targetKey = diagName;
+                                else if (diagName.includes('ñ') && resDiagGAS.flota[diagName.replace(/ñ/g, 'n')]) targetKey = diagName.replace(/ñ/g, 'n');
                             }
                         }
                         if (!resDiagGAS.flota[targetKey]) {
                             let keys = Object.keys(resDiagGAS.flota);
-                            let foundKey = keys.find(k => k === norm);
+                            let foundKey = keys.find(k => k === norm || (norm.includes('ñ') && k === norm.replace(/ñ/g, 'n')));
                             if (foundKey) targetKey = foundKey;
                         }
 
@@ -199,12 +213,27 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
 
         let dnisMap = {}; let telefonosMap = {};
         try {
-            (await fetchRango(ID_SPREADSHEET_MASTER, "'dni'!A1:D500")).forEach(row => { let n = String(row[0] || "").trim(); let dni = String(row[2] || "").replace(/\D/g, ''); if (n && dni) dnisMap[normalizar(n)] = { dni: String(parseInt(dni, 10)) }; });
+            (await fetchRango(ID_SPREADSHEET_MASTER, "'dni'!A1:D500")).forEach(row => { 
+                let n = String(row[0] || "").trim(); 
+                let dni = String(row[2] || "").replace(/\D/g, ''); 
+                if (n && dni) {
+                    let norm = normalizar(n);
+                    let valDni = { dni: String(parseInt(dni, 10)) };
+                    dnisMap[norm] = valDni;
+                    if (norm.includes('ñ')) dnisMap[norm.replace(/ñ/g, 'n')] = valDni;
+                }
+            });
             (await fetchRango(ID_SPREADSHEET_MASTER, "'LEGAJOS'!A2:P350")).forEach(row => {
                 let n = String(row[1] || "").trim(); if (!n || n.toLowerCase().includes("baja")) return; let norm = normalizar(n);
                 let datos = { legajo: String(row[0] || "").trim(), telefono: String(row[3] || "").trim(), email: String(row[4] || "").trim(), fechaAlta: String(row[10] || "").trim() };
-                telefonosMap[norm] = datos; let dni = String(row[2] || "").replace(/\D/g, '');
-                if (dni && !dnisMap[norm]) dnisMap[norm] = { dni: String(parseInt(dni, 10)) };
+                telefonosMap[norm] = datos; 
+                if (norm.includes('ñ')) telefonosMap[norm.replace(/ñ/g, 'n')] = datos;
+                let dni = String(row[2] || "").replace(/\D/g, '');
+                if (dni && !dnisMap[norm]) {
+                    let valDni = { dni: String(parseInt(dni, 10)) };
+                    dnisMap[norm] = valDni;
+                    if (norm.includes('ñ')) dnisMap[norm.replace(/ñ/g, 'n')] = valDni;
+                }
                 if (dnisMap[norm]?.dni) telefonosMap[dnisMap[norm].dni] = datos;
             });
         } catch (e) { }
@@ -221,7 +250,10 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
                     let estado = "-"; let limit = colDiaria > -1 ? colDiaria : rowsAptos[i].length - 1;
                     for (let c = limit; c >= 12; c--) { let val = String(rowsAptos[i][c] || "").trim(); if (val !== "" && val !== "-") { estado = val; break; } }
                     let objApto = { dni, cuil: String(rowsAptos[i][1] || ""), estadoGeneral: String(rowsAptos[i][2] || ""), estado, observaciones: rowsAptos[i][10] || "", observaciones_sector_salud: rowsAptos[i][11] || "" };
-                    resDiagGAS.aptosMedicos[dni] = objApto; resDiagGAS.aptosMedicos[normalizar(n)] = objApto;
+                    let norm = normalizar(n);
+                    resDiagGAS.aptosMedicos[dni] = objApto; 
+                    resDiagGAS.aptosMedicos[norm] = objApto;
+                    if (norm.includes('ñ')) resDiagGAS.aptosMedicos[norm.replace(/ñ/g, 'n')] = objApto;
                 }
             }
         } catch (e) {}
@@ -229,8 +261,15 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
         const rowsObs = await fetchRango(ID_SHEET_OBSERVACIONES, "'Movimientos'!A5:H2000");
         resDiagGAS.observaciones = {};
         rowsObs.forEach(row => {
-            if(!row[1]) return; let norm = normalizar(row[1]); if (!resDiagGAS.observaciones[norm]) resDiagGAS.observaciones[norm] = [];
-            resDiagGAS.observaciones[norm].push({ admin: row[0] || "-", fecha: row[2] || "-", unidad: row[3] || "-", evento: row[4] || "-", obsEvento: row[5] || "", estado: row[6] || "-", obsEstado: row[7] || "" });
+            if(!row[1]) return; 
+            let norm = normalizar(row[1]); 
+            if (!resDiagGAS.observaciones[norm]) resDiagGAS.observaciones[norm] = [];
+            let obsItem = { admin: row[0] || "-", fecha: row[2] || "-", unidad: row[3] || "-", evento: row[4] || "-", obsEvento: row[5] || "", estado: row[6] || "-", obsEstado: row[7] || "" };
+            resDiagGAS.observaciones[norm].push(obsItem);
+            if (norm.includes('ñ')) {
+                let sinEnie = norm.replace(/ñ/g, 'n');
+                if (!resDiagGAS.observaciones[sinEnie]) resDiagGAS.observaciones[sinEnie] = resDiagGAS.observaciones[norm];
+            }
         });
 
         let diasLegacyIso = {}; let hojasInfo = []; let nuevaSeccionViajes = {};
@@ -248,6 +287,10 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
                     if (!nuevaSeccionViajes[choferNorm][isoDate]) nuevaSeccionViajes[choferNorm][isoDate] = { dominio: String(row[0] || '').trim(), km: 0, campo: 0, hoja_ruta: [] };
                     let target = nuevaSeccionViajes[choferNorm][isoDate]; target.km += km; target.campo += campo;
                     if (hojaStr !== "") hojaStr.split(',').map(s => s.trim()).filter(Boolean).forEach(h => { if (!target.hoja_ruta.includes(h)) target.hoja_ruta.push(h); });
+                    if (choferNorm.includes('ñ')) {
+                        let sinEnie = choferNorm.replace(/ñ/g, 'n');
+                        nuevaSeccionViajes[sinEnie] = nuevaSeccionViajes[choferNorm];
+                    }
                 }
             });
         } catch(e) {}
@@ -325,11 +368,16 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
 
                 if (v) {
                     let obj = { ven: v, estado: calcEst(r[8]) };
-                    if (sheetName) resDiagGAS.documentos[sheetName] = obj;
-                    if (diagName) resDiagGAS.documentos[diagName] = obj;
-                    if (explicitDiagName) resDiagGAS.documentos[explicitDiagName] = obj;
-                    if (routerName) resDiagGAS.documentos[routerName] = obj;
-                    if (fallbackRouterName) resDiagGAS.documentos[fallbackRouterName] = obj;
+                    const regDoc = (k) => {
+                        if (!k) return;
+                        resDiagGAS.documentos[k] = obj;
+                        if (k.includes('ñ')) resDiagGAS.documentos[k.replace(/ñ/g, 'n')] = obj;
+                    };
+                    regDoc(sheetName);
+                    regDoc(diagName);
+                    regDoc(explicitDiagName);
+                    regDoc(routerName);
+                    regDoc(fallbackRouterName);
                 }
             });
 
@@ -346,19 +394,29 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
 
                 if (c) { 
                     let obj = { ven: c, estado: calcEst(r[3]) };
-                    if (sheetName) resDiagGAS.certificados[sheetName] = obj;
-                    if (diagName) resDiagGAS.certificados[diagName] = obj;
-                    if (explicitDiagName) resDiagGAS.certificados[explicitDiagName] = obj;
-                    if (routerName) resDiagGAS.certificados[routerName] = obj;
-                    if (fallbackRouterName) resDiagGAS.certificados[fallbackRouterName] = obj;
+                    const regCert = (k) => {
+                        if (!k) return;
+                        resDiagGAS.certificados[k] = obj;
+                        if (k.includes('ñ')) resDiagGAS.certificados[k.replace(/ñ/g, 'n')] = obj;
+                    };
+                    regCert(sheetName);
+                    regCert(diagName);
+                    regCert(explicitDiagName);
+                    regCert(routerName);
+                    regCert(fallbackRouterName);
                 } 
                 if (l) { 
                     let obj = { ven: l, estado: calcEst(r[4]) };
-                    if (sheetName) resDiagGAS.habilitaciones[sheetName] = obj;
-                    if (diagName) resDiagGAS.habilitaciones[diagName] = obj;
-                    if (explicitDiagName) resDiagGAS.habilitaciones[explicitDiagName] = obj;
-                    if (routerName) resDiagGAS.habilitaciones[routerName] = obj;
-                    if (fallbackRouterName) resDiagGAS.habilitaciones[fallbackRouterName] = obj;
+                    const regHab = (k) => {
+                        if (!k) return;
+                        resDiagGAS.habilitaciones[k] = obj;
+                        if (k.includes('ñ')) resDiagGAS.habilitaciones[k.replace(/ñ/g, 'n')] = obj;
+                    };
+                    regHab(sheetName);
+                    regHab(diagName);
+                    regHab(explicitDiagName);
+                    regHab(routerName);
+                    regHab(fallbackRouterName);
                 } 
             });
         } catch(e) { console.error("Error cargando docs/habs:", e); }
@@ -473,7 +531,7 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
         listaChoferesMaestros.forEach(ch => {
             let nomNorm = ch.norm; let flota = resDiagGAS.flota[nomNorm] || {}; let mergeIso = diasLegacyIso[nomNorm] || {}; let diasFront = {};
             hojasInfo.forEach(info => { let tira = []; for (let dia = 1; dia <= 31; dia++) { tira.push(mergeIso[`${info.anio}-${info.mesStr}-${String(dia).padStart(2, '0')}`] || "-"); } diasFront[info.nombre] = tira.join(","); });
-            diagramasHibridos.push({ _safeId: "drv_" + nomNorm.replace(/[^a-z0-9]/g, "_"), nom: ch.nombre, tractor: flota.tractor || '', semi: flota.semi || '', srv: flota.servicio || '', n_ute: flota.n_ute || '', cisternado: flota.cisternado || '', dias: diasFront, _diasIso: mergeIso });
+            diagramasHibridos.push({ _safeId: "drv_" + nomNorm.replace(/ñ/g, 'n').replace(/[^a-z0-9]/g, "_"), nom: ch.nombre, tractor: flota.tractor || '', semi: flota.semi || '', srv: flota.servicio || '', n_ute: flota.n_ute || '', cisternado: flota.cisternado || '', dias: diasFront, _diasIso: mergeIso });
         });
 
         cacheDatosGlobales.diagramas = { 

@@ -392,6 +392,7 @@ window.sincronizarBackend = function() {
     window.normalizarGlobal = function(nom) {
         if (!nom) return '';
         return String(nom)
+            .normalize('NFC')
             .replace(/__N_TILDE__/gi, 'ñ')
             .trim()
             .toLowerCase()
@@ -761,9 +762,11 @@ function cambiarVistaPrincipal(vista) {
 
    // 👉 CORRECCIÓN 2: LECTURA HÍBRIDA (KMs reales + Detalle visual)
 window.obtenerDetalleViajeDia = function(nomChofer, isoDate) {
-    let nLimpio = String(nomChofer || "").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
-    if (!viajesDetalleGlobal || !viajesDetalleGlobal[nLimpio] || !viajesDetalleGlobal[nLimpio][isoDate]) return null;
-    return viajesDetalleGlobal[nLimpio][isoDate];
+    if (!viajesDetalleGlobal || !nomChofer) return null;
+    let n = window.normalizarGlobal(nomChofer);
+    let choferViajes = viajesDetalleGlobal[n] || (n.includes('ñ') ? viajesDetalleGlobal[n.replace(/ñ/g, 'n')] : null);
+    if (!choferViajes || !choferViajes[isoDate]) return null;
+    return choferViajes[isoDate];
 };
 
 window.obtenerKmDia = function(nomChofer, isoDate) {
@@ -925,7 +928,8 @@ window.obtenerKmDia = function(nomChofer, isoDate) {
     }
 
       const crearSafeId = (nombre) => {
-          return "drv_" + nombre.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "_");
+          if (!nombre) return "drv_unknown_" + Math.random().toString(36).substring(7);
+          return "drv_" + window.normalizarGlobal(nombre).replace(/ñ/g, 'n').replace(/[^a-z0-9]/g, "_");
       };
 
 async function cargarDatosDesdeCache() {
@@ -969,8 +973,11 @@ async function cargarDatosDesdeCache() {
         const normalize = (obj) => {
             if (!obj) return {};
             return Object.keys(obj).reduce((acc, k) => {
-                const cleanKey = String(k).trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
+                const cleanKey = window.normalizarGlobal(k);
                 acc[cleanKey] = obj[k];
+                if (cleanKey.includes('ñ')) {
+                    acc[cleanKey.replace(/ñ/g, 'n')] = obj[k];
+                }
                 return acc;
             }, {});
         };
@@ -990,7 +997,14 @@ async function cargarDatosDesdeCache() {
             cisternadoObj:  v => window.cisternadoObjCacheGlobal = v,
             nuevaSeccionViajes: v => {
                 if (v && typeof v === 'object' && !Array.isArray(v)) {
-                    viajesDetalleGlobal = v;
+                    viajesDetalleGlobal = {};
+                    Object.keys(v).forEach(k => {
+                        const normKey = window.normalizarGlobal(k);
+                        viajesDetalleGlobal[normKey] = v[k];
+                        if (normKey.includes('ñ')) {
+                            viajesDetalleGlobal[normKey.replace(/ñ/g, 'n')] = v[k];
+                        }
+                    });
                 } else {
                     viajesDetalleGlobal = {};
                 }
@@ -1053,10 +1067,13 @@ window.toggleVencimientosUnidad = function(safeId) {
 
         const filtrados = datosGlobales.filter(c => {
             let nKey = window.normalizarGlobal(c.nom);
-            let datosDni = dnisGlobales[nKey];
+            let datosDni = dnisGlobales[nKey] || (nKey.includes('ñ') ? dnisGlobales[nKey.replace(/ñ/g, 'n')] : null);
             let dniString = datosDni ? String(datosDni.dni || datosDni).toLowerCase() : "";
+            let nKeySin = nKey.replace(/ñ/g, 'n');
+            let textoSin = texto.replace(/ñ/g, 'n');
 
             let matchText = nKey.includes(texto) || 
+                            nKeySin.includes(textoSin) ||
                             (c.tractor||'').toLowerCase().includes(texto) || 
                             (c.semi||'').toLowerCase().includes(texto) || 
                             String(c.n_ute||'').includes(texto) ||
@@ -1104,7 +1121,9 @@ window.toggleVencimientosUnidad = function(safeId) {
 
                 if (filtrosActivos.documentos && filtrosActivos.documentos.length > 0) {
                     let n = window.normalizarGlobal(c.nom);
-                    let d = docsGlobales[n] || {}; let h = habsGlobales[n] || {}; let cert = certsGlobales[n] || {};
+                    let d = docsGlobales[n] || (n.includes('ñ') ? docsGlobales[n.replace(/ñ/g, 'n')] : null) || {}; 
+                    let h = habsGlobales[n] || (n.includes('ñ') ? habsGlobales[n.replace(/ñ/g, 'n')] : null) || {}; 
+                    let cert = certsGlobales[n] || (n.includes('ñ') ? certsGlobales[n.replace(/ñ/g, 'n')] : null) || {};
                     let dEst = evaluarEstadoDoc(d.ven, fBaseObj);
                     let hEst = evaluarEstadoDoc(h.ven, fBaseObj);
                     let cEst = evaluarEstadoDoc(cert.ven, fBaseObj);
@@ -1223,7 +1242,9 @@ window.renderizarPanelFiltros = function(containerId = 'contenedor-filtros-later
         let retObj = calcularRetorno(c.dias, fechaGlobalContexto);
         if (retObj) { let iso = formatIsoShort(retObj); mapRetornos[iso] = (mapRetornos[iso] || 0) + 1; }
         let n = window.normalizarGlobal(c.nom);
-        let d = docsGlobales[n] || {}; let h = habsGlobales[n] || {}; let cert = certsGlobales[n] || {};
+        let d = docsGlobales[n] || (n.includes('ñ') ? docsGlobales[n.replace(/ñ/g, 'n')] : null) || {}; 
+        let h = habsGlobales[n] || (n.includes('ñ') ? habsGlobales[n.replace(/ñ/g, 'n')] : null) || {}; 
+        let cert = certsGlobales[n] || (n.includes('ñ') ? certsGlobales[n.replace(/ñ/g, 'n')] : null) || {};
         
         let dEst = evaluarEstadoDoc(d.ven, fBaseObj);
         let hEst = evaluarEstadoDoc(h.ven, fBaseObj);
@@ -1383,11 +1404,11 @@ window.renderizarPanelFiltros = function(containerId = 'contenedor-filtros-later
 
     datos.forEach(item => {
         let n = window.normalizarGlobal(item.nom);    
-        let doc = docsGlobales[n] || {ven:'', estado:'OK'}; 
-        let hab = habsGlobales[n] || {ven:'', estado:'OK'};
-        let cert = certsGlobales[n] || {ven:'', estado:'OK'}; 
+        let doc = docsGlobales[n] || (n.includes('ñ') ? docsGlobales[n.replace(/ñ/g, 'n')] : null) || {ven:'', estado:'OK'}; 
+        let hab = habsGlobales[n] || (n.includes('ñ') ? habsGlobales[n.replace(/ñ/g, 'n')] : null) || {ven:'', estado:'OK'};
+        let cert = certsGlobales[n] || (n.includes('ñ') ? certsGlobales[n.replace(/ñ/g, 'n')] : null) || {ven:'', estado:'OK'}; 
         
-        let telChofer = telefonosGlobales[n] || null;
+        let telChofer = telefonosGlobales[n] || (n.includes('ñ') ? telefonosGlobales[n.replace(/ñ/g, 'n')] : null) || null;
         let linkWspDiaria = '';
         if (telChofer) {
             let numLimpio = String(telChofer).replace(/\D/g,'');
@@ -1888,11 +1909,12 @@ window.mostrarDetalleConductor = function(safeId, mantenerSeleccion = false) {
     if (!chofer) return;
 
     let n = window.normalizarGlobal(chofer.nom);
+    let nSin = n.includes('ñ') ? n.replace(/ñ/g, 'n') : null;
 
-    let datosDni = dnisGlobales[n];
+    let datosDni = dnisGlobales[n] || (nSin ? dnisGlobales[nSin] : null);
     let dniDelChofer = datosDni ? (datosDni.dni || datosDni) : null;
 
-    let datosChoferObj = (dniDelChofer ? telefonosGlobales[dniDelChofer] : null) || telefonosGlobales[n] || {};
+    let datosChoferObj = (dniDelChofer ? telefonosGlobales[dniDelChofer] : null) || telefonosGlobales[n] || (nSin ? telefonosGlobales[nSin] : null) || {};
 
     dniDelChofer = datosChoferObj.dni || dniDelChofer || 'Sin DNI';
     let vacacionesAPI = datosDni && datosDni.vac !== undefined ? parseFloat(datosDni.vac) : 0;
@@ -1901,7 +1923,7 @@ window.mostrarDetalleConductor = function(safeId, mantenerSeleccion = false) {
     let mailChofer = datosChoferObj.email || 'Sin Email';
     let altaChofer = datosChoferObj.fechaAlta || '-';
     
-    let telChofer = datosChoferObj.telefono || (typeof telefonosGlobales[n] === 'string' ? telefonosGlobales[n] : null);
+    let telChofer = datosChoferObj.telefono || (typeof telefonosGlobales[n] === 'string' ? telefonosGlobales[n] : (nSin && typeof telefonosGlobales[nSin] === 'string' ? telefonosGlobales[nSin] : null));
     let linkWspIndividual = '';
     let displayTel = 'Sin Teléfono';
 
@@ -1914,10 +1936,10 @@ window.mostrarDetalleConductor = function(safeId, mantenerSeleccion = false) {
         }
     }
 
-    let doc = docsGlobales[n] || {ven:'', estado:'OK'}; 
-    let hab = habsGlobales[n] || {ven:'', estado:'OK'};
-    let cert = certsGlobales[n] || {ven:'', estado:'OK'};
-    let apto = aptosGlobales[dniDelChofer] || aptosGlobales[n] || null;
+    let doc = docsGlobales[n] || (nSin ? docsGlobales[nSin] : null) || {ven:'', estado:'OK'}; 
+    let hab = habsGlobales[n] || (nSin ? habsGlobales[nSin] : null) || {ven:'', estado:'OK'};
+    let cert = certsGlobales[n] || (nSin ? certsGlobales[nSin] : null) || {ven:'', estado:'OK'};
+    let apto = (dniDelChofer ? aptosGlobales[dniDelChofer] : null) || aptosGlobales[n] || (nSin ? aptosGlobales[nSin] : null) || null;
 
     let fBaseObj = new Date(fechaGlobalContexto + "T12:00:00");
     const targetMes = String(fBaseObj.getMonth() + 1).padStart(2, '0');
@@ -1968,7 +1990,7 @@ window.mostrarDetalleConductor = function(safeId, mantenerSeleccion = false) {
     const diasSemana = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
     const nombresMeses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
-    let historialChofer = historialGlobal[n] || [];
+    let historialChofer = historialGlobal[n] || (nSin ? historialGlobal[nSin] : null) || [];
     let fechasConObs = new Set();
     historialChofer.forEach(ev => { let iso = parseFechaObs(ev.fecha); if(iso) fechasConObs.add(iso); });
 
@@ -2497,19 +2519,27 @@ window.agregarNuevaHojaRuta = function(safeId, isoStr, contexto) {
     const chofer = datosGlobales.find(c => String(c._safeId) === String(safeId));
     if(!chofer) return;
 
-    let nLimpio = String(chofer.nom).trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
+    let n = window.normalizarGlobal(chofer.nom);
+    let nSin = n.includes('ñ') ? n.replace(/ñ/g, 'n') : null;
+    let key = (viajesDetalleGlobal[n] || !nSin) ? n : nSin;
     
     // Inyectamos en memoria local (Agregando km:0 por defecto)
-    if (!viajesDetalleGlobal[nLimpio]) viajesDetalleGlobal[nLimpio] = {};
-    if (!viajesDetalleGlobal[nLimpio][isoStr]) viajesDetalleGlobal[nLimpio][isoStr] = { km:0, campo:0, liviano:0, euro:0, infiniaD:0, hoja_ruta: [] };
+    if (!viajesDetalleGlobal[key]) viajesDetalleGlobal[key] = {};
+    if (!viajesDetalleGlobal[key][isoStr]) viajesDetalleGlobal[key][isoStr] = { km:0, campo:0, liviano:0, euro:0, infiniaD:0, hoja_ruta: [] };
     
-    let hrActuales = viajesDetalleGlobal[nLimpio][isoStr].hoja_ruta || [];
+    let hrActuales = viajesDetalleGlobal[key][isoStr].hoja_ruta || [];
     if (!Array.isArray(hrActuales)) hrActuales = [];
 
     hrActuales = hrActuales.filter(h => String(h).trim() !== "");
     if (!hrActuales.includes(nuevoVal)) hrActuales.push(nuevoVal);
     
-    viajesDetalleGlobal[nLimpio][isoStr].hoja_ruta = hrActuales;
+    viajesDetalleGlobal[key][isoStr].hoja_ruta = hrActuales;
+    if (nSin) {
+        if (!viajesDetalleGlobal[nSin]) viajesDetalleGlobal[nSin] = viajesDetalleGlobal[key];
+        else viajesDetalleGlobal[nSin][isoStr] = viajesDetalleGlobal[key][isoStr];
+        if (!viajesDetalleGlobal[n]) viajesDetalleGlobal[n] = viajesDetalleGlobal[key];
+        else viajesDetalleGlobal[n][isoStr] = viajesDetalleGlobal[key][isoStr];
+    }
     inputEl.value = '';
     ejecutarRenderLocalHR(safeId);
     enviarHRBackend(chofer, isoStr, hrActuales);
@@ -2519,21 +2549,27 @@ window.eliminarHojaDeRuta = function(safeId, isoStr, hrA_Borrar) {
     const chofer = datosGlobales.find(c => String(c._safeId) === String(safeId));
     if(!chofer) return;
 
-    let nLimpio = String(chofer.nom).trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
-    if (!viajesDetalleGlobal[nLimpio] || !viajesDetalleGlobal[nLimpio][isoStr]) return;
+    let n = window.normalizarGlobal(chofer.nom);
+    let nSin = n.includes('ñ') ? n.replace(/ñ/g, 'n') : null;
+    let key = (viajesDetalleGlobal[n] && viajesDetalleGlobal[n][isoStr]) ? n : (nSin && viajesDetalleGlobal[nSin] && viajesDetalleGlobal[nSin][isoStr] ? nSin : n);
+    if (!viajesDetalleGlobal[key] || !viajesDetalleGlobal[key][isoStr]) return;
     
-    let hrActuales = viajesDetalleGlobal[nLimpio][isoStr].hoja_ruta || [];
+    let hrActuales = viajesDetalleGlobal[key][isoStr].hoja_ruta || [];
     
     // 1. Filtrar memoria
     hrActuales = hrActuales.filter(h => h !== hrA_Borrar && String(h).trim() !== "");
-    viajesDetalleGlobal[nLimpio][isoStr].hoja_ruta = hrActuales;
+    viajesDetalleGlobal[key][isoStr].hoja_ruta = hrActuales;
+    if (nSin) {
+        if (viajesDetalleGlobal[n] && viajesDetalleGlobal[n][isoStr]) viajesDetalleGlobal[n][isoStr].hoja_ruta = hrActuales;
+        if (viajesDetalleGlobal[nSin] && viajesDetalleGlobal[nSin][isoStr]) viajesDetalleGlobal[nSin][isoStr].hoja_ruta = hrActuales;
+    }
 
     // 2. Renderizamos el panel activo
     ejecutarRenderLocalHR(safeId);
 
     // 3. Disparamos a la Nube
     enviarHRBackend(chofer, isoStr, hrActuales);
-}
+};
 
 // Función centralizada para repintar la UI activa
 function ejecutarRenderLocalHR(safeId) {
@@ -3003,7 +3039,8 @@ window.guardarEstadoDesdeRango = function(startIso, endIso) {
 window.renderizarHistorialEventos = function(nombreChofer, startIso = null, endIso = null) {
         const contenedor = document.getElementById('contenedor-observaciones'); const badgeContador = document.getElementById('badge-contador-obs');
         if (!contenedor) return;
-        const keyBuscador = String(nombreChofer).trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' '); let historial = historialGlobal[keyBuscador] || [];
+        const keyBuscador = window.normalizarGlobal(nombreChofer); 
+        let historial = historialGlobal[keyBuscador] || (keyBuscador.includes('ñ') ? historialGlobal[keyBuscador.replace(/ñ/g, 'n')] : null) || [];
         let textoRango = "Todas las observaciones";
 
         if (startIso && endIso) {
@@ -3096,7 +3133,9 @@ function obtenerEstadisticasConDetalle() {
             window.datosMetricasGlobales.TOTAL.push({_safeId: c._safeId, nom: c.nom, val: "Registrado", srv: srv});
             
             let n = window.normalizarGlobal(c.nom);
-            let doc = docsGlobales[n] || {}; let hab = habsGlobales[n] || {}; let cert = certsGlobales[n] || {};
+            let doc = docsGlobales[n] || (n.includes('ñ') ? docsGlobales[n.replace(/ñ/g, 'n')] : null) || {}; 
+            let hab = habsGlobales[n] || (n.includes('ñ') ? habsGlobales[n.replace(/ñ/g, 'n')] : null) || {}; 
+            let cert = certsGlobales[n] || (n.includes('ñ') ? certsGlobales[n.replace(/ñ/g, 'n')] : null) || {};
             let formatVen = (v) => v ? v.split('-').reverse().join('/') : 'S/D';
 
             let docEst = evaluarEstadoDoc(doc.ven, fBase);
@@ -3302,9 +3341,10 @@ function renderizarVistaMetricas(container) {
         }
         
         let n = window.normalizarGlobal(c.nom);
-        let dDoc = docsGlobales[n] || {};
-        let dHab = habsGlobales[n] || {};
-        let dCert = certsGlobales[n] || {};
+        let nSin = n.includes('ñ') ? n.replace(/ñ/g, 'n') : null;
+        let dDoc = docsGlobales[n] || (nSin ? docsGlobales[nSin] : null) || {};
+        let dHab = habsGlobales[n] || (nSin ? habsGlobales[nSin] : null) || {};
+        let dCert = certsGlobales[n] || (nSin ? certsGlobales[nSin] : null) || {};
 
         let docEst = evaluarEstadoDoc(dDoc.ven, fBase);
         let habEst = evaluarEstadoDoc(dHab.ven, fBase);
@@ -3314,9 +3354,9 @@ function renderizarVistaMetricas(container) {
         if(habEst === 'VENCIDO') lic.ven++; else if(habEst === 'POR_VENCER') lic.pv++; else lic.vig++;
         if(certEst === 'VENCIDO') cert.ven++; else if(certEst === 'POR_VENCER') cert.pv++; else cert.vig++;
 
-        let datosDni = dnisGlobales[n];
+        let datosDni = dnisGlobales[n] || (nSin ? dnisGlobales[nSin] : null);
         let dniChofer = datosDni ? (datosDni.dni || datosDni) : null;
-        let dApto = aptosGlobales[dniChofer] || aptosGlobales[n] || null;
+        let dApto = (dniChofer ? aptosGlobales[dniChofer] : null) || aptosGlobales[n] || (nSin ? aptosGlobales[nSin] : null) || null;
         if (dApto && dApto.estado) {
             let estApto = String(dApto.estado).toUpperCase().trim();
             if (estApto.includes('NO AVALADO') || estApto.includes('VENCIDO')) { aptoStats.noAvalado++; } 
@@ -3458,8 +3498,9 @@ window.filtrarDropdownIndividual = function() {
     if (!input) return;
     const term = input.value.toLowerCase().trim();
     
-    // Normalizamos el término para que encuentre resultados aunque escriban sin tilde
-    const termNorm = term.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    // Normalizamos el término para que encuentre resultados aunque escriban sin tilde o con/sin eñe
+    const termClean = window.normalizarGlobal(term);
+    const termSin = termClean.replace(/ñ/g, 'n');
     
     const btnClear = document.getElementById('btn-clear-individual');
     if (btnClear) {
@@ -3471,14 +3512,16 @@ window.filtrarDropdownIndividual = function() {
         // 👉 SALVAVIDAS: Si el objeto está dañado o no tiene nombre, lo ignoramos para evitar que explote
         if (!c || !c.nom) return false; 
 
-        let nKey = String(c.nom || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
-        let datosDni = dnisGlobales[nKey];
+        let nKey = window.normalizarGlobal(c.nom);
+        let nKeySin = nKey.replace(/ñ/g, 'n');
+        let datosDni = dnisGlobales[nKey] || dnisGlobales[nKeySin];
         let dniString = datosDni ? String(datosDni.dni || datosDni).toLowerCase() : "";
 
-        return nKey.includes(termNorm) || 
-               String(c.n_ute || '').toLowerCase().includes(termNorm) || 
-               String(c.srv || '').toLowerCase().includes(termNorm) ||
-               dniString.includes(termNorm); 
+        return nKey.includes(termClean) || 
+               nKeySin.includes(termSin) ||
+               String(c.n_ute || '').toLowerCase().includes(termClean) || 
+               String(c.srv || '').toLowerCase().includes(termClean) ||
+               dniString.includes(termClean); 
     });
     
     renderizarOpcionesIndividual(filtrados);
@@ -3678,17 +3721,26 @@ window.guardarParametros = function() {
     // ==============================================================
     if (nuevaHR) {
         let optCur = new Date(fStart);
-        let nLimpio = String(chofer.nom).trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
+        let n = window.normalizarGlobal(chofer.nom);
+        let nSin = n.includes('ñ') ? n.replace(/ñ/g, 'n') : null;
+        let key = (viajesDetalleGlobal && viajesDetalleGlobal[n]) || !nSin ? n : nSin;
         
         while(optCur <= fEnd) {
             let isoStr = optCur.toISOString().split('T')[0];
             if (!viajesDetalleGlobal) window.viajesDetalleGlobal = {};
-            if (!viajesDetalleGlobal[nLimpio]) viajesDetalleGlobal[nLimpio] = {};
-            if (!viajesDetalleGlobal[nLimpio][isoStr]) viajesDetalleGlobal[nLimpio][isoStr] = { km:0, campo:0, hoja_ruta: [] };
+            if (!viajesDetalleGlobal[key]) viajesDetalleGlobal[key] = {};
+            if (!viajesDetalleGlobal[key][isoStr]) viajesDetalleGlobal[key][isoStr] = { km:0, campo:0, hoja_ruta: [] };
             
-            let hrActuales = viajesDetalleGlobal[nLimpio][isoStr].hoja_ruta || [];
+            let hrActuales = viajesDetalleGlobal[key][isoStr].hoja_ruta || [];
             if (!hrActuales.includes(nuevaHR)) hrActuales.push(nuevaHR);
-            viajesDetalleGlobal[nLimpio][isoStr].hoja_ruta = hrActuales;
+            viajesDetalleGlobal[key][isoStr].hoja_ruta = hrActuales;
+
+            if (nSin) {
+                if (!viajesDetalleGlobal[nSin]) viajesDetalleGlobal[nSin] = viajesDetalleGlobal[key];
+                else viajesDetalleGlobal[nSin][isoStr] = viajesDetalleGlobal[key][isoStr];
+                if (!viajesDetalleGlobal[n]) viajesDetalleGlobal[n] = viajesDetalleGlobal[key];
+                else viajesDetalleGlobal[n][isoStr] = viajesDetalleGlobal[key][isoStr];
+            }
             
             optCur.setDate(optCur.getDate() + 1);
         }
@@ -4071,15 +4123,18 @@ window.evaluarDeepLinkDeArranque = function() {
                 let nombreLimpio = String(c.nom).trim().toLowerCase();
                 return !NOMBRES_IGNORADOS.has(nombreLimpio) && nombreLimpio.length > 2;
             }).map(c => {
-                c._safeId = "drv_" + c.nom.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "_");
+                c._safeId = crearSafeId(c.nom);
                 return c;
             });
             
             const normalize = (obj) => {
                 if (!obj) return {};
                 return Object.keys(obj).reduce((acc, k) => {
-                    const cleanKey = String(k).trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
+                    const cleanKey = window.normalizarGlobal(k);
                     acc[cleanKey] = obj[k];
+                    if (cleanKey.includes('ñ')) {
+                        acc[cleanKey.replace(/ñ/g, 'n')] = obj[k];
+                    }
                     return acc;
                 }, {});
             };
@@ -4099,7 +4154,14 @@ window.evaluarDeepLinkDeArranque = function() {
             fotosGlobales = dataDiag.fotosImgur || {};
 
             if (dataDiag.nuevaSeccionViajes && typeof dataDiag.nuevaSeccionViajes === 'object' && !Array.isArray(dataDiag.nuevaSeccionViajes)) {
-                viajesDetalleGlobal = dataDiag.nuevaSeccionViajes;
+                viajesDetalleGlobal = {};
+                Object.keys(dataDiag.nuevaSeccionViajes).forEach(k => {
+                    const normKey = window.normalizarGlobal(k);
+                    viajesDetalleGlobal[normKey] = dataDiag.nuevaSeccionViajes[k];
+                    if (normKey.includes('ñ')) {
+                        viajesDetalleGlobal[normKey.replace(/ñ/g, 'n')] = dataDiag.nuevaSeccionViajes[k];
+                    }
+                });
             } else {
                 viajesDetalleGlobal = {};
             }
@@ -4147,12 +4209,13 @@ window.evaluarDeepLinkDeArranque = function() {
 window.calcularMesesPrueba = function(chofer) {
     if (typeof dnisGlobales === 'undefined' || typeof telefonosGlobales === 'undefined') return 999;
     
-    let nomNorm = String(chofer.nom || '').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
+    let nomNorm = window.normalizarGlobal(chofer.nom || '');
+    let nomSin = nomNorm.includes('ñ') ? nomNorm.replace(/ñ/g, 'n') : null;
     
-    let datosDni = dnisGlobales[nomNorm];
+    let datosDni = dnisGlobales[nomNorm] || (nomSin ? dnisGlobales[nomSin] : null);
     let dni = datosDni ? (datosDni.dni || datosDni) : null;
     
-    let datosContacto = (dni && telefonosGlobales[dni]) ? telefonosGlobales[dni] : telefonosGlobales[nomNorm];
+    let datosContacto = (dni && telefonosGlobales[dni]) ? telefonosGlobales[dni] : (telefonosGlobales[nomNorm] || (nomSin ? telefonosGlobales[nomSin] : null));
         
     if (!datosContacto || !datosContacto.fechaAlta || datosContacto.fechaAlta === '-') return 999; 
     

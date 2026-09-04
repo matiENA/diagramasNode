@@ -48,7 +48,7 @@ module.exports = function createProxyRouter(cacheDatosGlobales, io) {
                     else if (body.dni || body.nombre) {
                         let dniBuscadoLimpio = body.dni ? String(body.dni).replace(/\D/g, '') : "";
                         let nomNormalizadoFront = normalizar(body.nombre);
-                        routerData = Object.values(cacheDatosGlobales.choferesRouter).find(c => (dniBuscadoLimpio && (c.dniFallback === dniBuscadoLimpio || c.dni === dniBuscadoLimpio)) || normalizar(c.nombre) === nomNormalizadoFront );
+                        routerData = Object.values(cacheDatosGlobales.choferesRouter).find(c => (dniBuscadoLimpio && (c.dniFallback === dniBuscadoLimpio || c.dni === dniBuscadoLimpio)) || normalizar(c.nombre) === nomNormalizadoFront || normalizar(c.nombre).replace(/ñ/g, 'n') === nomNormalizadoFront.replace(/ñ/g, 'n'));
                     }
                 }
 
@@ -121,7 +121,7 @@ module.exports = function createProxyRouter(cacheDatosGlobales, io) {
 
                         if (cacheDatosGlobales.diagramas?.diagramas) {
                             let ch = cacheDatosGlobales.diagramas.diagramas.find(c => 
-                                (safeIdItem && c._safeId === safeIdItem) || normalizar(c.nom) === nBuscado
+                                (safeIdItem && c._safeId === safeIdItem) || normalizar(c.nom) === nBuscado || normalizar(c.nom).replace(/ñ/g, 'n') === nBuscado.replace(/ñ/g, 'n')
                             );
                             if (ch) {
                                 if (!ch._diasIso) ch._diasIso = {}; ch._diasIso[isoStr] = val;
@@ -172,7 +172,7 @@ module.exports = function createProxyRouter(cacheDatosGlobales, io) {
                             for (let nBuscado in updatesByTab[tab]) {
                                 let rIdx = -1;
                                 for (let i = 0; i < rowsTab.length; i++) {
-                                    if (normalizar(rowsTab[i][1]) === nBuscado) {
+                                    if (normalizar(rowsTab[i][1]) === nBuscado || normalizar(rowsTab[i][1]).replace(/ñ/g, 'n') === nBuscado.replace(/ñ/g, 'n')) {
                                         rIdx = i + 1;
                                         break;
                                     }
@@ -241,7 +241,7 @@ module.exports = function createProxyRouter(cacheDatosGlobales, io) {
                     let filaIndex = -1; let hojasSheetExistentes = "";
 
                     for (let i = 1; i < rowsKM.length; i++) {
-                        if (normalizar(rowsKM[i][2]) === nBuscado) {
+                        if (normalizar(rowsKM[i][2]) === nBuscado || normalizar(rowsKM[i][2]).replace(/ñ/g, 'n') === nBuscado.replace(/ñ/g, 'n')) {
                             let fechaCelda = String(rowsKM[i][1] || '').trim(); let celdaIso = "";
                             let partes = fechaCelda.split(' ')[0].split(/[\/\-]/);
                             if (partes.length >= 3) {

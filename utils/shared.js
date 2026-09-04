@@ -10,6 +10,7 @@ const { createClient } = require('@supabase/supabase-js');
 const normalizar = (n) => {
     if (!n) return '';
     return String(n)
+        .normalize('NFC')
         .replace(/__N_TILDE__/gi, 'ñ')
         .trim()
         .toLowerCase()
