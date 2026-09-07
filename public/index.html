@@ -1029,6 +1029,59 @@ async function cargarDatosDesdeCache() {
 
         window.catalogoUnidadesGlobal = resDiagramas.unidades || [];
 
+        // 👉 Hidratar punteros locales desde entidades Chofer centralizadas
+        (resDiagramas.diagramas || []).forEach(c => {
+            let n = window.normalizarGlobal(c.nom);
+            let nSin = n.includes('ñ') ? n.replace(/ñ/g, 'n') : null;
+
+            if (c.dni) {
+                dnisGlobales[n] = { dni: c.dni };
+                if (nSin) dnisGlobales[nSin] = { dni: c.dni };
+                if (c.foto) fotosGlobales[c.dni] = c.foto;
+                if (c.documentos?.apto_medico) aptosGlobales[c.dni] = c.documentos.apto_medico;
+            }
+            if (c.contacto) {
+                telefonosGlobales[n] = c.contacto;
+                if (nSin) telefonosGlobales[nSin] = c.contacto;
+                if (c.dni) telefonosGlobales[c.dni] = c.contacto;
+            }
+            if (c.documentos?.medico) {
+                docsGlobales[n] = c.documentos.medico;
+                if (nSin) docsGlobales[nSin] = c.documentos.medico;
+            }
+            if (c.documentos?.licencia) {
+                habsGlobales[n] = c.documentos.licencia;
+                if (nSin) habsGlobales[nSin] = c.documentos.licencia;
+            }
+            if (c.documentos?.certificados) {
+                certsGlobales[n] = c.documentos.certificados;
+                if (nSin) certsGlobales[nSin] = c.documentos.certificados;
+            }
+            if (c.documentos?.apto_medico) {
+                aptosGlobales[n] = c.documentos.apto_medico;
+                if (nSin) aptosGlobales[nSin] = c.documentos.apto_medico;
+            }
+            if (c.observaciones && Array.isArray(c.observaciones) && c.observaciones.length > 0) {
+                historialGlobal[n] = c.observaciones;
+                if (nSin) historialGlobal[nSin] = c.observaciones;
+            }
+            if (c.viajes && typeof c.viajes === 'object') {
+                if (!viajesDetalleGlobal[n]) viajesDetalleGlobal[n] = {};
+                Object.assign(viajesDetalleGlobal[n], c.viajes);
+                if (nSin) {
+                    if (!viajesDetalleGlobal[nSin]) viajesDetalleGlobal[nSin] = {};
+                    Object.assign(viajesDetalleGlobal[nSin], c.viajes);
+                }
+            }
+        });
+
+        if (!window.vencimientosCacheGlobal || window.vencimientosCacheGlobal.length === 0) {
+            window.vencimientosCacheGlobal = (resDiagramas.unidades || []).flatMap(u => [
+                u.tractor?.vencimientos,
+                u.semi?.vencimientos
+            ]).filter(Boolean);
+        }
+
         window.evaluarDeepLinkDeArranque();
         mostrarCargando(false); 
 
@@ -4171,8 +4224,59 @@ window.evaluarDeepLinkDeArranque = function() {
                         viajesDetalleGlobal[normKey.replace(/ñ/g, 'n')] = dataDiag.nuevaSeccionViajes[k];
                     }
                 });
-            } else {
-                viajesDetalleGlobal = {};
+            }
+
+            // 👉 Hidratar punteros locales desde entidades Chofer centralizadas
+            (dataDiag.diagramas || []).forEach(c => {
+                let n = window.normalizarGlobal(c.nom);
+                let nSin = n.includes('ñ') ? n.replace(/ñ/g, 'n') : null;
+
+                if (c.dni) {
+                    dnisGlobales[n] = { dni: c.dni };
+                    if (nSin) dnisGlobales[nSin] = { dni: c.dni };
+                    if (c.foto) fotosGlobales[c.dni] = c.foto;
+                    if (c.documentos?.apto_medico) aptosGlobales[c.dni] = c.documentos.apto_medico;
+                }
+                if (c.contacto) {
+                    telefonosGlobales[n] = c.contacto;
+                    if (nSin) telefonosGlobales[nSin] = c.contacto;
+                    if (c.dni) telefonosGlobales[c.dni] = c.contacto;
+                }
+                if (c.documentos?.medico) {
+                    docsGlobales[n] = c.documentos.medico;
+                    if (nSin) docsGlobales[nSin] = c.documentos.medico;
+                }
+                if (c.documentos?.licencia) {
+                    habsGlobales[n] = c.documentos.licencia;
+                    if (nSin) habsGlobales[nSin] = c.documentos.licencia;
+                }
+                if (c.documentos?.certificados) {
+                    certsGlobales[n] = c.documentos.certificados;
+                    if (nSin) certsGlobales[nSin] = c.documentos.certificados;
+                }
+                if (c.documentos?.apto_medico) {
+                    aptosGlobales[n] = c.documentos.apto_medico;
+                    if (nSin) aptosGlobales[nSin] = c.documentos.apto_medico;
+                }
+                if (c.observaciones && Array.isArray(c.observaciones) && c.observaciones.length > 0) {
+                    historialGlobal[n] = c.observaciones;
+                    if (nSin) historialGlobal[nSin] = c.observaciones;
+                }
+                if (c.viajes && typeof c.viajes === 'object') {
+                    if (!viajesDetalleGlobal[n]) viajesDetalleGlobal[n] = {};
+                    Object.assign(viajesDetalleGlobal[n], c.viajes);
+                    if (nSin) {
+                        if (!viajesDetalleGlobal[nSin]) viajesDetalleGlobal[nSin] = {};
+                        Object.assign(viajesDetalleGlobal[nSin], c.viajes);
+                    }
+                }
+            });
+
+            if (!window.vencimientosCacheGlobal || window.vencimientosCacheGlobal.length === 0) {
+                window.vencimientosCacheGlobal = (dataDiag.unidades || []).flatMap(u => [
+                    u.tractor?.vencimientos,
+                    u.semi?.vencimientos
+                ]).filter(Boolean);
             }
 
 // --- PASO 2: RENDERIZADO INTELIGENTE ---

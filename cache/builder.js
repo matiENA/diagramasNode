@@ -228,8 +228,6 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
                     let objUt = {
                         n_ute: n_ute || '',
                         srv_ut: currentSrvUt,
-                        estado: ESTADOS_ICONOS.includes(col0) ? col0 : '',
-                        novedad: String(row[1] || '').trim(),
                         tractor: objTractor,
                         semi: objSemi,
                         chofer_asignado: null
@@ -576,6 +574,7 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
         let diagramasHibridos = []; 
         listaChoferesMaestros.forEach(ch => {
             let nomNorm = ch.norm;
+            let nomNormSinEnie = nomNorm.includes('ñ') ? nomNorm.replace(/ñ/g, 'n') : null;
             let flota = resDiagGAS.flota[nomNorm] || {};
             let mergeIso = diasLegacyIso[nomNorm] || {};
             let diasFront = {};
@@ -588,17 +587,44 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
             });
 
             let safeId = "drv_" + nomNorm.replace(/ñ/g, 'n').replace(/[^a-z0-9]/g, "_");
-            let utChofer = mapaChoferAUt[nomNorm] || (nomNorm.includes('ñ') ? mapaChoferAUt[nomNorm.replace(/ñ/g, 'n')] : null) || null;
+            let utChofer = mapaChoferAUt[nomNorm] || (nomNormSinEnie ? mapaChoferAUt[nomNormSinEnie] : null) || null;
             if (utChofer) {
                 utChofer.chofer_asignado = { nom: ch.nombre, _safeId: safeId };
             }
+
+            // Datos centralizados de identidad, contacto, fotos y documentos
+            let dniVal = (resDiagGAS.dnis[nomNorm]?.dni || (nomNormSinEnie ? resDiagGAS.dnis[nomNormSinEnie]?.dni : null)) || '';
+            let fotoUrl = (dniVal && resDiagGAS.fotosImgur[dniVal]) ? resDiagGAS.fotosImgur[dniVal] : '';
+            let contactoObj = resDiagGAS.telefonos[nomNorm] || (nomNormSinEnie ? resDiagGAS.telefonos[nomNormSinEnie] : null) || (dniVal ? resDiagGAS.telefonos[dniVal] : null) || null;
+            let aptoMed = (dniVal ? resDiagGAS.aptosMedicos[dniVal] : null) || resDiagGAS.aptosMedicos[nomNorm] || (nomNormSinEnie ? resDiagGAS.aptosMedicos[nomNormSinEnie] : null) || null;
+            let docMed = resDiagGAS.documentos[nomNorm] || (nomNormSinEnie ? resDiagGAS.documentos[nomNormSinEnie] : null) || null;
+            let docLic = resDiagGAS.habilitaciones[nomNorm] || (nomNormSinEnie ? resDiagGAS.habilitaciones[nomNormSinEnie] : null) || null;
+            let docCert = resDiagGAS.certificados[nomNorm] || (nomNormSinEnie ? resDiagGAS.certificados[nomNormSinEnie] : null) || null;
+            let obsList = resDiagGAS.observaciones[nomNorm] || (nomNormSinEnie ? resDiagGAS.observaciones[nomNormSinEnie] : null) || [];
+            let viajesChofer = nuevaSeccionViajes[nomNorm] || (nomNormSinEnie ? nuevaSeccionViajes[nomNormSinEnie] : null) || {};
 
             diagramasHibridos.push({
                 _safeId: safeId,
                 nom: ch.nombre,
                 srv_chofer: flota.servicio || 'S/A',
+                dni: dniVal,
+                foto: fotoUrl,
+                contacto: contactoObj ? {
+                    telefono: contactoObj.telefono || '',
+                    email: contactoObj.email || '',
+                    legajo: contactoObj.legajo || '',
+                    fechaAlta: contactoObj.fechaAlta || ''
+                } : null,
+                documentos: {
+                    medico: docMed,
+                    licencia: docLic,
+                    certificados: docCert,
+                    apto_medico: aptoMed
+                },
                 dias: diasFront,
-                ut: utChofer
+                ut: utChofer,
+                observaciones: obsList,
+                viajes: viajesChofer
             });
         });
 
@@ -606,18 +632,8 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
             diagramas: diagramasHibridos,
             unidades: catalogoUnidades,
             flota: resDiagGAS.flota,
-            nuevaSeccionViajes: nuevaSeccionViajes,
-            documentos: resDiagGAS.documentos,
-            habilitaciones: resDiagGAS.habilitaciones,
-            certificados: resDiagGAS.certificados,
-            dnis: resDiagGAS.dnis,
-            telefonos: resDiagGAS.telefonos,
-            observaciones: resDiagGAS.observaciones,
-            aptosMedicos: resDiagGAS.aptosMedicos,
-            vencimientosObj: resDiagGAS.vencimientosObj,
-            fotosImgur: resDiagGAS.fotosImgur
+            nuevaSeccionViajes: nuevaSeccionViajes
         };
-        cacheDatosGlobales.tds = { campo:{}, infinia:{}, liviano:{}, euro:{}, estados:{}, codigosExtra:{} };
         cacheDatosGlobales.ultimaActualizacion = new Date().toISOString();
         
         // Load users for mentions autocomplete

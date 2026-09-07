@@ -67,7 +67,6 @@ app.use(express.json({ limit: '10mb' }));
 // ==============================================================
 let cacheDatosGlobales = {
     diagramas: null,
-    tds: null,
     nombresMesActual: [],
     ultimaActualizacion: null,
     novedades: []
@@ -91,7 +90,6 @@ app.get('/api/datos', (req, res) => {
     res.json({
         success: true,
         diagramas: cacheDatosGlobales.diagramas,
-        tds: cacheDatosGlobales.tds,
         timestamp: cacheDatosGlobales.ultimaActualizacion,
         usuarios: cacheDatosGlobales.usuarios || []
     });

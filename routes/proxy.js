@@ -32,8 +32,26 @@ module.exports = function createProxyRouter(cacheDatosGlobales, io) {
             if (body && (body.action === 'guardarObservacion' || body.action === 'guardarNuevaObservacion')) {
                 let nBuscado = normalizar(body.chofer);
                 if (cacheDatosGlobales.diagramas) {
-                    if(!cacheDatosGlobales.diagramas.observaciones[nBuscado]) cacheDatosGlobales.diagramas.observaciones[nBuscado] = [];
-                    cacheDatosGlobales.diagramas.observaciones[nBuscado].push({ admin: body.usuario || body.admin || 'Sistema', fecha: body.fecha, unidad: body.unidad || "-", evento: body.evento, obsEvento: body.obsEvento || "", estado: body.estado || "-", obsEstado: body.obsEstado || "" });
+                    const nuevaObs = { admin: body.usuario || body.admin || 'Sistema', fecha: body.fecha, unidad: body.unidad || "-", evento: body.evento, obsEvento: body.obsEvento || "", estado: body.estado || "-", obsEstado: body.obsEstado || "" };
+                    
+                    // 1. Actualizar entidad centralizada de Chofer
+                    if (Array.isArray(cacheDatosGlobales.diagramas.diagramas)) {
+                        const choferObj = cacheDatosGlobales.diagramas.diagramas.find(c => {
+                            const nomNorm = normalizar(c.nom);
+                            return nomNorm === nBuscado || nomNorm.replace(/ñ/g, 'n') === nBuscado.replace(/ñ/g, 'n');
+                        });
+                        if (choferObj) {
+                            if (!Array.isArray(choferObj.observaciones)) choferObj.observaciones = [];
+                            choferObj.observaciones.push(nuevaObs);
+                        }
+                    }
+
+                    // 2. Fallback de compatibilidad si existiese mapa de observaciones
+                    if (cacheDatosGlobales.diagramas.observaciones) {
+                        if (!cacheDatosGlobales.diagramas.observaciones[nBuscado]) cacheDatosGlobales.diagramas.observaciones[nBuscado] = [];
+                        cacheDatosGlobales.diagramas.observaciones[nBuscado].push(nuevaObs);
+                    }
+
                     io.emit('datos_actualizados', cacheDatosGlobales); 
                 }
                 const docObs = new GoogleSpreadsheet(ID_SHEET_OBSERVACIONES, serviceAccountAuth);
@@ -63,13 +81,30 @@ module.exports = function createProxyRouter(cacheDatosGlobales, io) {
                 };
 
                 if (cacheDatosGlobales.diagramas) {
-                    if (!cacheDatosGlobales.diagramas.documentos) cacheDatosGlobales.diagramas.documentos = {};
-                    if (!cacheDatosGlobales.diagramas.habilitaciones) cacheDatosGlobales.diagramas.habilitaciones = {};
-                    if (!cacheDatosGlobales.diagramas.certificados) cacheDatosGlobales.diagramas.certificados = {};
+                    const docVen = body.exVen ? { ven: body.exVen, estado: calcularEstadoISO(body.exVen) } : null;
+                    const licVen = body.licVen ? { ven: body.licVen, estado: calcularEstadoISO(body.licVen) } : null;
+                    const certVen = body.certVen ? { ven: body.certVen, estado: calcularEstadoISO(body.certVen) } : null;
+
+                    // 1. Actualizar entidad centralizada de Chofer
+                    if (Array.isArray(cacheDatosGlobales.diagramas.diagramas)) {
+                        const choferObj = cacheDatosGlobales.diagramas.diagramas.find(c => {
+                            if (routerData && c._safeId && routerData.id && c._safeId === routerData.id) return true;
+                            const nomNorm = normalizar(c.nom);
+                            return nomNorm === nBuscado || nomNorm.replace(/ñ/g, 'n') === nBuscado.replace(/ñ/g, 'n');
+                        });
+                        if (choferObj) {
+                            if (!choferObj.documentos) choferObj.documentos = {};
+                            if (docVen) choferObj.documentos.medico = docVen;
+                            if (licVen) choferObj.documentos.licencia = licVen;
+                            if (certVen) choferObj.documentos.certificados = certVen;
+                        }
+                    }
+
+                    // 2. Fallbacks si existiesen mapas aislados
+                    if (cacheDatosGlobales.diagramas.documentos && docVen) cacheDatosGlobales.diagramas.documentos[nBuscado] = docVen;
+                    if (cacheDatosGlobales.diagramas.habilitaciones && licVen) cacheDatosGlobales.diagramas.habilitaciones[nBuscado] = licVen;
+                    if (cacheDatosGlobales.diagramas.certificados && certVen) cacheDatosGlobales.diagramas.certificados[nBuscado] = certVen;
                     
-                    if (body.exVen) cacheDatosGlobales.diagramas.documentos[nBuscado] = { ven: body.exVen, estado: calcularEstadoISO(body.exVen) };
-                    if (body.licVen) cacheDatosGlobales.diagramas.habilitaciones[nBuscado] = { ven: body.licVen, estado: calcularEstadoISO(body.licVen) };
-                    if (body.certVen) cacheDatosGlobales.diagramas.certificados[nBuscado] = { ven: body.certVen, estado: calcularEstadoISO(body.certVen) };
                     io.emit('datos_actualizados', cacheDatosGlobales); 
                 }
 
@@ -219,6 +254,16 @@ module.exports = function createProxyRouter(cacheDatosGlobales, io) {
                 const flagOverwrite = body.overwrite === true;
 
                 if (cacheDatosGlobales.diagramas) {
+                    let choferObj = null;
+                    if (Array.isArray(cacheDatosGlobales.diagramas.diagramas)) {
+                        choferObj = cacheDatosGlobales.diagramas.diagramas.find(c => {
+                            const nomNorm = normalizar(c.nom);
+                            return nomNorm === nBuscado || nomNorm.replace(/ñ/g, 'n') === nBuscado.replace(/ñ/g, 'n');
+                        });
+                        if (choferObj && !choferObj.viajes) choferObj.viajes = {};
+                    }
+
+                    if (!cacheDatosGlobales.diagramas.nuevaSeccionViajes) cacheDatosGlobales.diagramas.nuevaSeccionViajes = {};
                     if (!cacheDatosGlobales.diagramas.nuevaSeccionViajes[nBuscado]) cacheDatosGlobales.diagramas.nuevaSeccionViajes[nBuscado] = {};
                     let tempCur = new Date(curDate);
                     while (tempCur <= endDate) {
@@ -226,6 +271,13 @@ module.exports = function createProxyRouter(cacheDatosGlobales, io) {
                         if (!cacheDatosGlobales.diagramas.nuevaSeccionViajes[nBuscado][isoStr]) cacheDatosGlobales.diagramas.nuevaSeccionViajes[nBuscado][isoStr] = { dominio: body.tractor || '', km: 0, campo: 0, hoja_ruta: [] };
                         let target = cacheDatosGlobales.diagramas.nuevaSeccionViajes[nBuscado][isoStr];
                         if (flagOverwrite) target.hoja_ruta = [...hojasEntrantes]; else hojasEntrantes.forEach(h => { if (!target.hoja_ruta.includes(h)) target.hoja_ruta.push(h); });
+
+                        if (choferObj) {
+                            if (!choferObj.viajes[isoStr]) choferObj.viajes[isoStr] = { dominio: body.tractor || '', km: 0, campo: 0, hoja_ruta: [] };
+                            let targetChofer = choferObj.viajes[isoStr];
+                            if (flagOverwrite) targetChofer.hoja_ruta = [...hojasEntrantes]; else hojasEntrantes.forEach(h => { if (!targetChofer.hoja_ruta.includes(h)) targetChofer.hoja_ruta.push(h); });
+                        }
+
                         tempCur.setDate(tempCur.getDate() + 1);
                     }
                     io.emit('datos_actualizados', cacheDatosGlobales);

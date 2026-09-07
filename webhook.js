@@ -30,6 +30,23 @@ module.exports = function(cacheDatosGlobales, io, ioDash, cargarNovedades, fetch
                         ...(cacheDatosGlobales.diagramas.nuevaSeccionViajes[chofer][fecha] || {}),
                         ...datos
                     };
+
+                    // Sincronizar también en la entidad centralizada de Chofer
+                    if (Array.isArray(cacheDatosGlobales.diagramas.diagramas)) {
+                        const nBuscado = normalizar(chofer);
+                        const choferObj = cacheDatosGlobales.diagramas.diagramas.find(c => {
+                            const nomNorm = normalizar(c.nom);
+                            return nomNorm === nBuscado || nomNorm.replace(/ñ/g, 'n') === nBuscado.replace(/ñ/g, 'n');
+                        });
+                        if (choferObj) {
+                            if (!choferObj.viajes) choferObj.viajes = {};
+                            choferObj.viajes[fecha] = {
+                                ...(choferObj.viajes[fecha] || {}),
+                                ...datos
+                            };
+                        }
+                    }
+
                     debouncedEmitDatos(cacheDatosGlobales);
                 }
                 return res.status(200).json({ success: true, message: "Viaje inyectado" });

@@ -49,11 +49,22 @@ module.exports = function createFotosRouter(cacheDatosGlobales, io) {
                 });
             }
 
-            // 4. Actualizar cache y emitir evento
-            if (!cacheDatosGlobales.diagramas.fotosImgur) {
-                cacheDatosGlobales.diagramas.fotosImgur = {};
+            // 4. Actualizar entidad centralizada de Chofer y emitir evento
+            if (cacheDatosGlobales.diagramas && Array.isArray(cacheDatosGlobales.diagramas.diagramas)) {
+                const choferObj = cacheDatosGlobales.diagramas.diagramas.find(c => String(c.dni || '').replace(/\D/g, '') === dniP);
+                if (choferObj) {
+                    choferObj.foto = linkOficial;
+                }
             }
-            cacheDatosGlobales.diagramas.fotosImgur[dniP] = linkOficial;
+            if (cacheDatosGlobales.choferesRouter) {
+                const routerObj = Object.values(cacheDatosGlobales.choferesRouter).find(c => String(c.dni || c.dniFallback || '').replace(/\D/g, '') === dniP);
+                if (routerObj) {
+                    routerObj.foto = linkOficial;
+                }
+            }
+            if (cacheDatosGlobales.diagramas && cacheDatosGlobales.diagramas.fotosImgur) {
+                cacheDatosGlobales.diagramas.fotosImgur[dniP] = linkOficial;
+            }
             
             io.emit('datos_actualizados', cacheDatosGlobales);
             

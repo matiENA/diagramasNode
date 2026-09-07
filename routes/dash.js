@@ -19,6 +19,8 @@ module.exports = function createDashRouter(cacheDatosGlobales) {
             _safeId: ch._safeId,
             nom: ch.nom,
             srv_chofer: ch.srv_chofer || 'S/A',
+            dni: ch.dni || '',
+            foto: ch.foto || '',
             ut: ch.ut || null,
             dias: ch.dias || {}
         }));
