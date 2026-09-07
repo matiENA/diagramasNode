@@ -225,48 +225,56 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
                         vencimientos: vencimientosPorPatente[semiPat] || null
                     } : null;
 
+                    let choferAsignado = null;
+                    if (selectedDateCol) {
+                        let nomRaw = String(row[selectedDateCol.colNom] || '').trim();
+                        if (nomRaw && nomRaw !== '1' && nomRaw.length >= 3) {
+                            let norm = normalizar(nomRaw);
+                            let safeId = "drv_" + norm.replace(/ñ/g, 'n').replace(/[^a-z0-9]/g, "_");
+                            choferAsignado = { nom: nomRaw, _safeId: safeId };
+                        }
+                    }
+
                     let objUt = {
                         n_ute: n_ute || '',
                         srv_ut: currentSrvUt,
                         tractor: objTractor,
                         semi: objSemi,
-                        chofer_asignado: null
+                        chofer_asignado: choferAsignado
                     };
 
                     catalogoUnidades.push(objUt);
 
-                    // Si hay fecha seleccionada, vincular con el chofer asignado hoy
-                    if (selectedDateCol) {
-                        let nomRaw = String(row[selectedDateCol.colNom] || '').trim();
-                        if (nomRaw && nomRaw !== '1' && nomRaw.length >= 3) {
-                            let norm = normalizar(nomRaw);
-                            let targetKey = norm;
-                            if (mapaNombreDiagramaAId) {
-                                let choferId = mapaNombreDiagramaAId[norm] || (norm.includes('ñ') ? mapaNombreDiagramaAId[norm.replace(/ñ/g, 'n')] : null);
-                                if (choferId && choferesRouter[choferId]) {
-                                    let diagName = normalizar(choferesRouter[choferId].nombreDiagrama || choferesRouter[choferId].nombre);
-                                    if (resDiagGAS.flota[diagName]) targetKey = diagName;
-                                    else if (diagName.includes('ñ') && resDiagGAS.flota[diagName.replace(/ñ/g, 'n')]) targetKey = diagName.replace(/ñ/g, 'n');
-                                }
+                    // Si hay chofer asignado en la fecha seleccionada, vincular en mapa
+                    if (choferAsignado) {
+                        let nomRaw = choferAsignado.nom;
+                        let norm = normalizar(nomRaw);
+                        let targetKey = norm;
+                        if (mapaNombreDiagramaAId) {
+                            let choferId = mapaNombreDiagramaAId[norm] || (norm.includes('ñ') ? mapaNombreDiagramaAId[norm.replace(/ñ/g, 'n')] : null);
+                            if (choferId && choferesRouter[choferId]) {
+                                let diagName = normalizar(choferesRouter[choferId].nombreDiagrama || choferesRouter[choferId].nombre);
+                                if (resDiagGAS.flota[diagName]) targetKey = diagName;
+                                else if (diagName.includes('ñ') && resDiagGAS.flota[diagName.replace(/ñ/g, 'n')]) targetKey = diagName.replace(/ñ/g, 'n');
                             }
-                            if (!resDiagGAS.flota[targetKey]) {
-                                let keys = Object.keys(resDiagGAS.flota);
-                                let foundKey = keys.find(k => k === norm || (norm.includes('ñ') && k === norm.replace(/ñ/g, 'n')));
-                                if (foundKey) targetKey = foundKey;
-                            }
+                        }
+                        if (!resDiagGAS.flota[targetKey]) {
+                            let keys = Object.keys(resDiagGAS.flota);
+                            let foundKey = keys.find(k => k === norm || (norm.includes('ñ') && k === norm.replace(/ñ/g, 'n')));
+                            if (foundKey) targetKey = foundKey;
+                        }
 
-                            mapaChoferAUt[targetKey] = objUt;
-                            mapaChoferAUt[norm] = objUt;
-                            if (targetKey.includes('ñ')) mapaChoferAUt[targetKey.replace(/ñ/g, 'n')] = objUt;
-                            if (norm.includes('ñ')) mapaChoferAUt[norm.replace(/ñ/g, 'n')] = objUt;
+                        mapaChoferAUt[targetKey] = objUt;
+                        mapaChoferAUt[norm] = objUt;
+                        if (targetKey.includes('ñ')) mapaChoferAUt[targetKey.replace(/ñ/g, 'n')] = objUt;
+                        if (norm.includes('ñ')) mapaChoferAUt[norm.replace(/ñ/g, 'n')] = objUt;
 
-                            if (resDiagGAS.flota[targetKey]) {
-                                if (n_ute) resDiagGAS.flota[targetKey].n_ute = n_ute;
-                                if (tractorPat) resDiagGAS.flota[targetKey].tractor = tractorPat;
-                                if (semiPat) resDiagGAS.flota[targetKey].semi = semiPat;
-                                if (cistVal) resDiagGAS.flota[targetKey].cisternado = cistVal;
-                                resDiagGAS.flota[targetKey].srv_ut = currentSrvUt;
-                            }
+                        if (resDiagGAS.flota[targetKey]) {
+                            if (n_ute) resDiagGAS.flota[targetKey].n_ute = n_ute;
+                            if (tractorPat) resDiagGAS.flota[targetKey].tractor = tractorPat;
+                            if (semiPat) resDiagGAS.flota[targetKey].semi = semiPat;
+                            if (cistVal) resDiagGAS.flota[targetKey].cisternado = cistVal;
+                            resDiagGAS.flota[targetKey].srv_ut = currentSrvUt;
                         }
                     }
                 }
@@ -628,12 +636,21 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
             });
         });
 
+        // Mapa indexado de UTs por N° UTE para búsqueda inmediata O(1)
+        const mapaUtPorNumero = {};
+        catalogoUnidades.forEach(u => {
+            if (u.n_ute) mapaUtPorNumero[u.n_ute] = u;
+        });
+
         cacheDatosGlobales.diagramas = { 
             diagramas: diagramasHibridos,
-            unidades: catalogoUnidades,
+            ut: catalogoUnidades,             // Grupo completo de objetos UT en RAM (incluso inactivos/no asignados)
+            unidades: catalogoUnidades,       // Alias de compatibilidad
+            utMap: mapaUtPorNumero,           // Diccionario indexado por n_ute
             flota: resDiagGAS.flota,
             nuevaSeccionViajes: nuevaSeccionViajes
         };
+        cacheDatosGlobales.ut = catalogoUnidades; // Acceso directo en raíz de RAM
         cacheDatosGlobales.ultimaActualizacion = new Date().toISOString();
         
         // Load users for mentions autocomplete

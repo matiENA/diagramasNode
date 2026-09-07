@@ -28,7 +28,9 @@ module.exports = function createDashRouter(cacheDatosGlobales) {
         res.json({
             success: true,
             flota: flotaLite,
+            ut: cacheDatosGlobales.diagramas.ut || [],
             unidades: cacheDatosGlobales.diagramas.unidades || [],
+            utMap: cacheDatosGlobales.diagramas.utMap || {},
             // Flota indexada por nombre normalizado para búsqueda rápida
             flotaMap: cacheDatosGlobales.diagramas.flota || {},
             usuarios: cacheDatosGlobales.usuarios || [],
@@ -36,11 +38,11 @@ module.exports = function createDashRouter(cacheDatosGlobales) {
         });
     });
 
-    // GET /api/dash/unidades — Catálogo completo de unidades de Movimientos
-    router.get('/unidades', (req, res) => {
+    // GET /api/dash/ut o /api/dash/unidades — Catálogo completo de unidades de Movimientos
+    router.get(['/ut', '/unidades'], (req, res) => {
         res.json({
             success: true,
-            data: (cacheDatosGlobales.diagramas && cacheDatosGlobales.diagramas.unidades) || []
+            data: (cacheDatosGlobales.diagramas && (cacheDatosGlobales.diagramas.ut || cacheDatosGlobales.diagramas.unidades)) || []
         });
     });
 

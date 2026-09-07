@@ -90,6 +90,7 @@ app.get('/api/datos', (req, res) => {
     res.json({
         success: true,
         diagramas: cacheDatosGlobales.diagramas,
+        ut: cacheDatosGlobales.diagramas.ut || [],
         timestamp: cacheDatosGlobales.ultimaActualizacion,
         usuarios: cacheDatosGlobales.usuarios || []
     });

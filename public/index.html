@@ -1076,7 +1076,7 @@ async function cargarDatosDesdeCache() {
         });
 
         if (!window.vencimientosCacheGlobal || window.vencimientosCacheGlobal.length === 0) {
-            window.vencimientosCacheGlobal = (resDiagramas.unidades || []).flatMap(u => [
+            window.vencimientosCacheGlobal = (resDiagramas.ut || resDiagramas.unidades || []).flatMap(u => [
                 u.tractor?.vencimientos,
                 u.semi?.vencimientos
             ]).filter(Boolean);
@@ -4273,7 +4273,7 @@ window.evaluarDeepLinkDeArranque = function() {
             });
 
             if (!window.vencimientosCacheGlobal || window.vencimientosCacheGlobal.length === 0) {
-                window.vencimientosCacheGlobal = (dataDiag.unidades || []).flatMap(u => [
+                window.vencimientosCacheGlobal = (dataDiag.ut || dataDiag.unidades || []).flatMap(u => [
                     u.tractor?.vencimientos,
                     u.semi?.vencimientos
                 ]).filter(Boolean);
