@@ -29,7 +29,6 @@ module.exports = function createDashRouter(cacheDatosGlobales) {
             unidades: cacheDatosGlobales.diagramas.unidades || [],
             // Flota indexada por nombre normalizado para búsqueda rápida
             flotaMap: cacheDatosGlobales.diagramas.flota || {},
-            cisternado: cacheDatosGlobales.diagramas.cisternado || {},
             usuarios: cacheDatosGlobales.usuarios || [],
             timestamp: cacheDatosGlobales.ultimaActualizacion
         });

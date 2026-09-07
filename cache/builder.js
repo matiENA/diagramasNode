@@ -32,8 +32,7 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
 
         let resDiagGAS = {
             vencimientosObj: [], fotosImgur: {}, observaciones: {}, aptosMedicos: {},
-            documentos: {}, habilitaciones: {}, dnis: {}, certificados: {}, telefonos: {}, flota: {},
-            cisternado: {}, cisternadoObj: []
+            documentos: {}, habilitaciones: {}, dnis: {}, certificados: {}, telefonos: {}, flota: {}
         };
 
         let choferesRouter = {};
@@ -211,17 +210,7 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
                     if (!tractorPat && !semiPat && !n_ute) continue;
                     if (cistVal.toLowerCase() === 'cisternado') continue;
 
-                    // Respaldo de cisternado para consultas legadas
-                    if (n_ute && cistVal) resDiagGAS.cisternado[n_ute] = cistVal;
-                    if (semiPat && cistVal) resDiagGAS.cisternado[semiPat] = cistVal;
-                    if (tractorPat && cistVal) resDiagGAS.cisternado[tractorPat] = cistVal;
 
-                    resDiagGAS.cisternadoObj.push({
-                        n_ute: n_ute,
-                        cisternado: cistVal,
-                        tractor: tractorPat,
-                        semi: semiPat
-                    });
 
                     let objTractor = tractorPat ? {
                         patente: tractorPat,
@@ -626,8 +615,6 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
             observaciones: resDiagGAS.observaciones,
             aptosMedicos: resDiagGAS.aptosMedicos,
             vencimientosObj: resDiagGAS.vencimientosObj,
-            cisternado: resDiagGAS.cisternado,
-            cisternadoObj: resDiagGAS.cisternadoObj,
             fotosImgur: resDiagGAS.fotosImgur
         };
         cacheDatosGlobales.tds = { campo:{}, infinia:{}, liviano:{}, euro:{}, estados:{}, codigosExtra:{} };
