@@ -150,6 +150,17 @@ async function cargarNovedades(fetchRango, ID_SPREADSHEET_MASTER, cacheDatosGlob
                 try {
                     let novedadParseada = JSON.parse(jsonStr);
                     
+                    // 👉 Purgar novedades resueltas con más de 2 semanas (14 días)
+                    // Las novedades NO resueltas se conservan siempre en RAM
+                    if (novedadParseada.resuelto) {
+                        const ahoraMs = Date.now();
+                        const ms14Dias = 14 * 24 * 3600 * 1000;
+                        const fRes = new Date(novedadParseada.fecha_resolucion || novedadParseada.timestamp || novedadParseada.fecha || 0).getTime();
+                        if (!isNaN(fRes) && (ahoraMs - fRes) > ms14Dias) {
+                            return; // Se descarta de la RAM activa (permanece en Google Sheets / Cold Storage)
+                        }
+                    }
+
                     // 👉 Parsear con Col F (nombreDiagrama) de DB_CHOFERES para obtener id de Col A
                     let nomChofer = novedadParseada.nom || novedadParseada.nombre || novedadParseada.chofer;
                     if (nomChofer) {
@@ -299,9 +310,24 @@ function iniciarPollingNovedades(fetchRango, ID_SPREADSHEET_MASTER, cacheDatosGl
 function createNovedadesRouter(cacheDatosGlobales, io, ioDash, serviceAccountAuth, ID_SPREADSHEET_MASTER, fetchRango) {
     const router = express.Router();
 
-    // GET: Leer novedades en vivo
-    router.get('/', (req, res) => {
-        res.json({ success: true, data: cacheDatosGlobales.novedades || [] });
+    // GET: Leer novedades en vivo (RAM activa: pendientes + resueltas en los últimos 14 días)
+    // Parámetro opcional ?historico=true para leer archivo completo desde Google Sheets (Cold Storage)
+    router.get('/', async (req, res) => {
+        if (req.query.historico === 'true') {
+            try {
+                const rowsNov = await fetchRango(ID_SPREADSHEET_MASTER, "'novedades'!A:B");
+                const listaCompleta = [];
+                rowsNov.forEach(row => {
+                    if (row[0] && row[0] !== 'id' && row[1]) {
+                        try { listaCompleta.push(JSON.parse(row[1])); } catch (e) {}
+                    }
+                });
+                return res.json({ success: true, count: listaCompleta.length, data: listaCompleta });
+            } catch (eHist) {
+                return res.status(500).json({ success: false, error: eHist.message });
+            }
+        }
+        res.json({ success: true, count: (cacheDatosGlobales.novedades || []).length, data: cacheDatosGlobales.novedades || [] });
     });
 
     // POST: Crear o Resolver novedades

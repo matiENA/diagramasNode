@@ -344,12 +344,20 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
 
         let diasLegacyIso = {}; let hojasInfo = []; let nuevaSeccionViajes = {};
         try {
+            const hoyArKm = (typeof getFechaArgentina === 'function') ? getFechaArgentina() : new Date();
+            // Ventana de 12 meses (365 días hacia atrás) para mantener en RAM el registro visualizable del Kiosko
+            const limite12MesesMs = hoyArKm.getTime() - (365 * 24 * 3600 * 1000);
             const parseNum = (val) => parseFloat(String(val || '').replace(/,/g, '.').replace(/[^0-9.-]/g, '')) || 0;
+
             (await fetchRango(ID_SHEET_KILOMETROS, "'KM'!A2:T")).forEach(row => {
                 let fRaw = row[1], nRaw = row[2]; if (!fRaw || !nRaw) return;
                 let dObj, parts = String(fRaw).split(' ')[0].split(/[\/\-]/);
                 if (parts.length >= 3) { let aa = parts[2].length === 2 ? "20" + parts[2] : parts[2]; dObj = new Date(aa, parseInt(parts[1], 10) - 1, parts[0]); } else { dObj = new Date(fRaw); }
                 if (isNaN(dObj.getTime())) return;
+                
+                // Descartar registros históricos mayores a 12 meses (Cold Storage)
+                if (dObj.getTime() < limite12MesesMs) return;
+
                 let choferNorm = normalizar(nRaw); let isoDate = dObj.toISOString().split('T')[0];
                 let km = parseNum(row[16]) > 0 ? parseNum(row[16]) : parseNum(row[8]); let campo = parseNum(row[5]); let hojaStr = String(row[19] || "").trim();
                 if (km > 0 || campo > 0 || hojaStr !== "") {

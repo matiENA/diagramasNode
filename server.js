@@ -96,6 +96,68 @@ app.get('/api/datos', (req, res) => {
     });
 });
 
+// Viajes — Consulta histórica bajo demanda (Cold Storage)
+app.get('/api/viajes/historial', async (req, res) => {
+    try {
+        const { chofer, desde, hasta } = req.query;
+        if (!chofer) return res.status(400).json({ error: "Falta parámetro 'chofer'" });
+        
+        const { normalizar, fetchRango, ID_SHEET_KILOMETROS } = require('./utils/shared');
+        const nBuscado = normalizar(chofer);
+
+        // 1. Si está dentro de la ventana de 12 meses en RAM, responder de inmediato
+        if (cacheDatosGlobales.diagramas && cacheDatosGlobales.diagramas.nuevaSeccionViajes) {
+            const viajesRam = cacheDatosGlobales.diagramas.nuevaSeccionViajes[nBuscado] || {};
+            const fechas = Object.keys(viajesRam);
+            if (fechas.length > 0 && (!desde || fechas.some(f => f <= desde))) {
+                let filtrados = {};
+                for (let f in viajesRam) {
+                    if ((!desde || f >= desde) && (!hasta || f <= hasta)) {
+                        filtrados[f] = viajesRam[f];
+                    }
+                }
+                if (Object.keys(filtrados).length > 0) {
+                    return res.json({ success: true, fuente: "RAM", data: filtrados });
+                }
+            }
+        }
+
+        // 2. Si se solicitan fechas históricas anteriores a 12 meses, consultar Sheets (Cold Storage)
+        const rows = await fetchRango(ID_SHEET_KILOMETROS, "'KM'!A2:T");
+        const parseNum = (val) => parseFloat(String(val || '').replace(/,/g, '.').replace(/[^0-9.-]/g, '')) || 0;
+        let resultado = {};
+
+        rows.forEach(row => {
+            let fRaw = row[1], nRaw = row[2]; if (!fRaw || !nRaw) return;
+            let norm = normalizar(nRaw);
+            if (norm !== nBuscado && norm.replace(/ñ/g, 'n') !== nBuscado.replace(/ñ/g, 'n')) return;
+
+            let dObj, parts = String(fRaw).split(' ')[0].split(/[\/\-]/);
+            if (parts.length >= 3) { let aa = parts[2].length === 2 ? "20" + parts[2] : parts[2]; dObj = new Date(aa, parseInt(parts[1], 10) - 1, parts[0]); } else { dObj = new Date(fRaw); }
+            if (isNaN(dObj.getTime())) return;
+            let isoDate = dObj.toISOString().split('T')[0];
+
+            if ((!desde || isoDate >= desde) && (!hasta || isoDate <= hasta)) {
+                let km = parseNum(row[16]) > 0 ? parseNum(row[16]) : parseNum(row[8]);
+                let campo = parseNum(row[5]);
+                let hojaStr = String(row[19] || "").trim();
+                if (!resultado[isoDate]) resultado[isoDate] = { dominio: String(row[0] || '').trim(), km: 0, campo: 0, hoja_ruta: [] };
+                resultado[isoDate].km += km;
+                resultado[isoDate].campo += campo;
+                if (hojaStr) {
+                    hojaStr.split(',').map(s => s.trim()).filter(Boolean).forEach(h => {
+                        if (!resultado[isoDate].hoja_ruta.includes(h)) resultado[isoDate].hoja_ruta.push(h);
+                    });
+                }
+            }
+        });
+
+        res.json({ success: true, fuente: "COLD_STORAGE", data: resultado });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
 // Auth — Login unificado (Sheets + Supabase)
 app.use('/api/auth', createAuthRouter());
 
