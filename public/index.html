@@ -1019,7 +1019,17 @@ async function cargarDatosDesdeCache() {
                 const name = String(c.nom || "").trim().toLowerCase();
                 return name.length > 2 && !NOMBRES_IGNORADOS.has(name);
             })
-            .map(c => ({ ...c, _safeId: crearSafeId(c.nom) }));
+            .map(c => ({
+                ...c,
+                tractor: c.tractor || c.ut?.tractor?.patente || '',
+                semi: c.semi || c.ut?.semi?.patente || '',
+                n_ute: c.n_ute || c.ut?.n_ute || '',
+                cisternado: c.cisternado || c.ut?.semi?.cisternado || '',
+                srv: c.srv || c.srv_chofer || c.ut?.srv_ut || 'S/A',
+                _safeId: crearSafeId(c.nom)
+            }));
+
+        window.catalogoUnidadesGlobal = resDiagramas.unidades || [];
 
         window.evaluarDeepLinkDeArranque();
         mostrarCargando(false); 
@@ -4120,6 +4130,11 @@ window.evaluarDeepLinkDeArranque = function() {
                 let nombreLimpio = String(c.nom).trim().toLowerCase();
                 return !NOMBRES_IGNORADOS.has(nombreLimpio) && nombreLimpio.length > 2;
             }).map(c => {
+                c.tractor = c.tractor || c.ut?.tractor?.patente || '';
+                c.semi = c.semi || c.ut?.semi?.patente || '';
+                c.n_ute = c.n_ute || c.ut?.n_ute || '';
+                c.cisternado = c.cisternado || c.ut?.semi?.cisternado || '';
+                c.srv = c.srv || c.srv_chofer || c.ut?.srv_ut || 'S/A';
                 c._safeId = crearSafeId(c.nom);
                 return c;
             });
@@ -4148,6 +4163,7 @@ window.evaluarDeepLinkDeArranque = function() {
             window.vencimientosCacheGlobal = dataDiag.vencimientosObj;
             window.cisternadoCacheGlobal = dataDiag.cisternado || {};
             window.cisternadoObjCacheGlobal = dataDiag.cisternadoObj || [];
+            window.catalogoUnidadesGlobal = dataDiag.unidades || [];
             fotosGlobales = dataDiag.fotosImgur || {};
 
             if (dataDiag.nuevaSeccionViajes && typeof dataDiag.nuevaSeccionViajes === 'object' && !Array.isArray(dataDiag.nuevaSeccionViajes)) {

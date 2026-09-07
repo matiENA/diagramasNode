@@ -73,6 +73,8 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
         );
 
         let listaChoferesMaestros = [];
+        let catalogoUnidades = [];
+        let mapaChoferAUt = {};
         try {
             let hoyAr = getFechaArgentina();
             let anio = hoyAr.getFullYear(); 
@@ -90,34 +92,53 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
                 }
             });
 
+            // 1. Cargar marcas de tractores y semis, y vencimientos de patentes (Uni QM)
+            let marcasTractores = {};
+            let marcasSemis = {};
+            let vencimientosPorPatente = {};
+            try {
+                const [rowsTractores, rowsSemis, rowsUniQM] = await Promise.all([
+                    fetchRango(ID_SPREADSHEET_MASTER, "'TRACTORES'!C2:D300").catch(() => []),
+                    fetchRango(ID_SPREADSHEET_MASTER, "'SEMIS'!C2:D300").catch(() => []),
+                    fetchRango(ID_SHEET_MOVIMIENTOS, "'base datos Uni QM'!A3:F1500").catch(() => [])
+                ]);
+
+                rowsTractores.forEach(r => {
+                    let pat = String(r[0] || '').trim().toUpperCase().replace(/\s+/g, '');
+                    let marca = String(r[1] || '').trim();
+                    if (pat && marca && pat !== 'DOMINIO') marcasTractores[pat] = marca;
+                });
+
+                rowsSemis.forEach(r => {
+                    let pat = String(r[0] || '').trim().toUpperCase().replace(/\s+/g, '');
+                    let marca = String(r[1] || '').trim();
+                    if (pat && marca && pat !== 'DOMINIO') marcasSemis[pat] = marca;
+                });
+
+                resDiagGAS.vencimientosObj = rowsUniQM.map(row => {
+                    let patente = String(row[0] || '').trim().toUpperCase().replace(/\s+/g, '');
+                    if (!patente || patente === 'PATENTE') return null;
+                    let objV = {
+                        patente: patente,
+                        mas: String(row[1] || '').trim(),
+                        vtv: String(row[2] || '').trim(),
+                        esp_es: String(row[3] || '').trim(),
+                        vi: String(row[4] || '').trim(),
+                        ve: String(row[5] || '').trim()
+                    };
+                    vencimientosPorPatente[patente] = objV;
+                    return objV;
+                }).filter(Boolean);
+                console.log(`🚚 Vencimientos de unidades cargados desde 'base datos Uni QM': ${resDiagGAS.vencimientosObj.length} unidades.`);
+            } catch (eUni) {
+                console.error("Error cargando marcas / vencimientos de unidades:", eUni);
+            }
+
+            // 2. Parseo estructurado de la planilla mensual de Movimientos
             let nombrePestañaMov = await getTabName(ID_SHEET_MOVIMIENTOS, "Mov.Unidades", "Mov.Unidades y Choferes");
             const rowsMov = await fetchRango(ID_SHEET_MOVIMIENTOS, `'${nombrePestañaMov}'!A1:ZZ1000`);
             
             if (rowsMov.length > 0) {
-                // Extracción completa de Cisternado (Columna D - Índice 3) desde la planilla mensual
-                for (let i = 1; i < rowsMov.length; i++) {
-                    let row = rowsMov[i];
-                    if (!row || row.length < 4) continue;
-
-                    let cistVal = String(row[3] || "").trim();
-                    if (!cistVal || cistVal.toLowerCase() === "cisternado") continue;
-
-                    let n_ute = String(row[2] || "").trim();
-                    let tractor = String(row[4] || "").trim().toUpperCase();
-                    let semi = String(row[5] || "").trim().toUpperCase();
-
-                    if (n_ute) resDiagGAS.cisternado[n_ute] = cistVal;
-                    if (semi) resDiagGAS.cisternado[semi] = cistVal;
-                    if (tractor) resDiagGAS.cisternado[tractor] = cistVal;
-
-                    resDiagGAS.cisternadoObj.push({
-                        n_ute: n_ute,
-                        cisternado: cistVal,
-                        tractor: tractor,
-                        semi: semi
-                    });
-                }
-
                 let dateMap = [];
                 const row0 = rowsMov[0] || [];
 
@@ -164,52 +185,106 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
                     selectedDateCol = dateMap[dateMap.length - 1];
                 }
 
-                if (selectedDateCol) {
-                    let targetColNom = selectedDateCol.colNom;
-                    for (let i = 2; i < rowsMov.length; i++) {
-                        let row = rowsMov[i];
-                        if (!row || row.length < 5) continue;
+                const ESTADOS_ICONOS = ['⚪', '🟢', '🔴', '🟡', '🔵', '⚫', '🟣'];
+                let currentSrvUt = 'S/A';
 
-                        let n_ute = String(row[2] || "").trim();
-                        let cisternado = String(row[3] || "").trim();
-                        let tractor = String(row[4] || "").trim();
-                        let semi = String(row[5] || "").trim();
+                for (let i = 1; i < rowsMov.length; i++) {
+                    let row = rowsMov[i];
+                    if (!row || row.length === 0) continue;
 
-                        if (!tractor && !semi && !n_ute) continue;
+                    let col0 = String(row[0] || '').trim();
+                    let col2 = String(row[2] || '').trim();
+                    let col4 = String(row[4] || '').trim();
+                    let col5 = String(row[5] || '').trim();
 
-                        let nomRaw = String(row[targetColNom] || "").trim();
-                        if (!nomRaw || nomRaw === "1" || nomRaw.length < 3) continue;
+                    // Detectar cabecera de sección de servicio (ej: LIVIANO, METANOL, CAMPO, SOCIO, etc.)
+                    if (col0 && !ESTADOS_ICONOS.includes(col0) && !col2 && !col4 && !col5) {
+                        currentSrvUt = col0.toUpperCase();
+                        continue;
+                    }
 
-                        let norm = normalizar(nomRaw);
-                        let targetKey = norm;
-                        if (!resDiagGAS.flota[targetKey] && mapaNombreDiagramaAId) {
-                            let choferId = mapaNombreDiagramaAId[norm] || (norm.includes('ñ') ? mapaNombreDiagramaAId[norm.replace(/ñ/g, 'n')] : null);
-                            if (choferId && choferesRouter[choferId]) {
-                                let diagName = normalizar(choferesRouter[choferId].nombreDiagrama || choferesRouter[choferId].nombre);
-                                if (resDiagGAS.flota[diagName]) targetKey = diagName;
-                                else if (diagName.includes('ñ') && resDiagGAS.flota[diagName.replace(/ñ/g, 'n')]) targetKey = diagName.replace(/ñ/g, 'n');
+                    let n_ute = col2;
+                    let cistVal = String(row[3] || '').trim();
+                    let tractorPat = col4.toUpperCase().replace(/\s+/g, '');
+                    let semiPat = col5.toUpperCase().replace(/\s+/g, '');
+
+                    if (!tractorPat && !semiPat && !n_ute) continue;
+                    if (cistVal.toLowerCase() === 'cisternado') continue;
+
+                    // Respaldo de cisternado para consultas legadas
+                    if (n_ute && cistVal) resDiagGAS.cisternado[n_ute] = cistVal;
+                    if (semiPat && cistVal) resDiagGAS.cisternado[semiPat] = cistVal;
+                    if (tractorPat && cistVal) resDiagGAS.cisternado[tractorPat] = cistVal;
+
+                    resDiagGAS.cisternadoObj.push({
+                        n_ute: n_ute,
+                        cisternado: cistVal,
+                        tractor: tractorPat,
+                        semi: semiPat
+                    });
+
+                    let objTractor = tractorPat ? {
+                        patente: tractorPat,
+                        marca: marcasTractores[tractorPat] || '',
+                        vencimientos: vencimientosPorPatente[tractorPat] || null
+                    } : null;
+
+                    let objSemi = semiPat ? {
+                        patente: semiPat,
+                        marca: marcasSemis[semiPat] || '',
+                        cisternado: cistVal || '',
+                        vencimientos: vencimientosPorPatente[semiPat] || null
+                    } : null;
+
+                    let objUt = {
+                        n_ute: n_ute || '',
+                        srv_ut: currentSrvUt,
+                        estado: ESTADOS_ICONOS.includes(col0) ? col0 : '',
+                        novedad: String(row[1] || '').trim(),
+                        tractor: objTractor,
+                        semi: objSemi,
+                        chofer_asignado: null
+                    };
+
+                    catalogoUnidades.push(objUt);
+
+                    // Si hay fecha seleccionada, vincular con el chofer asignado hoy
+                    if (selectedDateCol) {
+                        let nomRaw = String(row[selectedDateCol.colNom] || '').trim();
+                        if (nomRaw && nomRaw !== '1' && nomRaw.length >= 3) {
+                            let norm = normalizar(nomRaw);
+                            let targetKey = norm;
+                            if (mapaNombreDiagramaAId) {
+                                let choferId = mapaNombreDiagramaAId[norm] || (norm.includes('ñ') ? mapaNombreDiagramaAId[norm.replace(/ñ/g, 'n')] : null);
+                                if (choferId && choferesRouter[choferId]) {
+                                    let diagName = normalizar(choferesRouter[choferId].nombreDiagrama || choferesRouter[choferId].nombre);
+                                    if (resDiagGAS.flota[diagName]) targetKey = diagName;
+                                    else if (diagName.includes('ñ') && resDiagGAS.flota[diagName.replace(/ñ/g, 'n')]) targetKey = diagName.replace(/ñ/g, 'n');
+                                }
                             }
-                        }
-                        if (!resDiagGAS.flota[targetKey]) {
-                            let keys = Object.keys(resDiagGAS.flota);
-                            let foundKey = keys.find(k => k === norm || (norm.includes('ñ') && k === norm.replace(/ñ/g, 'n')));
-                            if (foundKey) targetKey = foundKey;
-                        }
+                            if (!resDiagGAS.flota[targetKey]) {
+                                let keys = Object.keys(resDiagGAS.flota);
+                                let foundKey = keys.find(k => k === norm || (norm.includes('ñ') && k === norm.replace(/ñ/g, 'n')));
+                                if (foundKey) targetKey = foundKey;
+                            }
 
-                        if (resDiagGAS.flota[targetKey]) {
-                            if (n_ute) resDiagGAS.flota[targetKey].n_ute = n_ute;
-                            if (tractor) resDiagGAS.flota[targetKey].tractor = tractor;
-                            if (semi) resDiagGAS.flota[targetKey].semi = semi;
-                            if (cisternado && cisternado.toLowerCase() !== "cisternado") {
-                                resDiagGAS.flota[targetKey].cisternado = cisternado;
-                                resDiagGAS.cisternado[targetKey] = cisternado;
+                            mapaChoferAUt[targetKey] = objUt;
+                            mapaChoferAUt[norm] = objUt;
+                            if (targetKey.includes('ñ')) mapaChoferAUt[targetKey.replace(/ñ/g, 'n')] = objUt;
+                            if (norm.includes('ñ')) mapaChoferAUt[norm.replace(/ñ/g, 'n')] = objUt;
+
+                            if (resDiagGAS.flota[targetKey]) {
+                                if (n_ute) resDiagGAS.flota[targetKey].n_ute = n_ute;
+                                if (tractorPat) resDiagGAS.flota[targetKey].tractor = tractorPat;
+                                if (semiPat) resDiagGAS.flota[targetKey].semi = semiPat;
+                                if (cistVal) resDiagGAS.flota[targetKey].cisternado = cistVal;
+                                resDiagGAS.flota[targetKey].srv_ut = currentSrvUt;
                             }
                         }
                     }
                 }
             }
-
-        } catch (e) { }
+        } catch (e) { console.error("Error en lectura de Movimientos / Unidades:", e); }
 
         let dnisMap = {}; let telefonosMap = {};
         try {
@@ -295,25 +370,7 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
             });
         } catch(e) {}
 
-        try {
-            const rowsUniQM = await fetchRango(ID_SHEET_MOVIMIENTOS, "'base datos Uni QM'!A3:F1500");
-            resDiagGAS.vencimientosObj = rowsUniQM.map(row => {
-                let patente = String(row[0] || '').trim();
-                if (!patente || patente.toLowerCase() === 'patente') return null;
-                return {
-                    patente: patente,
-                    mas: String(row[1] || '').trim(),
-                    vtv: String(row[2] || '').trim(),
-                    esp_es: String(row[3] || '').trim(),
-                    vi: String(row[4] || '').trim(),
-                    ve: String(row[5] || '').trim()
-                };
-            }).filter(Boolean);
-            console.log(`🚚 Vencimientos de unidades cargados desde 'base datos Uni QM': ${resDiagGAS.vencimientosObj.length} unidades.`);
-        } catch(eUni) {
-            console.error("Error cargando base datos Uni QM:", eUni);
-            resDiagGAS.vencimientosObj = [];
-        }
+
 
         resDiagGAS.fotosImgur = {};
         (await fetchRango(ID_SPREADSHEET_MASTER, "'fotos'!A:B")).forEach(row => { 
@@ -529,15 +586,49 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
 
         let diagramasHibridos = []; 
         listaChoferesMaestros.forEach(ch => {
-            let nomNorm = ch.norm; let flota = resDiagGAS.flota[nomNorm] || {}; let mergeIso = diasLegacyIso[nomNorm] || {}; let diasFront = {};
-            hojasInfo.forEach(info => { let tira = []; for (let dia = 1; dia <= 31; dia++) { tira.push(mergeIso[`${info.anio}-${info.mesStr}-${String(dia).padStart(2, '0')}`] || "-"); } diasFront[info.nombre] = tira.join(","); });
-            diagramasHibridos.push({ _safeId: "drv_" + nomNorm.replace(/ñ/g, 'n').replace(/[^a-z0-9]/g, "_"), nom: ch.nombre, tractor: flota.tractor || '', semi: flota.semi || '', srv: flota.servicio || '', n_ute: flota.n_ute || '', cisternado: flota.cisternado || '', dias: diasFront });
+            let nomNorm = ch.norm;
+            let flota = resDiagGAS.flota[nomNorm] || {};
+            let mergeIso = diasLegacyIso[nomNorm] || {};
+            let diasFront = {};
+            hojasInfo.forEach(info => {
+                let tira = [];
+                for (let dia = 1; dia <= 31; dia++) {
+                    tira.push(mergeIso[`${info.anio}-${info.mesStr}-${String(dia).padStart(2, '0')}`] || "-");
+                }
+                diasFront[info.nombre] = tira.join(",");
+            });
+
+            let safeId = "drv_" + nomNorm.replace(/ñ/g, 'n').replace(/[^a-z0-9]/g, "_");
+            let utChofer = mapaChoferAUt[nomNorm] || (nomNorm.includes('ñ') ? mapaChoferAUt[nomNorm.replace(/ñ/g, 'n')] : null) || null;
+            if (utChofer) {
+                utChofer.chofer_asignado = { nom: ch.nombre, _safeId: safeId };
+            }
+
+            diagramasHibridos.push({
+                _safeId: safeId,
+                nom: ch.nombre,
+                srv_chofer: flota.servicio || 'S/A',
+                dias: diasFront,
+                ut: utChofer
+            });
         });
 
         cacheDatosGlobales.diagramas = { 
-            diagramas: diagramasHibridos, flota: resDiagGAS.flota, nuevaSeccionViajes: nuevaSeccionViajes, documentos: resDiagGAS.documentos, habilitaciones: resDiagGAS.habilitaciones, certificados: resDiagGAS.certificados,
-            dnis: resDiagGAS.dnis, telefonos: resDiagGAS.telefonos, observaciones: resDiagGAS.observaciones, aptosMedicos: resDiagGAS.aptosMedicos, vencimientosObj: resDiagGAS.vencimientosObj,
-            cisternado: resDiagGAS.cisternado, cisternadoObj: resDiagGAS.cisternadoObj, fotosImgur: resDiagGAS.fotosImgur
+            diagramas: diagramasHibridos,
+            unidades: catalogoUnidades,
+            flota: resDiagGAS.flota,
+            nuevaSeccionViajes: nuevaSeccionViajes,
+            documentos: resDiagGAS.documentos,
+            habilitaciones: resDiagGAS.habilitaciones,
+            certificados: resDiagGAS.certificados,
+            dnis: resDiagGAS.dnis,
+            telefonos: resDiagGAS.telefonos,
+            observaciones: resDiagGAS.observaciones,
+            aptosMedicos: resDiagGAS.aptosMedicos,
+            vencimientosObj: resDiagGAS.vencimientosObj,
+            cisternado: resDiagGAS.cisternado,
+            cisternadoObj: resDiagGAS.cisternadoObj,
+            fotosImgur: resDiagGAS.fotosImgur
         };
         cacheDatosGlobales.tds = { campo:{}, infinia:{}, liviano:{}, euro:{}, estados:{}, codigosExtra:{} };
         cacheDatosGlobales.ultimaActualizacion = new Date().toISOString();

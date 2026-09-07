@@ -9,30 +9,37 @@ module.exports = function createDashRouter(cacheDatosGlobales) {
     const router = express.Router();
 
     // GET /api/dash/flota — Lista ligera para autocompletado y enriquecimiento
-    // Devuelve solo: nom, tractor, semi, srv, n_ute (sin dias ni _diasIso)
+    // Devuelve estructura limpia: _safeId, nom, srv_chofer, ut, dias
     router.get('/flota', (req, res) => {
         if (!cacheDatosGlobales.diagramas || !cacheDatosGlobales.diagramas.diagramas) {
             return res.status(503).json({ error: "Cargando DB..." });
         }
 
         const flotaLite = cacheDatosGlobales.diagramas.diagramas.map(ch => ({
+            _safeId: ch._safeId,
             nom: ch.nom,
-            tractor: ch.tractor || '',
-            semi: ch.semi || '',
-            srv: ch.srv || '',
-            n_ute: ch.n_ute || '',
-            cisternado: ch.cisternado || '',
+            srv_chofer: ch.srv_chofer || 'S/A',
+            ut: ch.ut || null,
             dias: ch.dias || {}
         }));
 
         res.json({
             success: true,
             flota: flotaLite,
+            unidades: cacheDatosGlobales.diagramas.unidades || [],
             // Flota indexada por nombre normalizado para búsqueda rápida
             flotaMap: cacheDatosGlobales.diagramas.flota || {},
             cisternado: cacheDatosGlobales.diagramas.cisternado || {},
             usuarios: cacheDatosGlobales.usuarios || [],
             timestamp: cacheDatosGlobales.ultimaActualizacion
+        });
+    });
+
+    // GET /api/dash/unidades — Catálogo completo de unidades de Movimientos
+    router.get('/unidades', (req, res) => {
+        res.json({
+            success: true,
+            data: (cacheDatosGlobales.diagramas && cacheDatosGlobales.diagramas.unidades) || []
         });
     });
 
