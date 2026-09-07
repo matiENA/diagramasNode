@@ -50,9 +50,6 @@ module.exports = function(cacheDatosGlobales, io, ioDash, cargarNovedades, fetch
                         if (choferObj) {
                             const estadoLimpio = estado === "" ? "" : estado;
 
-                            if (!choferObj._diasIso) choferObj._diasIso = {};
-                            choferObj._diasIso[fechaIso] = estadoLimpio;
-
                             if (sheetTab && choferObj.dias && choferObj.dias[sheetTab]) {
                                 let tiraDias = choferObj.dias[sheetTab].split(',');
                                 let diaNum = parseInt(fechaIso.split('-')[2], 10);

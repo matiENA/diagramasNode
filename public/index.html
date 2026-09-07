@@ -3687,9 +3687,6 @@ window.guardarParametros = function() {
             let optVal = Array.isArray(payloadEst) ? payloadEst[idxOpt] : payloadEst;
             
             if (optVal === 'BORRAR') optVal = '-'; 
-            
-            if (!chofer._diasIso) chofer._diasIso = {};
-            chofer._diasIso[isoStr] = optVal;
 
             if (!chofer.dias) chofer.dias = {};
             if (!chofer.dias[tabName]) chofer.dias[tabName] = new Array(31).fill('-').join(',');

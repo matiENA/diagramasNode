@@ -22,7 +22,7 @@ module.exports = function createDashRouter(cacheDatosGlobales) {
             srv: ch.srv || '',
             n_ute: ch.n_ute || '',
             cisternado: ch.cisternado || '',
-            _diasIso: ch._diasIso || {}
+            dias: ch.dias || {}
         }));
 
         res.json({

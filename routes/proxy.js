@@ -124,7 +124,6 @@ module.exports = function createProxyRouter(cacheDatosGlobales, io) {
                                 (safeIdItem && c._safeId === safeIdItem) || normalizar(c.nom) === nBuscado || normalizar(c.nom).replace(/ñ/g, 'n') === nBuscado.replace(/ñ/g, 'n')
                             );
                             if (ch) {
-                                if (!ch._diasIso) ch._diasIso = {}; ch._diasIso[isoStr] = val;
                                 if (!ch.dias) ch.dias = {}; if (!ch.dias[tName]) ch.dias[tName] = new Array(31).fill('-').join(',');
                                 let tiraDias = ch.dias[tName].split(',');
                                 tiraDias[cur.getDate() - 1] = val === '' ? '-' : val;

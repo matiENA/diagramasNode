@@ -11,15 +11,36 @@ window.renderizarVistaInducciones = function(container) {
     // 1. Escanear a cada chofer UNA SOLA VEZ (Evitar repetidos)
     let agrupacionesPorFecha = {};
     
+    const mesesAbrev = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+    
     datosGlobales.forEach(chofer => {
-        if (!chofer._diasIso) return;
+        if (!chofer.dias && !chofer._diasIso) return;
         
         let fechasInd = [];
-        for (let isoDate in chofer._diasIso) {
-            let estadoRaw = String(chofer._diasIso[isoDate] || '').toUpperCase().trim();
-            // Detectamos si el día tiene la marca de Inducción
-            if (estadoRaw === 'IND' || estadoRaw.includes('IND')) {
-                fechasInd.push(isoDate);
+        if (chofer.dias && typeof chofer.dias === 'object') {
+            for (let tabName in chofer.dias) {
+                let parts = tabName.split('-');
+                if (parts.length !== 2) continue;
+                let mIdx = mesesAbrev.findIndex(m => m.toLowerCase() === parts[0].toLowerCase());
+                if (mIdx === -1) continue;
+                let mesStr = String(mIdx + 1).padStart(2, '0');
+                let anio = "20" + parts[1].replace(/\D/g, '');
+
+                let arr = String(chofer.dias[tabName] || '').split(',');
+                arr.forEach((val, idx) => {
+                    let estadoRaw = String(val || '').toUpperCase().trim();
+                    if (estadoRaw === 'IND' || estadoRaw.includes('IND')) {
+                        let diaStr = String(idx + 1).padStart(2, '0');
+                        fechasInd.push(`${anio}-${mesStr}-${diaStr}`);
+                    }
+                });
+            }
+        } else if (chofer._diasIso) {
+            for (let isoDate in chofer._diasIso) {
+                let estadoRaw = String(chofer._diasIso[isoDate] || '').toUpperCase().trim();
+                if (estadoRaw === 'IND' || estadoRaw.includes('IND')) {
+                    fechasInd.push(isoDate);
+                }
             }
         }
 

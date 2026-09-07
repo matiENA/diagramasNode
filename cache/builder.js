@@ -531,7 +531,7 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
         listaChoferesMaestros.forEach(ch => {
             let nomNorm = ch.norm; let flota = resDiagGAS.flota[nomNorm] || {}; let mergeIso = diasLegacyIso[nomNorm] || {}; let diasFront = {};
             hojasInfo.forEach(info => { let tira = []; for (let dia = 1; dia <= 31; dia++) { tira.push(mergeIso[`${info.anio}-${info.mesStr}-${String(dia).padStart(2, '0')}`] || "-"); } diasFront[info.nombre] = tira.join(","); });
-            diagramasHibridos.push({ _safeId: "drv_" + nomNorm.replace(/ñ/g, 'n').replace(/[^a-z0-9]/g, "_"), nom: ch.nombre, tractor: flota.tractor || '', semi: flota.semi || '', srv: flota.servicio || '', n_ute: flota.n_ute || '', cisternado: flota.cisternado || '', dias: diasFront, _diasIso: mergeIso });
+            diagramasHibridos.push({ _safeId: "drv_" + nomNorm.replace(/ñ/g, 'n').replace(/[^a-z0-9]/g, "_"), nom: ch.nombre, tractor: flota.tractor || '', semi: flota.semi || '', srv: flota.servicio || '', n_ute: flota.n_ute || '', cisternado: flota.cisternado || '', dias: diasFront });
         });
 
         cacheDatosGlobales.diagramas = { 
