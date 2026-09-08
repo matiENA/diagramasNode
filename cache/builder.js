@@ -74,6 +74,9 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
         let listaChoferesMaestros = [];
         let catalogoUnidades = [];
         let mapaChoferAUt = {};
+        let marcasTractores = {};
+        let marcasSemis = {};
+        let vencimientosPorPatente = {};
         try {
             let hoyAr = getFechaArgentina();
             let anio = hoyAr.getFullYear(); 
@@ -92,9 +95,6 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
             });
 
             // 1. Cargar marcas de tractores y semis, y vencimientos de patentes (Uni QM)
-            let marcasTractores = {};
-            let marcasSemis = {};
-            let vencimientosPorPatente = {};
             try {
                 const [rowsTractores, rowsSemis, rowsUniQM] = await Promise.all([
                     fetchRango(ID_SPREADSHEET_MASTER, "'TRACTORES'!C2:D300").catch(() => []),
@@ -644,6 +644,96 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
             });
         });
 
+        // Enriquecer catálogo completo de unidades y vencimientos para Control de Flota
+        const patentesRegistradas = new Set();
+        let listaVencimientosCompleta = [];
+
+        (resDiagGAS.vencimientosObj || []).forEach(v => {
+            if (!v || !v.patente) return;
+            const pat = String(v.patente).trim().toUpperCase();
+            patentesRegistradas.add(pat);
+
+            const esSemi = !!marcasSemis[pat] || (!marcasTractores[pat] && !v.esp_es && !v.vi && !v.ve);
+            const marca = marcasTractores[pat] || marcasSemis[pat] || '';
+
+            const item = {
+                ...v,
+                patente: pat,
+                marca: marca,
+                esSemi: esSemi,
+                tipo: esSemi ? 'SEMI' : 'TRACTOR',
+                // Compatibilidad retroactiva
+                col_b: pat,
+                col_g: !esSemi ? (v.mas || '') : '',
+                col_h: !esSemi ? (v.vtv || '') : '',
+                col_j: esSemi ? (v.mas || '') : '',
+                col_k: esSemi ? (v.vtv || '') : '',
+                col_l: v.esp_es || '',
+                col_m: v.vi || '',
+                col_n: v.ve || ''
+            };
+            listaVencimientosCompleta.push(item);
+        });
+
+        // Asegurar que tractores y semis de catalogoUnidades que no estén en Uni QM se agreguen
+        catalogoUnidades.forEach(ut => {
+            if (ut.tractor?.patente) {
+                const patTr = String(ut.tractor.patente).trim().toUpperCase();
+                if (!patentesRegistradas.has(patTr)) {
+                    patentesRegistradas.add(patTr);
+                    const vTr = ut.tractor.vencimientos || {};
+                    listaVencimientosCompleta.push({
+                        patente: patTr,
+                        marca: ut.tractor.marca || marcasTractores[patTr] || '',
+                        esSemi: false,
+                        tipo: 'TRACTOR',
+                        mas: vTr.mas || '',
+                        vtv: vTr.vtv || '',
+                        esp_es: vTr.esp_es || '',
+                        vi: vTr.vi || '',
+                        ve: vTr.ve || '',
+                        col_b: patTr,
+                        col_g: vTr.mas || '',
+                        col_h: vTr.vtv || '',
+                        col_j: '',
+                        col_k: '',
+                        col_l: vTr.esp_es || '',
+                        col_m: vTr.vi || '',
+                        col_n: vTr.ve || ''
+                    });
+                }
+            }
+            if (ut.semi?.patente) {
+                const patSe = String(ut.semi.patente).trim().toUpperCase();
+                if (!patentesRegistradas.has(patSe)) {
+                    patentesRegistradas.add(patSe);
+                    const vSe = ut.semi.vencimientos || {};
+                    listaVencimientosCompleta.push({
+                        patente: patSe,
+                        marca: ut.semi.marca || marcasSemis[patSe] || '',
+                        esSemi: true,
+                        tipo: 'SEMI',
+                        cisternado: ut.semi.cisternado || '',
+                        mas: vSe.mas || '',
+                        vtv: vSe.vtv || '',
+                        esp_es: vSe.esp_es || '',
+                        vi: vSe.vi || '',
+                        ve: vSe.ve || '',
+                        col_b: patSe,
+                        col_g: '',
+                        col_h: '',
+                        col_j: vSe.mas || '',
+                        col_k: vSe.vtv || '',
+                        col_l: vSe.esp_es || '',
+                        col_m: vSe.vi || '',
+                        col_n: vSe.ve || ''
+                    });
+                }
+            }
+        });
+
+        resDiagGAS.vencimientosObj = listaVencimientosCompleta;
+
         // Mapa indexado de UTs por N° UTE para búsqueda inmediata O(1)
         const mapaUtPorNumero = {};
         catalogoUnidades.forEach(u => {
@@ -656,9 +746,15 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
             unidades: catalogoUnidades,       // Alias de compatibilidad
             utMap: mapaUtPorNumero,           // Diccionario indexado por n_ute
             flota: resDiagGAS.flota,
+            vencimientosObj: resDiagGAS.vencimientosObj,
+            marcasTractores: marcasTractores,
+            marcasSemis: marcasSemis,
             nuevaSeccionViajes: nuevaSeccionViajes
         };
         cacheDatosGlobales.ut = catalogoUnidades; // Acceso directo en raíz de RAM
+        cacheDatosGlobales.vencimientosObj = resDiagGAS.vencimientosObj;
+        cacheDatosGlobales.marcasTractores = marcasTractores;
+        cacheDatosGlobales.marcasSemis = marcasSemis;
         cacheDatosGlobales.ultimaActualizacion = new Date().toISOString();
         
         // Load users for mentions autocomplete

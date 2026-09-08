@@ -91,6 +91,7 @@ app.get('/api/datos', (req, res) => {
         success: true,
         diagramas: cacheDatosGlobales.diagramas,
         ut: cacheDatosGlobales.diagramas.ut || [],
+        vencimientosObj: cacheDatosGlobales.diagramas.vencimientosObj || [],
         timestamp: cacheDatosGlobales.ultimaActualizacion,
         usuarios: cacheDatosGlobales.usuarios || []
     });
@@ -175,6 +176,10 @@ app.use('/api/subir-foto', createFotosRouter(cacheDatosGlobales, io));
 
 // Webhooks — Inyección en RAM desde Google Sheets
 app.use('/api/webhook', webhookRouter(cacheDatosGlobales, io, ioDash, cargarNovedades, fetchRango, ID_SPREADSHEET_MASTER));
+
+// Archivos estáticos del frontend
+const path = require('path');
+app.use(express.static(path.join(__dirname, 'public')));
 
 // ==============================================================
 // 🟢 INICIAR SERVIDOR
