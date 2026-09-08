@@ -77,6 +77,7 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
         let marcasTractores = {};
         let marcasSemis = {};
         let vencimientosPorPatente = {};
+        let rowsVencimientosSheet = [];
         try {
             let hoyAr = getFechaArgentina();
             let anio = hoyAr.getFullYear(); 
@@ -94,13 +95,16 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
                 }
             });
 
-            // 1. Cargar marcas de tractores y semis, y vencimientos de patentes (Uni QM)
+            // 1. Cargar marcas de tractores y semis, y vencimientos de patentes (Uni QM + Vencimientos.)
             try {
-                const [rowsTractores, rowsSemis, rowsUniQM] = await Promise.all([
+                const [rowsTractores, rowsSemis, rowsUniQM, rowsVenc] = await Promise.all([
                     fetchRango(ID_SPREADSHEET_MASTER, "'TRACTORES'!C2:D300").catch(() => []),
                     fetchRango(ID_SPREADSHEET_MASTER, "'SEMIS'!C2:D300").catch(() => []),
-                    fetchRango(ID_SHEET_MOVIMIENTOS, "'base datos Uni QM'!A3:F1500").catch(() => [])
+                    fetchRango(ID_SHEET_MOVIMIENTOS, "'base datos Uni QM'!A3:F1500").catch(() => []),
+                    fetchRango(ID_SHEET_MOVIMIENTOS, "'Vencimientos.'!A2:N500").catch(() => [])
                 ]);
+
+                rowsVencimientosSheet = rowsVenc || [];
 
                 rowsTractores.forEach(r => {
                     let pat = String(r[0] || '').trim().toUpperCase().replace(/\s+/g, '');
@@ -114,10 +118,10 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
                     if (pat && marca && pat !== 'DOMINIO') marcasSemis[pat] = marca;
                 });
 
-                resDiagGAS.vencimientosObj = rowsUniQM.map(row => {
+                rowsUniQM.forEach(row => {
                     let patente = String(row[0] || '').trim().toUpperCase().replace(/\s+/g, '');
-                    if (!patente || patente === 'PATENTE') return null;
-                    let objV = {
+                    if (!patente || patente === 'PATENTE') return;
+                    vencimientosPorPatente[patente] = {
                         patente: patente,
                         mas: String(row[1] || '').trim(),
                         vtv: String(row[2] || '').trim(),
@@ -125,10 +129,32 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
                         vi: String(row[4] || '').trim(),
                         ve: String(row[5] || '').trim()
                     };
-                    vencimientosPorPatente[patente] = objV;
-                    return objV;
-                }).filter(Boolean);
-                console.log(`🚚 Vencimientos de unidades cargados desde 'base datos Uni QM': ${resDiagGAS.vencimientosObj.length} unidades.`);
+                });
+
+                // Enriquecer o complementar con la pestaña 'Vencimientos.' de la planilla mensual
+                rowsVencimientosSheet.forEach(r => {
+                    let tr = String(r[1] || '').trim().toUpperCase().replace(/\s+/g, '');
+                    let se = String(r[2] || '').trim().toUpperCase().replace(/\s+/g, '');
+                    if (tr && tr !== 'TRACTOR') {
+                        if (!vencimientosPorPatente[tr]) {
+                            vencimientosPorPatente[tr] = { patente: tr, mas: '', vtv: '', esp_es: '', vi: '', ve: '' };
+                        }
+                        if (r[6]) vencimientosPorPatente[tr].mas = String(r[6]).trim();
+                        if (r[7]) vencimientosPorPatente[tr].vtv = String(r[7]).trim();
+                    }
+                    if (se && se !== 'SEMI') {
+                        if (!vencimientosPorPatente[se]) {
+                            vencimientosPorPatente[se] = { patente: se, mas: '', vtv: '', esp_es: '', vi: '', ve: '' };
+                        }
+                        if (r[9]) vencimientosPorPatente[se].mas = String(r[9]).trim();
+                        if (r[10]) vencimientosPorPatente[se].vtv = String(r[10]).trim();
+                        if (r[11]) vencimientosPorPatente[se].esp_es = String(r[11]).trim();
+                        if (r[12]) vencimientosPorPatente[se].vi = String(r[12]).trim();
+                        if (r[13]) vencimientosPorPatente[se].ve = String(r[13]).trim();
+                    }
+                });
+
+                console.log(`🚚 Base de datos de vencimientos indexada: ${Object.keys(vencimientosPorPatente).length} patentes.`);
             } catch (eUni) {
                 console.error("Error cargando marcas / vencimientos de unidades:", eUni);
             }
@@ -644,95 +670,132 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
             });
         });
 
-        // Enriquecer catálogo completo de unidades y vencimientos para Control de Flota
-        const patentesRegistradas = new Set();
-        let listaVencimientosCompleta = [];
+        // Delimitar catálogo de Control de Flota estrictamente a la flota actual de ID_SHEET_MOVIMIENTOS
+        const patentesFlotaActual = new Set();
+        const listaVencimientosFlotaActual = [];
 
-        (resDiagGAS.vencimientosObj || []).forEach(v => {
-            if (!v || !v.patente) return;
-            const pat = String(v.patente).trim().toUpperCase();
-            patentesRegistradas.add(pat);
-
-            const esSemi = !!marcasSemis[pat] || (!marcasTractores[pat] && !v.esp_es && !v.vi && !v.ve);
-            const marca = marcasTractores[pat] || marcasSemis[pat] || '';
-
-            const item = {
-                ...v,
-                patente: pat,
-                marca: marca,
-                esSemi: esSemi,
-                tipo: esSemi ? 'SEMI' : 'TRACTOR',
-                // Compatibilidad retroactiva
-                col_b: pat,
-                col_g: !esSemi ? (v.mas || '') : '',
-                col_h: !esSemi ? (v.vtv || '') : '',
-                col_j: esSemi ? (v.mas || '') : '',
-                col_k: esSemi ? (v.vtv || '') : '',
-                col_l: v.esp_es || '',
-                col_m: v.vi || '',
-                col_n: v.ve || ''
-            };
-            listaVencimientosCompleta.push(item);
-        });
-
-        // Asegurar que tractores y semis de catalogoUnidades que no estén en Uni QM se agreguen
+        // 1. Patentes de la flota activa desde catalogoUnidades (Mov.Unidades y Choferes)
         catalogoUnidades.forEach(ut => {
             if (ut.tractor?.patente) {
-                const patTr = String(ut.tractor.patente).trim().toUpperCase();
-                if (!patentesRegistradas.has(patTr)) {
-                    patentesRegistradas.add(patTr);
-                    const vTr = ut.tractor.vencimientos || {};
-                    listaVencimientosCompleta.push({
-                        patente: patTr,
-                        marca: ut.tractor.marca || marcasTractores[patTr] || '',
+                let p = ut.tractor.patente.toUpperCase().trim();
+                if (!patentesFlotaActual.has(p)) {
+                    patentesFlotaActual.add(p);
+                    let v = vencimientosPorPatente[p] || ut.tractor.vencimientos || {};
+                    listaVencimientosFlotaActual.push({
+                        patente: p,
+                        marca: ut.tractor.marca || marcasTractores[p] || '',
                         esSemi: false,
                         tipo: 'TRACTOR',
-                        mas: vTr.mas || '',
-                        vtv: vTr.vtv || '',
-                        esp_es: vTr.esp_es || '',
-                        vi: vTr.vi || '',
-                        ve: vTr.ve || '',
-                        col_b: patTr,
-                        col_g: vTr.mas || '',
-                        col_h: vTr.vtv || '',
+                        n_ute: ut.n_ute || '',
+                        srv_ut: ut.srv_ut || 'S/A',
+                        mas: v.mas || '',
+                        vtv: v.vtv || '',
+                        esp_es: v.esp_es || '',
+                        vi: v.vi || '',
+                        ve: v.ve || '',
+                        col_b: p,
+                        col_g: v.mas || '',
+                        col_h: v.vtv || '',
                         col_j: '',
                         col_k: '',
-                        col_l: vTr.esp_es || '',
-                        col_m: vTr.vi || '',
-                        col_n: vTr.ve || ''
+                        col_l: v.esp_es || '',
+                        col_m: v.vi || '',
+                        col_n: v.ve || ''
                     });
                 }
             }
             if (ut.semi?.patente) {
-                const patSe = String(ut.semi.patente).trim().toUpperCase();
-                if (!patentesRegistradas.has(patSe)) {
-                    patentesRegistradas.add(patSe);
-                    const vSe = ut.semi.vencimientos || {};
-                    listaVencimientosCompleta.push({
-                        patente: patSe,
-                        marca: ut.semi.marca || marcasSemis[patSe] || '',
+                let p = ut.semi.patente.toUpperCase().trim();
+                if (!patentesFlotaActual.has(p)) {
+                    patentesFlotaActual.add(p);
+                    let v = vencimientosPorPatente[p] || ut.semi.vencimientos || {};
+                    listaVencimientosFlotaActual.push({
+                        patente: p,
+                        marca: ut.semi.marca || marcasSemis[p] || '',
                         esSemi: true,
                         tipo: 'SEMI',
                         cisternado: ut.semi.cisternado || '',
-                        mas: vSe.mas || '',
-                        vtv: vSe.vtv || '',
-                        esp_es: vSe.esp_es || '',
-                        vi: vSe.vi || '',
-                        ve: vSe.ve || '',
-                        col_b: patSe,
+                        n_ute: ut.n_ute || '',
+                        srv_ut: ut.srv_ut || 'S/A',
+                        mas: v.mas || '',
+                        vtv: v.vtv || '',
+                        esp_es: v.esp_es || '',
+                        vi: v.vi || '',
+                        ve: v.ve || '',
+                        col_b: p,
                         col_g: '',
                         col_h: '',
-                        col_j: vSe.mas || '',
-                        col_k: vSe.vtv || '',
-                        col_l: vSe.esp_es || '',
-                        col_m: vSe.vi || '',
-                        col_n: vSe.ve || ''
+                        col_j: v.mas || '',
+                        col_k: v.vtv || '',
+                        col_l: v.esp_es || '',
+                        col_m: v.vi || '',
+                        col_n: v.ve || ''
                     });
                 }
             }
         });
 
-        resDiagGAS.vencimientosObj = listaVencimientosCompleta;
+        // 2. Patentes adicionales desde 'Vencimientos.' si existieran en la flota activa
+        if (Array.isArray(rowsVencimientosSheet)) {
+            rowsVencimientosSheet.forEach(r => {
+                let ute = String(r[0] || '').trim();
+                let tr = String(r[1] || '').trim().toUpperCase().replace(/\s+/g, '');
+                let se = String(r[2] || '').trim().toUpperCase().replace(/\s+/g, '');
+                if (tr && tr !== 'TRACTOR' && !patentesFlotaActual.has(tr)) {
+                    patentesFlotaActual.add(tr);
+                    let v = vencimientosPorPatente[tr] || {};
+                    listaVencimientosFlotaActual.push({
+                        patente: tr,
+                        marca: marcasTractores[tr] || '',
+                        esSemi: false,
+                        tipo: 'TRACTOR',
+                        n_ute: ute,
+                        srv_ut: 'S/A',
+                        mas: v.mas || '',
+                        vtv: v.vtv || '',
+                        esp_es: v.esp_es || '',
+                        vi: v.vi || '',
+                        ve: v.ve || '',
+                        col_b: tr,
+                        col_g: v.mas || '',
+                        col_h: v.vtv || '',
+                        col_j: '',
+                        col_k: '',
+                        col_l: v.esp_es || '',
+                        col_m: v.vi || '',
+                        col_n: v.ve || ''
+                    });
+                }
+                if (se && se !== 'SEMI' && !patentesFlotaActual.has(se)) {
+                    patentesFlotaActual.add(se);
+                    let v = vencimientosPorPatente[se] || {};
+                    listaVencimientosFlotaActual.push({
+                        patente: se,
+                        marca: marcasSemis[se] || '',
+                        esSemi: true,
+                        tipo: 'SEMI',
+                        n_ute: ute,
+                        srv_ut: 'S/A',
+                        mas: v.mas || '',
+                        vtv: v.vtv || '',
+                        esp_es: v.esp_es || '',
+                        vi: v.vi || '',
+                        ve: v.ve || '',
+                        col_b: se,
+                        col_g: '',
+                        col_h: '',
+                        col_j: v.mas || '',
+                        col_k: v.vtv || '',
+                        col_l: v.esp_es || '',
+                        col_m: v.vi || '',
+                        col_n: v.ve || ''
+                    });
+                }
+            });
+        }
+
+        resDiagGAS.vencimientosObj = listaVencimientosFlotaActual;
+        console.log(`🚚 Catálogo de Control de Flota delimitado a la flota actual (${ID_SHEET_MOVIMIENTOS}): ${listaVencimientosFlotaActual.length} unidades activas.`);
 
         // Mapa indexado de UTs por N° UTE para búsqueda inmediata O(1)
         const mapaUtPorNumero = {};
@@ -749,6 +812,7 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
             vencimientosObj: resDiagGAS.vencimientosObj,
             marcasTractores: marcasTractores,
             marcasSemis: marcasSemis,
+            vencimientosPorPatente: vencimientosPorPatente,
             nuevaSeccionViajes: nuevaSeccionViajes
         };
         cacheDatosGlobales.ut = catalogoUnidades; // Acceso directo en raíz de RAM

@@ -59,7 +59,13 @@ window.renderizarVistaUnidades = function(container, choferesFiltrados = null) {
     const marcasTr = window.marcasTractoresGlobal || {};
     const marcasSe = window.marcasSemisGlobal || {};
 
-    // 3. Normalizar y deduplicar lista completa de unidades
+    // 3. Normalizar y delimitar lista de unidades a la flota actual (ID_SHEET_MOVIMIENTOS)
+    const patentesFlotaActual = new Set();
+    catalogoUTs.forEach(ut => {
+        if (ut.tractor?.patente) patentesFlotaActual.add(ut.tractor.patente.toUpperCase().trim());
+        if (ut.semi?.patente) patentesFlotaActual.add(ut.semi.patente.toUpperCase().trim());
+    });
+
     const patentesProcesadas = new Set();
     const listaCombinada = [...cache];
 
@@ -90,6 +96,10 @@ window.renderizarVistaUnidades = function(container, choferesFiltrados = null) {
     listaCombinada.forEach((u, index) => {
         let patente = String(u.patente || u.col_b || '').trim().toUpperCase();
         if (!patente || patentesProcesadas.has(patente)) return;
+
+        // Delimitar estrictamente a las patentes de la flota activa
+        if (patentesFlotaActual.size > 0 && !patentesFlotaActual.has(patente)) return;
+
         patentesProcesadas.add(patente);
 
         const utAsoc = mapaUtPorPatente[patente] || null;
