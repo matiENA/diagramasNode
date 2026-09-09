@@ -16,6 +16,7 @@ const {
     ID_SHEET_MOVIMIENTOS
 } = require('../utils/shared');
 const { cargarNovedades, enriquecerNovedadesConFlota, iniciarPollingNovedades } = require('../novedades');
+const { obtenerViajesMicroservicio, isMicroservicioActivo } = require('../utils/kmClient');
 
 let ejecutandoGlobal = false, pendienteGlobal = false; 
 
@@ -370,34 +371,54 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
 
         let diasLegacyIso = {}; let hojasInfo = []; let nuevaSeccionViajes = {};
         try {
-            const hoyArKm = (typeof getFechaArgentina === 'function') ? getFechaArgentina() : new Date();
-            // Ventana de 12 meses (365 días hacia atrás) para mantener en RAM el registro visualizable del Kiosko
-            const limite12MesesMs = hoyArKm.getTime() - (365 * 24 * 3600 * 1000);
-            const parseNum = (val) => parseFloat(String(val || '').replace(/,/g, '.').replace(/[^0-9.-]/g, '')) || 0;
+            // 🌟 1. Intentar obtener la partición de RAM desde el microservicio exclusivo
+            let viajesDesdeMicroservicio = null;
+            if (isMicroservicioActivo()) {
+                viajesDesdeMicroservicio = await obtenerViajesMicroservicio();
+            }
 
-            (await fetchRango(ID_SHEET_KILOMETROS, "'KM'!A2:T")).forEach(row => {
-                let fRaw = row[1], nRaw = row[2]; if (!fRaw || !nRaw) return;
-                let dObj, parts = String(fRaw).split(' ')[0].split(/[\/\-]/);
-                if (parts.length >= 3) { let aa = parts[2].length === 2 ? "20" + parts[2] : parts[2]; dObj = new Date(aa, parseInt(parts[1], 10) - 1, parts[0]); } else { dObj = new Date(fRaw); }
-                if (isNaN(dObj.getTime())) return;
-                
-                // Descartar registros históricos mayores a 12 meses (Cold Storage)
-                if (dObj.getTime() < limite12MesesMs) return;
-
-                let choferNorm = normalizar(nRaw); let isoDate = dObj.toISOString().split('T')[0];
-                let km = parseNum(row[16]) > 0 ? parseNum(row[16]) : parseNum(row[8]); let campo = parseNum(row[5]); let hojaStr = String(row[19] || "").trim();
-                if (km > 0 || campo > 0 || hojaStr !== "") {
-                    if (!nuevaSeccionViajes[choferNorm]) nuevaSeccionViajes[choferNorm] = {};
-                    if (!nuevaSeccionViajes[choferNorm][isoDate]) nuevaSeccionViajes[choferNorm][isoDate] = { dominio: String(row[0] || '').trim(), km: 0, campo: 0, hoja_ruta: [] };
-                    let target = nuevaSeccionViajes[choferNorm][isoDate]; target.km += km; target.campo += campo;
-                    if (hojaStr !== "") hojaStr.split(',').map(s => s.trim()).filter(Boolean).forEach(h => { if (!target.hoja_ruta.includes(h)) target.hoja_ruta.push(h); });
-                    if (choferNorm.includes('ñ')) {
-                        let sinEnie = choferNorm.replace(/ñ/g, 'n');
-                        nuevaSeccionViajes[sinEnie] = nuevaSeccionViajes[choferNorm];
-                    }
+            if (viajesDesdeMicroservicio && typeof viajesDesdeMicroservicio === 'object' && Object.keys(viajesDesdeMicroservicio).length > 0) {
+                console.log("⚡ [RAM] Partición de Kilómetros hidratada exitosamente desde microservicio exclusivo.");
+                nuevaSeccionViajes = viajesDesdeMicroservicio;
+            } else {
+                // 🔄 2. Fallback de resiliencia: Extracción local directa si el microservicio no está activo o no responde
+                if (isMicroservicioActivo()) {
+                    console.warn("⚠️ [RAM] Microservicio configurado pero no respondió. Ejecutando extracción local de respaldo...");
+                } else {
+                    console.log("ℹ️ [RAM] Microservicio no configurado (KM_SERVICE_URL vacío). Ejecutando extracción local para KM...");
                 }
-            });
-        } catch(e) {}
+
+                const hoyArKm = (typeof getFechaArgentina === 'function') ? getFechaArgentina() : new Date();
+                // Ventana de 12 meses (365 días hacia atrás) para mantener en RAM el registro visualizable del Kiosko
+                const limite12MesesMs = hoyArKm.getTime() - (365 * 24 * 3600 * 1000);
+                const parseNum = (val) => parseFloat(String(val || '').replace(/,/g, '.').replace(/[^0-9.-]/g, '')) || 0;
+
+                (await fetchRango(ID_SHEET_KILOMETROS, "'KM'!A2:T")).forEach(row => {
+                    let fRaw = row[1], nRaw = row[2]; if (!fRaw || !nRaw) return;
+                    let dObj, parts = String(fRaw).split(' ')[0].split(/[\/\-]/);
+                    if (parts.length >= 3) { let aa = parts[2].length === 2 ? "20" + parts[2] : parts[2]; dObj = new Date(aa, parseInt(parts[1], 10) - 1, parts[0]); } else { dObj = new Date(fRaw); }
+                    if (isNaN(dObj.getTime())) return;
+                    
+                    // Descartar registros históricos mayores a 12 meses (Cold Storage)
+                    if (dObj.getTime() < limite12MesesMs) return;
+
+                    let choferNorm = normalizar(nRaw); let isoDate = dObj.toISOString().split('T')[0];
+                    let km = parseNum(row[16]) > 0 ? parseNum(row[16]) : parseNum(row[8]); let campo = parseNum(row[5]); let hojaStr = String(row[19] || "").trim();
+                    if (km > 0 || campo > 0 || hojaStr !== "") {
+                        if (!nuevaSeccionViajes[choferNorm]) nuevaSeccionViajes[choferNorm] = {};
+                        if (!nuevaSeccionViajes[choferNorm][isoDate]) nuevaSeccionViajes[choferNorm][isoDate] = { dominio: String(row[0] || '').trim(), km: 0, campo: 0, hoja_ruta: [] };
+                        let target = nuevaSeccionViajes[choferNorm][isoDate]; target.km += km; target.campo += campo;
+                        if (hojaStr !== "") hojaStr.split(',').map(s => s.trim()).filter(Boolean).forEach(h => { if (!target.hoja_ruta.includes(h)) target.hoja_ruta.push(h); });
+                        if (choferNorm.includes('ñ')) {
+                            let sinEnie = choferNorm.replace(/ñ/g, 'n');
+                            nuevaSeccionViajes[sinEnie] = nuevaSeccionViajes[choferNorm];
+                        }
+                    }
+                });
+            }
+        } catch(e) {
+            console.error("❌ Error cargando viajes/km en RAM:", e);
+        }
 
 
 
@@ -643,7 +664,12 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
             let docLic = resDiagGAS.habilitaciones[nomNorm] || (nomNormSinEnie ? resDiagGAS.habilitaciones[nomNormSinEnie] : null) || null;
             let docCert = resDiagGAS.certificados[nomNorm] || (nomNormSinEnie ? resDiagGAS.certificados[nomNormSinEnie] : null) || null;
             let obsList = resDiagGAS.observaciones[nomNorm] || (nomNormSinEnie ? resDiagGAS.observaciones[nomNormSinEnie] : null) || [];
-            let viajesChofer = nuevaSeccionViajes[nomNorm] || (nomNormSinEnie ? nuevaSeccionViajes[nomNormSinEnie] : null) || {};
+            let nomLimpio = nomNorm.replace(/[,;.]/g, ' ').replace(/\s+/g, ' ').trim();
+            let viajesChofer = nuevaSeccionViajes[nomNorm] 
+                || (nomNormSinEnie ? nuevaSeccionViajes[nomNormSinEnie] : null) 
+                || nuevaSeccionViajes[nomLimpio]
+                || (nomLimpio.includes('ñ') ? nuevaSeccionViajes[nomLimpio.replace(/ñ/g, 'n')] : null)
+                || {};
 
             diagramasHibridos.push({
                 _safeId: safeId,
@@ -978,6 +1004,57 @@ async function syncAllDiagramasToMaster(cacheDatosGlobales = null, io = null) {
     }
 }
 
+async function actualizarSubnodosKm(cacheDatosGlobales, io, viajesExternos = null) {
+    try {
+        let nuevosViajes = viajesExternos;
+        if (!nuevosViajes && isMicroservicioActivo()) {
+            nuevosViajes = await obtenerViajesMicroservicio();
+        }
+        if (!nuevosViajes || typeof nuevosViajes !== 'object') {
+            console.warn("⚠️ [Subnodos-KM] No se pudieron obtener viajes válidos para actualizar subnodos.");
+            return false;
+        }
+
+        if (!cacheDatosGlobales.diagramas) {
+            console.warn("⚠️ [Subnodos-KM] La RAM principal de diagramas aún no está ensamblada.");
+            return false;
+        }
+
+        // 1. Actualizar sección global de viajes
+        cacheDatosGlobales.diagramas.nuevaSeccionViajes = nuevosViajes;
+
+        // 2. Vincular como subnodo a cada entidad chofer
+        if (Array.isArray(cacheDatosGlobales.diagramas.diagramas)) {
+            let actualizados = 0;
+            cacheDatosGlobales.diagramas.diagramas.forEach(ch => {
+                const nomNorm = normalizar(ch.nom);
+                const nomNormSinEnie = nomNorm.includes('ñ') ? nomNorm.replace(/ñ/g, 'n') : null;
+                const nomLimpio = nomNorm.replace(/[,;.]/g, ' ').replace(/\s+/g, ' ').trim();
+                const viajesChofer = nuevosViajes[nomNorm] 
+                    || (nomNormSinEnie ? nuevosViajes[nomNormSinEnie] : null) 
+                    || nuevosViajes[nomLimpio]
+                    || (nomLimpio.includes('ñ') ? nuevosViajes[nomLimpio.replace(/ñ/g, 'n')] : null)
+                    || {};
+                ch.viajes = viajesChofer;
+                actualizados++;
+            });
+            console.log(`🔗 [Subnodos-KM] ${actualizados} choferes actualizados con subnodos de viajes.`);
+        }
+
+        cacheDatosGlobales.ultimaActualizacion = new Date().toISOString();
+
+        if (io) {
+            io.emit('datos_actualizados', cacheDatosGlobales);
+            console.log("📡 [Subnodos-KM] Broadcast emitido a clientes conectados con subnodos actualizados.");
+        }
+
+        return true;
+    } catch (e) {
+        console.error("❌ Error en actualizarSubnodosKm:", e);
+        return false;
+    }
+}
+
 function iniciarCachePolling(cacheDatosGlobales, io, ioDash) {
     setTimeout(() => { 
         flujoEncoladoGlobal(cacheDatosGlobales, io, ioDash); 
@@ -986,4 +1063,9 @@ function iniciarCachePolling(cacheDatosGlobales, io, ioDash) {
     setInterval(() => { console.log("⏱️ Escaneo periódico (15 min)..."); flujoEncoladoGlobal(cacheDatosGlobales, io, ioDash); }, 15 * 60 * 1000);
 }
 
-module.exports = { iniciarCachePolling, syncAllDiagramasToMaster, actualizarCacheDesdeGoogle };
+module.exports = { 
+    iniciarCachePolling, 
+    syncAllDiagramasToMaster, 
+    actualizarCacheDesdeGoogle,
+    actualizarSubnodosKm
+};

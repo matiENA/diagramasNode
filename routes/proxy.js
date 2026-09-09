@@ -11,6 +11,7 @@ const {
     ID_SHEET_HABILITACIONES, 
     ID_SHEET_KILOMETROS 
 } = require('../utils/shared');
+const { isMicroservicioActivo, guardarHojaRutaMicroservicio } = require('../utils/kmClient');
 
 module.exports = function createProxyRouter(cacheDatosGlobales, io) {
     const router = express.Router();
@@ -283,6 +284,20 @@ module.exports = function createProxyRouter(cacheDatosGlobales, io) {
                     io.emit('datos_actualizados', cacheDatosGlobales);
                 }
 
+                // 🌟 1. Si el microservicio está activo, delegar la persistencia pesada al microservicio
+                if (isMicroservicioActivo()) {
+                    guardarHojaRutaMicroservicio({
+                        tractor: body.tractor,
+                        startIso: body.startIso,
+                        endIso: body.endIso,
+                        nombre: body.nombre,
+                        hojas: body.hojas,
+                        overwrite: flagOverwrite
+                    }).catch(e => console.error("Error delegando hoja de ruta al microservicio:", e));
+                    return res.json({ success: true, message: "OK" });
+                }
+
+                // 🔄 2. Fallback de respaldo: Escritura directa en Google Sheets si el microservicio está apagado
                 const rowsKM = (await serviceAccountAuth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_KILOMETROS}/values/'KM'!A:T` })).data.values || [];
                 let reqs = []; const docKm = new GoogleSpreadsheet(ID_SHEET_KILOMETROS, serviceAccountAuth); let sheetLoaded = false;
                 let loopDate = new Date(curDate);

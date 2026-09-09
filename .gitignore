@@ -7,6 +7,7 @@
 /borradores/
 /_dbdocs/
 /_figma_snapshots/
+/scratch/
 
 # Ignora archivos específicos sueltos en cualquier parte del proyecto:
 TODO.md
@@ -46,3 +47,9 @@ package-lock.json
 Thumbs.db
 
 cursor
+
+# ==========================================
+# 🤖 5. MÓDULO BOT (SOLO ENTORNO LOCAL)
+# ==========================================
+/bot/
+/routes/bot.js

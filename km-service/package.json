@@ -1,0 +1,21 @@
+{
+  "name": "km-extractor-service",
+  "version": "1.0.0",
+  "description": "Microservicio exclusivo para extracción, indexación y consulta en memoria de la planilla de Kilómetros",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "compression": "^1.8.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "google-auth-library": "^9.10.0",
+    "google-spreadsheet": "^4.1.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

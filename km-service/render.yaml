@@ -1,0 +1,22 @@
+# ==============================================================
+# Blueprint para Render — Microservicio Exclusivo de Kilómetros
+# ==============================================================
+services:
+  - type: web
+    name: km-extractor-service
+    env: node
+    plan: free
+    rootDir: km-service
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: SHEET_KM_ID
+        value: 1Wr-_P4mDvldif_cAx08sp7yT8uTUrajI2HQAJF6tnGM
+      - key: GOOGLE_SERVICE_ACCOUNT_EMAIL
+        sync: false
+      - key: GOOGLE_PRIVATE_KEY
+        sync: false
+      - key: POLL_INTERVAL_MINUTES
+        value: 15
+      - key: MAIN_BACKEND_URL
+        value: https://diagramas-hp1p.onrender.com

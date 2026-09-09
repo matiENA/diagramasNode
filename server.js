@@ -97,13 +97,14 @@ app.get('/api/datos', (req, res) => {
     });
 });
 
-// Viajes — Consulta histórica bajo demanda (Cold Storage)
+// Viajes — Consulta histórica bajo demanda (Híbrido: RAM -> Microservicio -> Cold Storage de respaldo)
 app.get('/api/viajes/historial', async (req, res) => {
     try {
         const { chofer, desde, hasta } = req.query;
         if (!chofer) return res.status(400).json({ error: "Falta parámetro 'chofer'" });
         
         const { normalizar, fetchRango, ID_SHEET_KILOMETROS } = require('./utils/shared');
+        const { isMicroservicioActivo, obtenerHistorialMicroservicio } = require('./utils/kmClient');
         const nBuscado = normalizar(chofer);
 
         // 1. Si está dentro de la ventana de 12 meses en RAM, responder de inmediato
@@ -123,7 +124,16 @@ app.get('/api/viajes/historial', async (req, res) => {
             }
         }
 
-        // 2. Si se solicitan fechas históricas anteriores a 12 meses, consultar Sheets (Cold Storage)
+        // 2. Si se solicitan fechas anteriores a 12 meses, consultar al microservicio exclusivo
+        if (isMicroservicioActivo()) {
+            const histMicro = await obtenerHistorialMicroservicio(chofer, desde, hasta);
+            if (histMicro && histMicro.success) {
+                return res.json(histMicro);
+            }
+        }
+
+        // 3. Fallback de resiliencia: Si el microservicio no está disponible, consultar Sheets directamente
+        console.warn("⚠️ [Server] Consultando Cold Storage directamente en Google Sheets (fallback)...");
         const rows = await fetchRango(ID_SHEET_KILOMETROS, "'KM'!A2:T");
         const parseNum = (val) => parseFloat(String(val || '').replace(/,/g, '.').replace(/[^0-9.-]/g, '')) || 0;
         let resultado = {};
@@ -159,6 +169,35 @@ app.get('/api/viajes/historial', async (req, res) => {
     }
 });
 
+// Webhook — Notificación de actualización desde microservicio KM para actualizar subnodos en vivo
+app.post('/api/webhook/km-updated', async (req, res) => {
+    try {
+        console.log("📥 [Webhook] Ping de actualización recibido desde Microservicio KM");
+        const { actualizarSubnodosKm } = require('./cache/builder');
+        const ok = await actualizarSubnodosKm(cacheDatosGlobales, io);
+        res.json({ success: ok, message: ok ? "Subnodos actualizados y broadcast emitido" : "No se pudo actualizar subnodos" });
+    } catch (e) {
+        console.error("❌ Error procesando webhook de KM:", e);
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// Estado de conexión con la partición de microservicio KM
+app.get('/api/km/status', async (req, res) => {
+    const { isMicroservicioActivo, getKmServiceUrl, checkSaludMicroservicio } = require('./utils/kmClient');
+    const activo = isMicroservicioActivo();
+    const url = getKmServiceUrl();
+    let salud = null;
+    if (activo) {
+        salud = await checkSaludMicroservicio();
+    }
+    res.json({
+        microservicio_configurado: activo,
+        url: url || null,
+        salud: salud
+    });
+});
+
 // Auth — Login unificado (Sheets + Supabase)
 app.use('/api/auth', createAuthRouter());
 
@@ -176,6 +215,17 @@ app.use('/api/subir-foto', createFotosRouter(cacheDatosGlobales, io));
 
 // Webhooks — Inyección en RAM desde Google Sheets
 app.use('/api/webhook', webhookRouter(cacheDatosGlobales, io, ioDash, cargarNovedades, fetchRango, ID_SPREADSHEET_MASTER));
+
+// Bot — Asistente de consultas inteligente con Gemini y RAM (Módulo exclusivo local)
+try {
+    const { createBotRouter, botStaticDir } = require('./bot');
+    app.use('/api/bot', createBotRouter(cacheDatosGlobales));
+    app.use('/bot', express.static(botStaticDir));
+    app.get('/bot', (req, res) => res.sendFile(path.join(botStaticDir, 'index.html')));
+    console.log("🤖 Módulo Bot cargado correctamente (entorno local).");
+} catch (e) {
+    // Si la carpeta bot/ está ignorada en producción, continúa con normalidad
+}
 
 // Archivos estáticos del frontend
 const path = require('path');
