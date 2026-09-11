@@ -17,6 +17,7 @@ const {
 } = require('../utils/shared');
 const { cargarNovedades, enriquecerNovedadesConFlota, iniciarPollingNovedades } = require('../novedades');
 const { obtenerViajesMicroservicio, isMicroservicioActivo } = require('../utils/kmClient');
+const { sincronizarDbChoferesExterna } = require('../sync/syncChoferes');
 
 let ejecutandoGlobal = false, pendienteGlobal = false; 
 
@@ -35,27 +36,54 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
             vencimientosObj: [], fotosImgur: {}, observaciones: {}, aptosMedicos: {},
             documentos: {}, habilitaciones: {}, dnis: {}, certificados: {}, telefonos: {}, flota: {}
         };
+        // 0. Sincronización automática de VENCIMIENTOS y PERIODICOS -> DB_CHOFERES
+        try {
+            await sincronizarDbChoferesExterna();
+        } catch (eSync) {
+            console.error("⚠️ Error en sincronización inicial de DB_CHOFERES:", eSync.message);
+        }
 
         let choferesRouter = {};
         let mapaNombreDiagramaAId = {};
         try {
-            const rowsDB = await fetchRango(ID_SPREADSHEET_MASTER, "'DB_CHOFERES'!A2:G1000");
+            const rowsDB = await fetchRango(ID_SPREADSHEET_MASTER, "'DB_CHOFERES'!A2:H1000");
             rowsDB.forEach(row => {
                 let id = String(row[0] || "").trim();
                 if (!id) return;
-                let nombre = String(row[1] || "").trim();
+                let nomVenc = String(row[1] || "").trim();
+                let dniVal = String(row[2] || "").replace(/\D/g, '');
+                let nomPer = String(row[3] || "").trim();
+                let cuilVal = String(row[4] || "").trim();
                 let nombreDiagrama = String(row[5] || "").trim();
-                choferesRouter[id] = { id: id, nombre: nombre, dni: String(row[2] || "").replace(/\D/g, ''), cuil: String(row[4] || "").replace(/\D/g, ''), nombreDiagrama: nombreDiagrama, dniFallback: String(row[6] || "").replace(/\D/g, '') };
+                let dniFallback = String(row[6] || "").replace(/\D/g, '');
+                let passApp = String(row[7] || "").trim();
+
+                choferesRouter[id] = { 
+                    id: id, 
+                    nombreVencimientos: nomVenc,
+                    nombre: nomVenc || nombreDiagrama, 
+                    dni: dniVal, 
+                    nombrePeriodicos: nomPer,
+                    cuil: cuilVal, 
+                    nombreDiagrama: nombreDiagrama, 
+                    dniFallback: dniFallback,
+                    passwordApp: passApp
+                };
 
                 if (nombreDiagrama) {
                     let nd = normalizar(nombreDiagrama);
                     mapaNombreDiagramaAId[nd] = id;
                     if (nd.includes('ñ')) mapaNombreDiagramaAId[nd.replace(/ñ/g, 'n')] = id;
                 }
-                if (nombre) {
-                    let nm = normalizar(nombre);
+                if (nomVenc) {
+                    let nm = normalizar(nomVenc);
                     if (!mapaNombreDiagramaAId[nm]) mapaNombreDiagramaAId[nm] = id;
                     if (nm.includes('ñ') && !mapaNombreDiagramaAId[nm.replace(/ñ/g, 'n')]) mapaNombreDiagramaAId[nm.replace(/ñ/g, 'n')] = id;
+                }
+                if (nomPer) {
+                    let np = normalizar(nomPer);
+                    if (!mapaNombreDiagramaAId[np]) mapaNombreDiagramaAId[np] = id;
+                    if (np.includes('ñ') && !mapaNombreDiagramaAId[np.replace(/ñ/g, 'n')]) mapaNombreDiagramaAId[np.replace(/ñ/g, 'n')] = id;
                 }
             });
             cacheDatosGlobales.choferesRouter = choferesRouter; 
@@ -671,11 +699,28 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
                 || (nomLimpio.includes('ñ') ? nuevaSeccionViajes[nomLimpio.replace(/ñ/g, 'n')] : null)
                 || {};
 
+            let chInfo = cacheDatosGlobales.choferesRouter ? Object.values(cacheDatosGlobales.choferesRouter).find(c => {
+                let nd = normalizar(c.nombreDiagrama);
+                let nv = normalizar(c.nombreVencimientos);
+                let np = normalizar(c.nombrePeriodicos);
+                return nd === nomNorm || nv === nomNorm || np === nomNorm || (c.dni && dniVal && c.dni === dniVal);
+            }) : null;
+
             diagramasHibridos.push({
                 _safeId: safeId,
                 nom: ch.nombre,
                 srv_chofer: flota.servicio || 'S/A',
                 dni: dniVal,
+                cuil: chInfo ? chInfo.cuil : (flota.cuil || ''),
+                identidad_fuentes: chInfo ? {
+                    nombre_vencimientos: chInfo.nombreVencimientos || ch.nombre,
+                    nombre_periodicos: chInfo.nombrePeriodicos || ch.nombre,
+                    nombre_diagrama: chInfo.nombreDiagrama || ch.nombre
+                } : {
+                    nombre_vencimientos: ch.nombre,
+                    nombre_periodicos: ch.nombre,
+                    nombre_diagrama: ch.nombre
+                },
                 foto: fotoUrl,
                 contacto: contactoObj ? {
                     telefono: contactoObj.telefono || '',

@@ -26,6 +26,16 @@ module.exports = function createProxyRouter(cacheDatosGlobales, io) {
         }
     });
 
+    router.all('/sync-choferes', async (req, res) => {
+        try {
+            const { sincronizarDbChoferesExterna } = require('../sync/syncChoferes');
+            const resultado = await sincronizarDbChoferesExterna();
+            res.json(resultado);
+        } catch(e) {
+            res.status(500).json({ success: false, error: e.message });
+        }
+    });
+
     router.post('/', async (req, res) => {
         try {
             const body = req.body;
