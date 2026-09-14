@@ -238,6 +238,14 @@ async function enriquecerNovedadesConFlota(cacheDatosGlobales, serviceAccountAut
                 nov.tractor = infoF.tractor;
                 modificado = true;
             }
+            if (infoF.semi && nov.semi !== infoF.semi) {
+                nov.semi = infoF.semi;
+                modificado = true;
+            }
+            if (infoF.cisternado && nov.cisternado !== infoF.cisternado) {
+                nov.cisternado = infoF.cisternado;
+                modificado = true;
+            }
             if (infoF.servicio && nov.srv !== infoF.servicio && infoF.servicio !== 'S/A') {
                 nov.srv = infoF.servicio;
                 modificado = true;

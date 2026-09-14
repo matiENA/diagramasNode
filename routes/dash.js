@@ -22,6 +22,10 @@ module.exports = function createDashRouter(cacheDatosGlobales) {
             dni: ch.dni || '',
             foto: ch.foto || '',
             ut: ch.ut || null,
+            tractor: ch.tractor || ch.ut?.tractor?.patente || '',
+            semi: ch.semi || ch.ut?.semi?.patente || '',
+            cisternado: ch.cisternado || ch.ut?.semi?.cisternado || ch.ut?.tractor?.semi?.cisternado || ch.ut?.tractor?.cisternado || '',
+            n_ute: ch.n_ute || ch.ut?.n_ute || '',
             dias: ch.dias || {}
         }));
 

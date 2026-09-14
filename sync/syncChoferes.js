@@ -46,9 +46,9 @@ async function sincronizarDbChoferesExterna() {
     try {
         // 1. Descargar en paralelo las 3 fuentes de datos
         const [rowsVenc, rowsPer, rowsDbExistente] = await Promise.all([
-            fetchRango(ID_SHEET_HABILITACIONES, "'VENCIMIENTOS'!A5:E1000"),
-            fetchRango(ID_SHEET_DOCUMENTOS, "'PERIODICOS'!A5:I1000"),
-            fetchRango(ID_SPREADSHEET_MASTER, "'DB_CHOFERES'!A2:H1000")
+            fetchRango(ID_SHEET_HABILITACIONES, "'VENCIMIENTOS'!A5:E"),
+            fetchRango(ID_SHEET_DOCUMENTOS, "'PERIODICOS'!A5:I"),
+            fetchRango(ID_SPREADSHEET_MASTER, "'DB_CHOFERES'!A2:H")
         ]);
 
         console.log(`📊 Leídos: ${rowsVenc.length} en Vencimientos | ${rowsPer.length} en Periódicos | ${rowsDbExistente.length} en DB_CHOFERES actual.`);

@@ -8,6 +8,10 @@
 /_dbdocs/
 /_figma_snapshots/
 /scratch/
+/figma/
+/svg/
+/DASH/figma/
+/DASH/svg/
 
 # Ignora archivos específicos sueltos en cualquier parte del proyecto:
 TODO.md

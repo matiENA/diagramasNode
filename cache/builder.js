@@ -46,7 +46,7 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
         let choferesRouter = {};
         let mapaNombreDiagramaAId = {};
         try {
-            const rowsDB = await fetchRango(ID_SPREADSHEET_MASTER, "'DB_CHOFERES'!A2:H1000");
+            const rowsDB = await fetchRango(ID_SPREADSHEET_MASTER, "'DB_CHOFERES'!A2:H");
             rowsDB.forEach(row => {
                 let id = String(row[0] || "").trim();
                 if (!id) return;
@@ -127,10 +127,10 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
             // 1. Cargar marcas de tractores y semis, y vencimientos de patentes (Uni QM + Vencimientos.)
             try {
                 const [rowsTractores, rowsSemis, rowsUniQM, rowsVenc] = await Promise.all([
-                    fetchRango(ID_SPREADSHEET_MASTER, "'TRACTORES'!C2:D300").catch(() => []),
-                    fetchRango(ID_SPREADSHEET_MASTER, "'SEMIS'!C2:D300").catch(() => []),
-                    fetchRango(ID_SHEET_MOVIMIENTOS, "'base datos Uni QM'!A3:F1500").catch(() => []),
-                    fetchRango(ID_SHEET_MOVIMIENTOS, "'Vencimientos.'!A2:N500").catch(() => [])
+                    fetchRango(ID_SPREADSHEET_MASTER, "'TRACTORES'!C2:D").catch(() => []),
+                    fetchRango(ID_SPREADSHEET_MASTER, "'SEMIS'!C2:D").catch(() => []),
+                    fetchRango(ID_SHEET_MOVIMIENTOS, "'base datos Uni QM'!A3:F").catch(() => []),
+                    fetchRango(ID_SHEET_MOVIMIENTOS, "'Vencimientos.'!A2:N").catch(() => [])
                 ]);
 
                 rowsVencimientosSheet = rowsVenc || [];
@@ -267,17 +267,19 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
 
 
 
-                    let objTractor = tractorPat ? {
-                        patente: tractorPat,
-                        marca: marcasTractores[tractorPat] || '',
-                        vencimientos: vencimientosPorPatente[tractorPat] || null
-                    } : null;
-
                     let objSemi = semiPat ? {
                         patente: semiPat,
                         marca: marcasSemis[semiPat] || '',
                         cisternado: cistVal || '',
                         vencimientos: vencimientosPorPatente[semiPat] || null
+                    } : null;
+
+                    let objTractor = tractorPat ? {
+                        patente: tractorPat,
+                        marca: marcasTractores[tractorPat] || '',
+                        vencimientos: vencimientosPorPatente[tractorPat] || null,
+                        semi: objSemi,
+                        cisternado: cistVal || (objSemi ? objSemi.cisternado : '')
                     } : null;
 
                     let choferAsignado = null;
@@ -295,6 +297,7 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
                         srv_ut: currentSrvUt,
                         tractor: objTractor,
                         semi: objSemi,
+                        cisternado: cistVal || (objSemi ? objSemi.cisternado : ''),
                         chofer_asignado: choferAsignado
                     };
 
@@ -328,8 +331,11 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
                             if (n_ute) resDiagGAS.flota[targetKey].n_ute = n_ute;
                             if (tractorPat) resDiagGAS.flota[targetKey].tractor = tractorPat;
                             if (semiPat) resDiagGAS.flota[targetKey].semi = semiPat;
-                            if (cistVal) resDiagGAS.flota[targetKey].cisternado = cistVal;
+                            if (cistVal || (objSemi && objSemi.cisternado)) {
+                                resDiagGAS.flota[targetKey].cisternado = cistVal || (objSemi ? objSemi.cisternado : '');
+                            }
                             resDiagGAS.flota[targetKey].srv_ut = currentSrvUt;
+                            resDiagGAS.flota[targetKey].ut = objUt;
                         }
                     }
                 }
@@ -338,7 +344,7 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
 
         let dnisMap = {}; let telefonosMap = {};
         try {
-            (await fetchRango(ID_SPREADSHEET_MASTER, "'dni'!A1:D500")).forEach(row => { 
+            (await fetchRango(ID_SPREADSHEET_MASTER, "'dni'!A1:D")).forEach(row => { 
                 let n = String(row[0] || "").trim(); 
                 let dni = String(row[2] || "").replace(/\D/g, ''); 
                 if (n && dni) {
@@ -348,7 +354,7 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
                     if (norm.includes('ñ')) dnisMap[norm.replace(/ñ/g, 'n')] = valDni;
                 }
             });
-            (await fetchRango(ID_SPREADSHEET_MASTER, "'LEGAJOS'!A2:P350")).forEach(row => {
+            (await fetchRango(ID_SPREADSHEET_MASTER, "'LEGAJOS'!A2:P")).forEach(row => {
                 let n = String(row[1] || "").trim(); if (!n || n.toLowerCase().includes("baja")) return; let norm = normalizar(n);
                 let datos = { legajo: String(row[0] || "").trim(), telefono: String(row[3] || "").trim(), email: String(row[4] || "").trim(), fechaAlta: String(row[10] || "").trim() };
                 telefonosMap[norm] = datos; 
@@ -365,7 +371,7 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
         resDiagGAS.dnis = dnisMap; resDiagGAS.telefonos = telefonosMap;
 
         try {
-            const rowsAptos = await fetchRango(ID_SHEET_APTOS_MEDICOS, "'Seguimiento Avalados Mensual'!A1:DZ500");
+            const rowsAptos = await fetchRango(ID_SHEET_APTOS_MEDICOS, "'Seguimiento Avalados Mensual'!A1:DZ");
             resDiagGAS.aptosMedicos = {};
             if (rowsAptos.length > 0) {
                 let colDiaria = -1; for (let c = rowsAptos[0].length - 1; c >= 12; c--) { if (String(rowsAptos[0][c] || "").trim() !== "") { colDiaria = c; break; } }
@@ -383,7 +389,7 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
             }
         } catch (e) {}
         
-        const rowsObs = await fetchRango(ID_SHEET_OBSERVACIONES, "'Movimientos'!A5:H2000");
+        const rowsObs = await fetchRango(ID_SHEET_OBSERVACIONES, "'Movimientos'!A5:H");
         resDiagGAS.observaciones = {};
         rowsObs.forEach(row => {
             if(!row[1]) return; 
@@ -736,6 +742,10 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
                 },
                 dias: diasFront,
                 ut: utChofer,
+                tractor: utChofer?.tractor?.patente || flota.tractor || '',
+                semi: utChofer?.semi?.patente || flota.semi || '',
+                cisternado: utChofer?.semi?.cisternado || utChofer?.tractor?.semi?.cisternado || utChofer?.tractor?.cisternado || flota.cisternado || '',
+                n_ute: utChofer?.n_ute || flota.n_ute || '',
                 observaciones: obsList,
                 viajes: viajesChofer
             });
@@ -759,6 +769,8 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
                         tipo: 'TRACTOR',
                         n_ute: ut.n_ute || '',
                         srv_ut: ut.srv_ut || 'S/A',
+                        semi: ut.semi || ut.tractor?.semi || null,
+                        cisternado: ut.semi?.cisternado || ut.tractor?.semi?.cisternado || ut.tractor?.cisternado || '',
                         mas: v.mas || '',
                         vtv: v.vtv || '',
                         esp_es: v.esp_es || '',
