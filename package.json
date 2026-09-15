@@ -4,7 +4,12 @@
   "description": "Backend Híbrido para Diagramas EOR",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "start:main": "node server.js",
+    "start:main:local": "node -e \"process.env.KM_SERVICE_URL='http://localhost:3001'; require('./server.js')\"",
+    "start:km": "node km-service/server.js",
+    "dev:km": "node --watch km-service/server.js",
+    "test:ram": "node scripts/test-ram-local.js"
   },
   "dependencies": {
     "@google/genai": "^2.21.0",

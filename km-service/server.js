@@ -158,9 +158,11 @@ const POLL_MINUTOS = parseInt(process.env.POLL_INTERVAL_MINUTES, 10) || 15;
 
 const server = app.listen(PORT, () => {
     console.log(`=======================================================`);
-    console.log(`🚀 Microservicio KM activo en puerto ${PORT}`);
+    console.log(`🚗 MICROSERVICIO AISLADO: EXTRACCIÓN Y RAM DE KILÓMETROS`);
+    console.log(`🌐 Servicio: km-extractor-service (Puerto: ${PORT})`);
     console.log(`📋 Planilla objetivo: ${ID_SHEET_KILOMETROS}`);
-    console.log(`⏱️ Intervalo de sincronización: cada ${POLL_MINUTOS} minutos`);
+    console.log(`⏱️ Sincronización automática: cada ${POLL_MINUTOS} minutos`);
+    console.log(`⛔ NO ejecuta diagramas, NO toca DB_CHOFERES, NO corre Bot`);
     console.log(`=======================================================`);
     iniciarPollingExtractor(POLL_MINUTOS);
 });

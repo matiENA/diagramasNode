@@ -5,7 +5,7 @@ Microservicio desacoplado y autónomo diseñado para particionar la memoria RAM 
 ---
 
 ## 🎯 Beneficios de la Arquitectura
-1. **Partición de RAM**: El servidor principal (`https://diagramas-hp1p.onrender.com/`) ya no gasta memoria descargando ni parseando decenas de miles de filas crudas.
+1. **Partición de RAM**: El servidor principal (`https://diagramasnode.onrender.com/`) ya no gasta memoria descargando ni parseando decenas de miles de filas crudas.
 2. **Índice Hot & Cold**:
    - **Hot (12 meses)**: Se mantiene en RAM para vinculación inmediata como subnodos a los choferes del diagrama.
    - **Cold (Histórico completo)**: Indexado en memoria por chofer para consultas históricas instantáneas O(1).
@@ -41,9 +41,9 @@ Microservicio desacoplado y autónomo diseñado para particionar la memoria RAM 
 4. En **Environment Variables**, añade:
    - `GOOGLE_SERVICE_ACCOUNT_EMAIL`: (mismo valor que en el backend principal)
    - `GOOGLE_PRIVATE_KEY`: (mismo valor que en el backend principal)
-   - `MAIN_BACKEND_URL`: `https://diagramas-hp1p.onrender.com`
+   - `MAIN_BACKEND_URL`: `https://diagramasnode.onrender.com`
 5. Crea el servicio y copia la URL generada (ej. `https://km-extractor-service.onrender.com`).
-6. En el backend principal (`diagramas-hp1p.onrender.com`), añade en sus Environment Variables:
+6. En el backend principal (`diagramasnode.onrender.com`), añade en sus Environment Variables:
    - `KM_SERVICE_URL`: `https://km-extractor-service.onrender.com`
 
 ¡Listo! A partir de ese momento, la RAM de kilómetros se particiona automáticamente.
