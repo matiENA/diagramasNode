@@ -1,5 +1,6 @@
 const express = require('express');
 const { serviceAccountAuth, ID_SPREADSHEET_MASTER } = require('../utils/shared');
+const { buildSocketPayload } = require('../cache/builder');
 
 module.exports = function createFotosRouter(cacheDatosGlobales, io) {
     const router = express.Router();
@@ -66,7 +67,7 @@ module.exports = function createFotosRouter(cacheDatosGlobales, io) {
                 cacheDatosGlobales.diagramas.fotosImgur[dniP] = linkOficial;
             }
             
-            io.emit('datos_actualizados', cacheDatosGlobales);
+            io.emit('datos_actualizados', buildSocketPayload(cacheDatosGlobales));
             
             res.json({ success: true, link: linkOficial, mensaje: "Foto vinculada." });
         } catch (error) {

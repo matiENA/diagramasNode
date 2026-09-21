@@ -198,6 +198,25 @@ app.get('/api/km/status', async (req, res) => {
     });
 });
 
+// Estado de conexión y métricas de memoria de PostgreSQL (pg client)
+app.get('/api/db/status', async (req, res) => {
+    try {
+        const db = require('./utils/db');
+        const metrics = db.getPoolMetrics();
+        let health = null;
+        if (db.isConfigured()) {
+            health = await db.checkHealth();
+        }
+        res.json({
+            success: true,
+            ...metrics,
+            health
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // Auth — Login unificado (Sheets + Supabase)
 app.use('/api/auth', createAuthRouter());
 
@@ -227,9 +246,13 @@ try {
     // Si la carpeta bot/ está ignorada en producción, continúa con normalidad
 }
 
-// Archivos estáticos del frontend
+// Archivos estáticos del frontend con Cache-Control y ETag optimizados
 const path = require('path');
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), {
+    maxAge: '2h',
+    etag: true,
+    lastModified: true
+}));
 
 // ==============================================================
 // 🟢 INICIAR SERVIDOR

@@ -74,12 +74,15 @@ window.procesarLogin = function() {
         btn.innerHTML = `<span class="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full"></span> Despertando DB...`;
     }, 2500);
 
-    const apiUrl = typeof API_URL !== 'undefined' ? API_URL : "https://diagramasnode.onrender.com/api/proxy";
+    const baseApi = (typeof window !== 'undefined' && window.location && window.location.origin && window.location.origin.startsWith('http'))
+        ? window.location.origin
+        : (typeof API_URL !== 'undefined' ? API_URL.replace('/api/proxy', '') : "https://diagramasnode.onrender.com");
+    const authUrl = `${baseApi}/api/auth/login`;
 
-    fetch(apiUrl, {
+    fetch(authUrl, {
         method: 'POST',
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: 'login', usuario: user, password: pass })
+        body: JSON.stringify({ usuario: user, password: pass })
     })
     .then(res => res.json())
     .then(res => {

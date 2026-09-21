@@ -1,5 +1,6 @@
 const express = require('express');
 const { normalizar } = require('./utils/shared');
+const { buildSocketPayload } = require('./cache/builder');
 
 module.exports = function(cacheDatosGlobales, io, ioDash, cargarNovedades, fetchRango, ID_SPREADSHEET_MASTER) {
     const router = express.Router();
@@ -8,7 +9,7 @@ module.exports = function(cacheDatosGlobales, io, ioDash, cargarNovedades, fetch
     const debouncedEmitDatos = (cache) => {
         if (emitTimeout) clearTimeout(emitTimeout);
         emitTimeout = setTimeout(() => {
-            io.emit('datos_actualizados', cache);
+            io.emit('datos_actualizados', buildSocketPayload(cache));
             console.log("📡 [Socket] Broadcast debounced emitido a los clientes.");
         }, 1500);
     };

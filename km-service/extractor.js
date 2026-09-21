@@ -99,6 +99,12 @@ async function ejecutarExtraccionKM() {
         const rows = await fetchRango(ID_SHEET_KILOMETROS, "'KM'!A2:T");
         console.log(`📥 [KM-Extractor] ${rows.length} filas descargadas. Ensamblando partición de RAM...`);
 
+        if (!rows || rows.length === 0) {
+            console.warn("⚠️ [KM-Extractor] No se obtuvieron filas (posible corte de red o cuota). Conservando caché previo en RAM.");
+            kmRam.stats.isSyncing = false;
+            return kmRam;
+        }
+
         const hoyArKm = getFechaArgentina();
         const limite12MesesMs = hoyArKm.getTime() - (365 * 24 * 3600 * 1000);
 

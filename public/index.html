@@ -381,8 +381,11 @@ window.sincronizarBackend = function() {
 };
 
 // --- [TAG: CONEXIÓN BACKEND NATIVO (NODE.JS)] ---
-    // Ya no apuntamos a Google, apuntamos a nuestro propio servidor Node
-    const API_URL = "https://diagramasnode.onrender.com/api/proxy";
+    // Detecta automáticamente si se ejecuta en localhost o en Render
+    const BASE_URL = (typeof window !== 'undefined' && window.location && window.location.origin && window.location.origin.startsWith('http'))
+        ? window.location.origin
+        : "https://diagramasnode.onrender.com";
+    const API_URL = `${BASE_URL}/api/proxy`;
     
     function mostrarErrorGlobal(msg) {
         showToast("Error de conexión: " + msg, "error");
@@ -939,7 +942,7 @@ async function cargarDatosDesdeCache() {
     mostrarCargando(true);
     
     try {
-        const URL_DATOS = 'https://diagramasnode.onrender.com/api/datos';
+        const URL_DATOS = `${BASE_URL}/api/datos`;
         
         // 1. Hacemos la petición pero NO parseamos el JSON inmediatamente
         const res = await fetch(URL_DATOS);
@@ -4019,7 +4022,7 @@ window.evaluarDeepLinkDeArranque = function() {
   
 <script>
 // 2. Nos conectamos al servidor en tiempo real
-    const socket = io('https://diagramasnode.onrender.com');    
+    const socket = io(typeof BASE_URL !== 'undefined' ? BASE_URL : undefined);    
     // 🛡️ Filtro Anti-Metralleta para proteger el procesador
     let debounceSocketTimer = null; 
 

@@ -9,9 +9,11 @@ const {
     ID_SHEET_OBSERVACIONES, 
     ID_SHEET_DOCUMENTOS, 
     ID_SHEET_HABILITACIONES, 
-    ID_SHEET_KILOMETROS 
+    ID_SHEET_KILOMETROS,
+    ID_SPREADSHEET_MASTER 
 } = require('../utils/shared');
 const { isMicroservicioActivo, guardarHojaRutaMicroservicio } = require('../utils/kmClient');
+const { buildSocketPayload } = require('../cache/builder');
 
 module.exports = function createProxyRouter(cacheDatosGlobales, io) {
     const router = express.Router();
@@ -40,6 +42,35 @@ module.exports = function createProxyRouter(cacheDatosGlobales, io) {
         try {
             const body = req.body;
 
+            // Compatibilidad para login vía proxy
+            if (body && body.action === 'login') {
+                const { usuario, password } = body;
+                if (!usuario || !password) {
+                    return res.json({ success: false, error: "Usuario y contraseña requeridos" });
+                }
+                const uClean = String(usuario).trim().toLowerCase();
+                const pClean = String(password).trim();
+                try {
+                    const rowsUsers = await fetchRango(ID_SPREADSHEET_MASTER, "'DB_Usuarios'!A:C");
+                    for (let i = 0; i < rowsUsers.length; i++) {
+                        let rowU = String(rowsUsers[i][0] || "").trim().toLowerCase();
+                        let rowP = String(rowsUsers[i][1] || "").trim();
+                        let rol = String(rowsUsers[i][2] || "USER").trim();
+                        if (rowU === uClean && rowP === pClean) {
+                            return res.json({ 
+                                success: true, 
+                                token: 'auth_' + Date.now(), 
+                                usuario: String(rowsUsers[i][0] || "").trim().toUpperCase(), 
+                                rol: rol 
+                            });
+                        }
+                    }
+                } catch (eSheets) {
+                    console.error("Error consultando DB_Usuarios en Sheets desde proxy:", eSheets);
+                }
+                return res.json({ success: false, error: "Usuario o contraseña incorrectos" });
+            }
+
             if (body && (body.action === 'guardarObservacion' || body.action === 'guardarNuevaObservacion')) {
                 let nBuscado = normalizar(body.chofer);
                 if (cacheDatosGlobales.diagramas) {
@@ -63,7 +94,7 @@ module.exports = function createProxyRouter(cacheDatosGlobales, io) {
                         cacheDatosGlobales.diagramas.observaciones[nBuscado].push(nuevaObs);
                     }
 
-                    io.emit('datos_actualizados', cacheDatosGlobales); 
+                    io.emit('datos_actualizados', buildSocketPayload(cacheDatosGlobales)); 
                 }
                 const docObs = new GoogleSpreadsheet(ID_SHEET_OBSERVACIONES, serviceAccountAuth);
                 await docObs.loadInfo(); const sheetMov = docObs.sheetsByTitle['Movimientos'];
@@ -116,7 +147,7 @@ module.exports = function createProxyRouter(cacheDatosGlobales, io) {
                     if (cacheDatosGlobales.diagramas.habilitaciones && licVen) cacheDatosGlobales.diagramas.habilitaciones[nBuscado] = licVen;
                     if (cacheDatosGlobales.diagramas.certificados && certVen) cacheDatosGlobales.diagramas.certificados[nBuscado] = certVen;
                     
-                    io.emit('datos_actualizados', cacheDatosGlobales); 
+                    io.emit('datos_actualizados', buildSocketPayload(cacheDatosGlobales)); 
                 }
 
                 let reqs = [];
@@ -180,7 +211,7 @@ module.exports = function createProxyRouter(cacheDatosGlobales, io) {
                     }
                 });
 
-                io.emit('datos_actualizados', cacheDatosGlobales);
+                io.emit('datos_actualizados', buildSocketPayload(cacheDatosGlobales));
 
                 // 2. Persistencia asíncrona optimizada a Google Sheets agrupando por pestaña (1 llamada batchUpdate por tab)
                 (async () => {
@@ -291,7 +322,7 @@ module.exports = function createProxyRouter(cacheDatosGlobales, io) {
 
                         tempCur.setDate(tempCur.getDate() + 1);
                     }
-                    io.emit('datos_actualizados', cacheDatosGlobales);
+                    io.emit('datos_actualizados', buildSocketPayload(cacheDatosGlobales));
                 }
 
                 // 🌟 1. Si el microservicio está activo, delegar la persistencia pesada al microservicio

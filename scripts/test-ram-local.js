@@ -94,6 +94,17 @@ async function runDiagnostic() {
                 console.log('      🌐 El Backend Principal está conectado al microservicio en la nube (Render).');
             }
         }
+
+        // Comprobación de PostgreSQL (pg client)
+        const mainDbStatus = await fetchJson(`http://localhost:${MAIN_PORT}/api/db/status`);
+        if (mainDbStatus.ok && mainDbStatus.data) {
+            const dbInfo = mainDbStatus.data;
+            const pConf = dbInfo.poolConfig || {};
+            const pMem = dbInfo.memoryUsage || {};
+            console.log(`      • Cliente PostgreSQL (pg): ${dbInfo.isConfigured ? 'ONLINE ✅' : 'MODO FALLBACK (DATABASE_URL no seteada)'}`);
+            console.log(`      • Pool Postgres: Max ${pConf.max} | Idle ${pConf.idleTimeoutMillis}ms | MaxUses ${pConf.maxUses}`);
+            console.log(`      • RAM Backend: Heap ${pMem.heapUsedMB || 0} MB / ${pMem.heapTotalMB || 0} MB | RSS ${pMem.rssMB || 0} MB`);
+        }
         console.log('');
     }
 

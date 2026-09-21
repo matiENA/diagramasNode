@@ -1,5 +1,6 @@
 const express = require('express');
 const { fetchRango, supabase, ID_SPREADSHEET_MASTER } = require('../utils/shared');
+const db = require('../utils/db');
 
 module.exports = function createAuthRouter() {
     const router = express.Router();
@@ -35,7 +36,29 @@ module.exports = function createAuthRouter() {
                 console.error("Error consultando DB_Usuarios en Sheets:", eSheets);
             }
 
-            // 2. Validar en Supabase (usuarios_auth)
+            // 2. Validar con PostgreSQL (pg client - ultraligero en RAM)
+            if (db.isConfigured()) {
+                try {
+                    const { rows } = await db.query(
+                        'SELECT id, usuario, rol FROM usuarios_auth WHERE LOWER(TRIM(usuario)) = LOWER(TRIM($1)) AND password = $2 LIMIT 1',
+                        [usuario, password]
+                    );
+                    if (rows && rows.length > 0) {
+                        const user = rows[0];
+                        return res.json({ 
+                            success: true, 
+                            token: 'auth_' + user.id + '_' + Date.now(), 
+                            usuario: String(user.usuario).toUpperCase(), 
+                            rol: user.rol,
+                            fuente: 'POSTGRES_PG'
+                        });
+                    }
+                } catch (ePg) {
+                    console.error("Error consultando usuarios_auth con pg client:", ePg.message);
+                }
+            }
+
+            // 3. Fallback: Validar en Supabase REST Client
             try {
                 const { data: user } = await supabase
                     .from('usuarios_auth')
@@ -49,7 +72,8 @@ module.exports = function createAuthRouter() {
                         success: true, 
                         token: 'auth_' + user.id + '_' + Date.now(), 
                         usuario: String(user.usuario).toUpperCase(), 
-                        rol: user.rol 
+                        rol: user.rol,
+                        fuente: 'SUPABASE_REST'
                     });
                 }
             } catch (eSupa) {

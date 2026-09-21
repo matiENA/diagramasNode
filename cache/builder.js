@@ -19,6 +19,20 @@ const { cargarNovedades, enriquecerNovedadesConFlota, iniciarPollingNovedades } 
 const { obtenerViajesMicroservicio, isMicroservicioActivo } = require('../utils/kmClient');
 const { sincronizarDbChoferesExterna } = require('../sync/syncChoferes');
 
+// ==============================================================
+// 📦 HELPER: Payload reducido para WebSocket (sin viajes de KM)
+// nuevaSeccionViajes (~5MB) y ch.viajes se excluyen del broadcast.
+// El frontend los pide bajo demanda vía /api/viajes/historial
+// ==============================================================
+function buildSocketPayload(cache) {
+    if (!cache || !cache.diagramas) return cache;
+    const { nuevaSeccionViajes, diagramas: listaDiagramas, ...restoDiagramas } = cache.diagramas;
+    const diagramasSinViajes = Array.isArray(listaDiagramas)
+        ? listaDiagramas.map(({ viajes, ...resto }) => resto)
+        : listaDiagramas;
+    return { ...cache, diagramas: { ...restoDiagramas, diagramas: diagramasSinViajes } };
+}
+
 let ejecutandoGlobal = false, pendienteGlobal = false; 
 
 async function flujoEncoladoGlobal(cacheDatosGlobales, io, ioDash) {
@@ -886,6 +900,13 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
             if (u.n_ute) mapaUtPorNumero[u.n_ute] = u;
         });
 
+        // Protección de resiliencia: Si la descarga falló por red/cuota y devolvió 0 choferes,
+        // no sobreescribir la memoria existente con una base de datos vacía.
+        if (diagramasHibridos.length === 0 && cacheDatosGlobales.diagramas && Array.isArray(cacheDatosGlobales.diagramas.diagramas) && cacheDatosGlobales.diagramas.diagramas.length > 0) {
+            console.warn("⚠️ [RAM] Escaneo incompleto o error de conexión con Google Sheets (0 choferes). Conservando RAM previa intacta.");
+            return;
+        }
+
         cacheDatosGlobales.diagramas = { 
             diagramas: diagramasHibridos,
             ut: catalogoUnidades,             // Grupo completo de objetos UT en RAM (incluso inactivos/no asignados)
@@ -923,7 +944,7 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
             console.error("Error al enriquecer novedades con la flota:", eEnrich);
         }
 
-        io.emit('datos_actualizados', cacheDatosGlobales);
+        io.emit('datos_actualizados', buildSocketPayload(cacheDatosGlobales));
         
         // 👉 SE EMITE AL NUEVO DASHBOARD CADA VEZ QUE LA RAM SE RE-ENSAMBLA
         if(cacheDatosGlobales.novedades && cacheDatosGlobales.novedades.length > 0) ioDash.emit('novedades_actualizadas', cacheDatosGlobales.novedades);
@@ -1101,7 +1122,7 @@ async function actualizarSubnodosKm(cacheDatosGlobales, io, viajesExternos = nul
         cacheDatosGlobales.ultimaActualizacion = new Date().toISOString();
 
         if (io) {
-            io.emit('datos_actualizados', cacheDatosGlobales);
+            io.emit('datos_actualizados', buildSocketPayload(cacheDatosGlobales));
             console.log("📡 [Subnodos-KM] Broadcast emitido a clientes conectados con subnodos actualizados.");
         }
 
@@ -1115,7 +1136,7 @@ async function actualizarSubnodosKm(cacheDatosGlobales, io, viajesExternos = nul
 function iniciarCachePolling(cacheDatosGlobales, io, ioDash) {
     setTimeout(() => { 
         flujoEncoladoGlobal(cacheDatosGlobales, io, ioDash); 
-        iniciarPollingNovedades(fetchRango, ID_SPREADSHEET_MASTER, cacheDatosGlobales, io, ioDash, 30000);
+        iniciarPollingNovedades(fetchRango, ID_SPREADSHEET_MASTER, cacheDatosGlobales, io, ioDash, 120000);
     }, 3000); 
     setInterval(() => { console.log("⏱️ Escaneo periódico (15 min)..."); flujoEncoladoGlobal(cacheDatosGlobales, io, ioDash); }, 15 * 60 * 1000);
 }
@@ -1124,5 +1145,6 @@ module.exports = {
     iniciarCachePolling, 
     syncAllDiagramasToMaster, 
     actualizarCacheDesdeGoogle,
-    actualizarSubnodosKm
+    actualizarSubnodosKm,
+    buildSocketPayload
 };
