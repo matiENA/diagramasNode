@@ -74,9 +74,11 @@ window.procesarLogin = function() {
         btn.innerHTML = `<span class="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full"></span> Despertando DB...`;
     }, 2500);
 
-    const baseApi = (typeof window !== 'undefined' && window.location && window.location.origin && window.location.origin.startsWith('http'))
-        ? window.location.origin
-        : (typeof API_URL !== 'undefined' ? API_URL.replace('/api/proxy', '') : "https://diagramasnode.onrender.com");
+    const baseApi = (typeof BASE_URL !== 'undefined')
+        ? BASE_URL
+        : ((typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'))
+            ? 'http://localhost:3000'
+            : "https://diagramasnode-production.up.railway.app");
     const authUrl = `${baseApi}/api/auth/login`;
 
     fetch(authUrl, {

@@ -381,10 +381,14 @@ window.sincronizarBackend = function() {
 };
 
 // --- [TAG: CONEXIÓN BACKEND NATIVO (NODE.JS)] ---
-    // Detecta automáticamente si se ejecuta en localhost o en Render
-    const BASE_URL = (typeof window !== 'undefined' && window.location && window.location.origin && window.location.origin.startsWith('http'))
+    // ⚠️ CONFIGURACIÓN DE BACKEND (TEMPORAL: RAILWAY)
+    // Para volver a Render en el futuro: descomentar la línea de Render y comentar la de Railway.
+    // const BACKEND_URL = "https://diagramasnode.onrender.com"; // RENDER (SUSPENDIDO)
+    const BACKEND_URL = "https://diagramasnode-production.up.railway.app"; // RAILWAY (ACTIVO)
+
+    const BASE_URL = (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'))
         ? window.location.origin
-        : "https://diagramasnode.onrender.com";
+        : BACKEND_URL;
     const API_URL = `${BASE_URL}/api/proxy`;
     
     function mostrarErrorGlobal(msg) {
