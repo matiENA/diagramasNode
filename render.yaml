@@ -48,8 +48,9 @@ services:
       - key: IMGBB_API_KEY
         sync: false
 
-  - type: static
+  - type: web
     name: eor-frontend
+    runtime: static
     rootDir: apps/frontend
     buildCommand: npm ci && npm run build
     staticPublishPath: dist
