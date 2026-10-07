@@ -1,7 +1,7 @@
 # ==============================================================
 # Blueprint Render - EOR
 #   1. eor-backend   (Web Service, plan free)  -> apps/backend
-#   2. eor-frontend  (Static Site)             -> apps/frontend
+#   2. eor           (Static Site)             -> apps/frontend
 # ==============================================================
 services:
   - type: web
@@ -31,25 +31,17 @@ services:
         sync: false
       - key: GOOGLE_PRIVATE_KEY
         sync: false
-      - key: ID_SPREADSHEET_MASTER
-        sync: false
       - key: SPREADSHEET_ID
         sync: false
-      - key: ID_SHEET_MOVIMIENTOS
-        sync: false
       - key: MES_MOVIMIENTOS_ID
-        sync: false
-      - key: ID_SPREADSHEET_DIAGRAMAS
-        sync: false
+        value: 14Mb5rD853zxDkaLDS-IrW-OBDTDBjuJxn_3olXeWlkc
       - key: SHEET_KM_ID
-        sync: false
-      - key: ID_SHEET_KILOMETROS
-        sync: false
+        value: 1Wr-_P4mDvldif_cAx08sp7yT8uTUrajI2HQAJF6tnGM
       - key: IMGBB_API_KEY
-        sync: false
+        value: 30fdf7e82033aa1ef21be9c7e2811049
 
   - type: web
-    name: eor-frontend
+    name: eor
     runtime: static
     rootDir: apps/frontend
     buildCommand: npm ci && npm run build
@@ -64,6 +56,6 @@ services:
       - key: VITE_API_URL
         value: https://eor-backend.onrender.com
       - key: VITE_SUPABASE_URL
-        sync: false
+        value: https://rsvajuxihvmpmrmlcbul.supabase.co
       - key: VITE_SUPABASE_KEY
-        sync: false
+        value: sb_publishable_n97mVkSclRpuv_OsseO3gg_BjR9QT3R
