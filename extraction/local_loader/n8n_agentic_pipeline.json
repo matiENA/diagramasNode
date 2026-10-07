@@ -1,0 +1,837 @@
+{
+  "name": "EOR - Agentes de Extracción e Inyección (A & B)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trig-master",
+      "name": "▶️ 1. Master (Marcas)",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [40, 60]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { selectedModule: 'master' } }];"
+      },
+      "id": "set-master",
+      "name": "🏷️ Mod: Master",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [280, 60]
+    },
+    {
+      "parameters": {},
+      "id": "trig-vencimientos",
+      "name": "▶️ 2. Uni QM (Vencimientos)",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [40, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { selectedModule: 'vencimientos' } }];"
+      },
+      "id": "set-vencimientos",
+      "name": "🏷️ Mod: Vencimientos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [280, 200]
+    },
+    {
+      "parameters": {},
+      "id": "trig-flota",
+      "name": "▶️ 3. Flota & Pareos",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [40, 340]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { selectedModule: 'flota' } }];"
+      },
+      "id": "set-flota",
+      "name": "🏷️ Mod: Flota",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [280, 340]
+    },
+    {
+      "parameters": {},
+      "id": "trig-diagramas",
+      "name": "▶️ 4. Diagramas & Turnos",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [40, 480]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { selectedModule: 'diagramas' } }];"
+      },
+      "id": "set-diagramas",
+      "name": "🏷️ Mod: Diagramas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [280, 480]
+    },
+    {
+      "parameters": {},
+      "id": "trig-kilometros",
+      "name": "▶️ 5. Kilómetros (KM)",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [40, 620]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { selectedModule: 'kilometros' } }];"
+      },
+      "id": "set-kilometros",
+      "name": "🏷️ Mod: Kilómetros",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [280, 620]
+    },
+    {
+      "parameters": {},
+      "id": "trig-legajos",
+      "name": "▶️ 6. Legajos & Docs",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [40, 760]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { selectedModule: 'legajos' } }];"
+      },
+      "id": "set-legajos",
+      "name": "🏷️ Mod: Legajos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [280, 760]
+    },
+    {
+      "parameters": {},
+      "id": "trig-all",
+      "name": "▶️ 7. Extraer Todo (All)",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [40, 900]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { selectedModule: 'all' } }];"
+      },
+      "id": "set-all",
+      "name": "🏷️ Mod: Todo (All)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [280, 900]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "id": "trig-schedule",
+      "name": "⏰ Programado (Cada 30m)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [40, 1040]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { selectedModule: 'all' } }];"
+      },
+      "id": "set-schedule",
+      "name": "🏷️ Mod: Cron All",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [280, 1040]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "agentic-sync",
+        "options": {}
+      },
+      "id": "trig-webhook",
+      "name": "⚡ Webhook On-Demand",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [40, 1180],
+      "webhookId": "agentic-sync-eor"
+    },
+    {
+      "parameters": {
+        "jsCode": "const mod = $input.first().json.module || 'all';\nreturn [{ json: { selectedModule: mod } }];"
+      },
+      "id": "set-webhook",
+      "name": "🏷️ Mod: Webhook",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [280, 1180]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://localhost:3010/agent/health",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "node-check-health",
+      "name": "🩺 ¿Servidor 3010 Activo?",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [560, 560],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-health-ok",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "ok",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-if-health",
+      "name": "Evaluar Estado 3010",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [800, 560]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    timestamp: new Date().toLocaleString('es-AR'),\n    status: 'SERVER_OFFLINE',\n    mensaje: '⚠️ El servidor en puerto 3010 no responde.',\n    accion_requerida: 'Iniciá el servidor en VS Code con npm start o ejecutá start_control_panel.bat'\n  }\n}];"
+      },
+      "id": "node-server-offline-msg",
+      "name": "⚠️ Servidor 3010 Apagado",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, 680]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3010/agent/run-task",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "task",
+              "value": "extract"
+            },
+            {
+              "name": "module",
+              "value": "={{ $('🩺 ¿Servidor 3010 Activo?').item.json.selectedModule }}"
+            },
+            {
+              "name": "engine",
+              "value": "node"
+            },
+            {
+              "name": "async",
+              "value": true
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "node-start-extract",
+      "name": "▶️ Disparar Agente A (Extracción Asíncrona)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1040, 440]
+    },
+    {
+      "parameters": {
+        "amount": 4,
+        "unit": "seconds"
+      },
+      "id": "node-wait-extract",
+      "name": "⏳ Esperar 4s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1300, 440],
+      "webhookId": "wait-extract-loop"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=http://localhost:3010/agent/tasks/{{ $('▶️ Disparar Agente A (Extracción Asíncrona)').item.json.taskId }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "node-poll-extract",
+      "name": "📡 Consultar Estado Agente A",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1540, 440]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-running",
+              "leftValue": "={{ $json.task.status }}",
+              "rightValue": "running",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-if-extract-running",
+      "name": "¿Agente A Sigue Trabajando?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1780, 440]
+    },
+    {
+      "parameters": {
+        "jsCode": "const taskData = $input.first().json.task || {};\nconst anomalies = taskData.anomalies || [];\nconst highSeverity = anomalies.filter(a => a.severity === 'high');\nconst warnings = anomalies.filter(a => a.severity !== 'high');\nconst moduleName = $('🩺 ¿Servidor 3010 Activo?').item.json.selectedModule || 'all';\n\nconst isFatal = taskData.status === 'error';\nconst canInject = !isFatal;\n\nreturn [{\n  json: {\n    moduleName,\n    taskId: taskData.taskId,\n    status: taskData.status,\n    durationMs: taskData.durationMs,\n    durationSeconds: Math.round((taskData.durationMs || 0) / 1000),\n    anomaliesCount: anomalies.length,\n    highSeverityCount: highSeverity.length,\n    warningsCount: warnings.length,\n    anomalies,\n    canInject,\n    injectionHost: 'http://localhost:3010',\n    injectionModule: moduleName\n  }\n}];"
+      },
+      "id": "node-validate-anomalies",
+      "name": "🔍 Validador & Prioridad n8n",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2040, 440]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-can-inject",
+              "leftValue": "={{ $json.canInject }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-if-safe-inject",
+      "name": "¿Proceder con Inyección?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2300, 440]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.injectionHost }}/agent/run-task",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "task",
+              "value": "inject"
+            },
+            {
+              "name": "module",
+              "value": "={{ $json.injectionModule }}"
+            },
+            {
+              "name": "engine",
+              "value": "node"
+            },
+            {
+              "name": "async",
+              "value": true
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "node-start-inject",
+      "name": "▶️ Disparar Agente B (Inyección Asíncrona)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2560, 360]
+    },
+    {
+      "parameters": {
+        "amount": 4,
+        "unit": "seconds"
+      },
+      "id": "node-wait-inject",
+      "name": "⏳ Esperar 4s (Inyección)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [2820, 360],
+      "webhookId": "wait-inject-loop"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('🔍 Validador & Prioridad n8n').item.json.injectionHost }}/agent/tasks/{{ $('▶️ Disparar Agente B (Inyección Asíncrona)').item.json.taskId }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "node-poll-inject",
+      "name": "📡 Consultar Estado Agente B",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3080, 360]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-inject-running",
+              "leftValue": "={{ $json.task.status }}",
+              "rightValue": "running",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-if-inject-running",
+      "name": "¿Agente B Sigue Trabajando?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [3320, 360]
+    },
+    {
+      "parameters": {
+        "jsCode": "const injectTask = $input.first().json.task || {};\nconst valData = $('🔍 Validador & Prioridad n8n').first().json || {};\n\nreturn [{\n  json: {\n    timestamp: new Date().toLocaleString('es-AR'),\n    modulo_procesado: valData.moduleName,\n    pipelineStatus: 'COMPLETED_SUCCESSFULLY',\n    tiempo_extraccion_segundos: valData.durationSeconds || 0,\n    tiempo_inyeccion_segundos: Math.round((injectTask.durationMs || 0) / 1000),\n    tiempo_total_segundos: (valData.durationSeconds || 0) + Math.round((injectTask.durationMs || 0) / 1000),\n    advertencias_recuperadas: valData.warningsCount || 0,\n    resumen_inyeccion: injectTask.result || {}\n  }\n}];"
+      },
+      "id": "node-consolidated-report",
+      "name": "📊 Reporte Consolidado (Módulo Específico)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3580, 360]
+    },
+    {
+      "parameters": {
+        "jsCode": "const evalData = $input.first().json;\nreturn [{\n  json: {\n    timestamp: new Date().toLocaleString('es-AR'),\n    pipelineStatus: 'BLOCKED',\n    modulo: evalData.moduleName,\n    reason: 'Fallo crítico impidió la inyección.',\n    anomalies: evalData.anomalies\n  }\n}];"
+      },
+      "id": "node-alert-blocked",
+      "name": "⚠️ Alerta de Bloqueo Crítico",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2560, 560]
+    }
+  ],
+  "connections": {
+    "▶️ 1. Master (Marcas)": {
+      "main": [
+        [
+          {
+            "node": "🏷️ Mod: Master",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🏷️ Mod: Master": {
+      "main": [
+        [
+          {
+            "node": "🩺 ¿Servidor 3010 Activo?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "▶️ 2. Uni QM (Vencimientos)": {
+      "main": [
+        [
+          {
+            "node": "🏷️ Mod: Vencimientos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🏷️ Mod: Vencimientos": {
+      "main": [
+        [
+          {
+            "node": "🩺 ¿Servidor 3010 Activo?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "▶️ 3. Flota & Pareos": {
+      "main": [
+        [
+          {
+            "node": "🏷️ Mod: Flota",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🏷️ Mod: Flota": {
+      "main": [
+        [
+          {
+            "node": "🩺 ¿Servidor 3010 Activo?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "▶️ 4. Diagramas & Turnos": {
+      "main": [
+        [
+          {
+            "node": "🏷️ Mod: Diagramas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🏷️ Mod: Diagramas": {
+      "main": [
+        [
+          {
+            "node": "🩺 ¿Servidor 3010 Activo?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "▶️ 5. Kilómetros (KM)": {
+      "main": [
+        [
+          {
+            "node": "🏷️ Mod: Kilómetros",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🏷️ Mod: Kilómetros": {
+      "main": [
+        [
+          {
+            "node": "🩺 ¿Servidor 3010 Activo?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "▶️ 6. Legajos & Docs": {
+      "main": [
+        [
+          {
+            "node": "🏷️ Mod: Legajos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🏷️ Mod: Legajos": {
+      "main": [
+        [
+          {
+            "node": "🩺 ¿Servidor 3010 Activo?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "▶️ 7. Extraer Todo (All)": {
+      "main": [
+        [
+          {
+            "node": "🏷️ Mod: Todo (All)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🏷️ Mod: Todo (All)": {
+      "main": [
+        [
+          {
+            "node": "🩺 ¿Servidor 3010 Activo?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⏰ Programado (Cada 30m)": {
+      "main": [
+        [
+          {
+            "node": "🏷️ Mod: Cron All",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🏷️ Mod: Cron All": {
+      "main": [
+        [
+          {
+            "node": "🩺 ¿Servidor 3010 Activo?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⚡ Webhook On-Demand": {
+      "main": [
+        [
+          {
+            "node": "🏷️ Mod: Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🏷️ Mod: Webhook": {
+      "main": [
+        [
+          {
+            "node": "🩺 ¿Servidor 3010 Activo?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🩺 ¿Servidor 3010 Activo?": {
+      "main": [
+        [
+          {
+            "node": "Evaluar Estado 3010",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluar Estado 3010": {
+      "main": [
+        [
+          {
+            "node": "▶️ Disparar Agente A (Extracción Asíncrona)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "⚠️ Servidor 3010 Apagado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "▶️ Disparar Agente A (Extracción Asíncrona)": {
+      "main": [
+        [
+          {
+            "node": "⏳ Esperar 4s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⏳ Esperar 4s": {
+      "main": [
+        [
+          {
+            "node": "📡 Consultar Estado Agente A",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📡 Consultar Estado Agente A": {
+      "main": [
+        [
+          {
+            "node": "¿Agente A Sigue Trabajando?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Agente A Sigue Trabajando?": {
+      "main": [
+        [
+          {
+            "node": "⏳ Esperar 4s",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "🔍 Validador & Prioridad n8n",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔍 Validador & Prioridad n8n": {
+      "main": [
+        [
+          {
+            "node": "¿Proceder con Inyección?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Proceder con Inyección?": {
+      "main": [
+        [
+          {
+            "node": "▶️ Disparar Agente B (Inyección Asíncrona)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "⚠️ Alerta de Bloqueo Crítico",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "▶️ Disparar Agente B (Inyección Asíncrona)": {
+      "main": [
+        [
+          {
+            "node": "⏳ Esperar 4s (Inyección)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⏳ Esperar 4s (Inyección)": {
+      "main": [
+        [
+          {
+            "node": "📡 Consultar Estado Agente B",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📡 Consultar Estado Agente B": {
+      "main": [
+        [
+          {
+            "node": "¿Agente B Sigue Trabajando?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Agente B Sigue Trabajando?": {
+      "main": [
+        [
+          {
+            "node": "⏳ Esperar 4s (Inyección)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "📊 Reporte Consolidado (Módulo Específico)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

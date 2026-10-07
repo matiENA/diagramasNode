@@ -1,0 +1,612 @@
+{
+  "name": "ETL Modular por Planilla - Extracción a Supabase",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trig-master",
+      "name": "▶️ Disparar: Master (Marcas)",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [120, 120]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3010/api/extract/master",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "ext-master",
+      "name": "1. Extraer Marcas Master",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [400, 120]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3010/api/inject/master",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "inj-master",
+      "name": "2. Inyectar Marcas a Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 120]
+    },
+    {
+      "parameters": {
+        "jsCode": "const res = $input.first().json;\nreturn [{\n  json: {\n    timestamp: new Date().toLocaleString('es-AR'),\n    modulo: 'Marcas Master',\n    tablas_actualizadas: ['tractores (marca)', 'semis (marca)'],\n    marcas_inyectadas: res.job?.result?.records || 0,\n    duracion_seg: Math.round((res.job?.durationMs || 0) / 1000),\n    estado: '✅ Marcas oficiales de tractores y semis sincronizadas en Supabase'\n  }\n}];"
+      },
+      "id": "rep-master",
+      "name": "📊 Reporte Supabase: Marcas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, 120]
+    },
+    {
+      "parameters": {},
+      "id": "trig-uniqm",
+      "name": "▶️ Disparar: Uni QM (Vencimientos)",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [120, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3010/api/extract/vencimientos",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "ext-uniqm",
+      "name": "1. Extraer Vencimientos Uni QM",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [400, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3010/api/inject/vencimientos",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "inj-uniqm",
+      "name": "2. Inyectar Vencimientos a Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const res = $input.first().json;\nreturn [{\n  json: {\n    timestamp: new Date().toLocaleString('es-AR'),\n    modulo: 'Uni QM Vencimientos',\n    tablas_actualizadas: ['tractores (vtv, mas)', 'semis (vtv, mas, esp_es, vi, ve)'],\n    vencimientos_inyectados: res.job?.result?.records || 0,\n    duracion_seg: Math.round((res.job?.durationMs || 0) / 1000),\n    estado: '✅ Vencimientos técnicos (MAS, VTV, ESP_ES, VI, VE) sincronizados en Supabase'\n  }\n}];"
+      },
+      "id": "rep-uniqm",
+      "name": "📊 Reporte Supabase: Vencimientos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, 400]
+    },
+    {
+      "parameters": {},
+      "id": "trig-flota",
+      "name": "▶️ Disparar: Movimientos & Flota",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [120, 680]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3010/api/extract/flota",
+        "options": {
+          "timeout": 600000
+        }
+      },
+      "id": "ext-flota",
+      "name": "1. Extraer Flota y Pareos Hoy",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [400, 680]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3010/api/inject/flota",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "inj-flota",
+      "name": "2. Inyectar Formaciones a Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 680]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3010/api/inject/movimientos",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "inj-movs",
+      "name": "3. Inyectar Pareos Activos de Hoy",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [960, 680]
+    },
+    {
+      "parameters": {
+        "jsCode": "const resMov = $input.first().json;\nreturn [{\n  json: {\n    timestamp: new Date().toLocaleString('es-AR'),\n    modulo: 'Flota y Movimientos',\n    tablas_actualizadas: ['servicios_unidades', 'tractores', 'semis', 'unidades', 'movimientos', 'choferes.unidad_id'],\n    movimientos_activos_cargados: resMov.job?.result?.records || 0,\n    estado: '✅ Flota canónica y parejas de hoy sincronizadas en Supabase'\n  }\n}];"
+      },
+      "id": "rep-flota",
+      "name": "📊 Reporte Supabase: Flota",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1240, 680]
+    },
+    {
+      "parameters": {},
+      "id": "trig-diag",
+      "name": "▶️ Disparar: Diagramas & Turnos",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [120, 980]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3010/api/extract/diagramas",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "ext-diag",
+      "name": "1. Extraer Diagramas (60d RAM)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [400, 980]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3010/api/inject/choferes",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "inj-choferes",
+      "name": "2. Inyectar Choferes a Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 980]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3010/api/inject/diagramas",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "inj-diag-hist",
+      "name": "3. Inyectar Diagramas Históricos",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [960, 980]
+    },
+    {
+      "parameters": {
+        "jsCode": "const resDiag = $input.first().json;\nreturn [{\n  json: {\n    timestamp: new Date().toLocaleString('es-AR'),\n    modulo: 'Diagramas y Choferes',\n    tablas_actualizadas: ['choferes (con JSON y contabilizador)', 'diagramas (histórico mensual)'],\n    registros_historicos: resDiag.job?.result?.records || 0,\n    estado: '✅ Choferes, turnos y diagramas sincronizados en Supabase'\n  }\n}];"
+      },
+      "id": "rep-diag",
+      "name": "📊 Reporte Supabase: Diagramas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1240, 980]
+    },
+    {
+      "parameters": {},
+      "id": "trig-km",
+      "name": "▶️ Disparar: Kilómetros (6 Meses)",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [120, 1280]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3010/api/extract/kilometros",
+        "options": {
+          "timeout": 600000
+        }
+      },
+      "id": "ext-km",
+      "name": "1. Extraer Kilómetros (6 Meses)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [400, 1280]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3010/api/inject/kilometros",
+        "options": {
+          "timeout": 600000
+        }
+      },
+      "id": "inj-km",
+      "name": "2. Inyectar Kilómetros a Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 1280]
+    },
+    {
+      "parameters": {
+        "jsCode": "const resKm = $input.first().json;\nreturn [{\n  json: {\n    timestamp: new Date().toLocaleString('es-AR'),\n    modulo: 'Kilómetros y Viajes',\n    tabla_actualizada: 'choferes_km_mensual & cisternas_km',\n    filas_inyectadas: resKm.job?.result?.records || 0,\n    duracion_seg: Math.round((resKm.job?.durationMs || 0) / 1000),\n    estado: '✅ Kilómetros de los últimos 6 meses cargados en Supabase (Rollup mensual y Cisternas)'\n  }\n}];"
+      },
+      "id": "rep-km",
+      "name": "📊 Reporte Supabase: Kilómetros",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, 1280]
+    },
+    {
+      "parameters": {},
+      "id": "trig-legajos",
+      "name": "▶️ Disparar: Legajos & Docs",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [120, 1580]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3010/api/extract/legajos",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "ext-legajos",
+      "name": "1. Extraer Legajos y Novedades",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [400, 1580]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3010/api/inject/legajos",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "inj-legajos",
+      "name": "2. Inyectar Legajos a Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 1580]
+    },
+    {
+      "parameters": {
+        "jsCode": "const resLeg = $input.first().json;\nreturn [{\n  json: {\n    timestamp: new Date().toLocaleString('es-AR'),\n    modulo: 'Legajos y Documentación',\n    tablas_actualizadas: ['chofer_documentacion', 'chofer_observaciones'],\n    total_registros_cargados: resLeg.job?.result?.records || 0,\n    estado: '✅ Vencimientos médicos, legajos y observaciones actualizados'\n  }\n}];"
+      },
+      "id": "rep-legajos",
+      "name": "📊 Reporte Supabase: Legajos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, 1580]
+    },
+    {
+      "parameters": {
+        "content": "## 📑 PLANILLA 1: MASTER (Marcas de Activos)\n- **Paso 1 (Extracción):** Lee Google Sheets Master ➔ guarda en `data/master_brands.json`.\n- **Paso 2 (Inyección Supabase):** Actualiza directamente la columna `marca` en `tractores` y `semis`.",
+        "height": 240,
+        "width": 1180,
+        "color": 6
+      },
+      "id": "note-p1",
+      "name": "Nota P1: Master",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [80, 40]
+    },
+    {
+      "parameters": {
+        "content": "## 📑 PLANILLA 2: UNI QM (Vencimientos Técnicos - AISLADO)\n- **Paso 1 (Extracción):** Lee hoja `base datos Uni QM` ➔ guarda en `data/vencimientos.json`.\n- **Paso 2 (Inyección Supabase):** Actualiza directamente vencimientos (MAS, VTV, ESP_ES, VI, VE) en `tractores` y `semis`.",
+        "height": 240,
+        "width": 1180,
+        "color": 4
+      },
+      "id": "note-p2",
+      "name": "Nota P2: Uni QM",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [80, 320]
+    },
+    {
+      "parameters": {
+        "content": "## 🚛 PLANILLA 3: MOVIMIENTOS Y FLOTA (Flota del Mes y Pareos de Hoy)\n- **Paso 1 (Extracción):** Lee hoja del mes operativo ➔ guarda en `data/movimientos_flota.json`.\n- **Paso 2 (Inyección Flota):** Carga `servicios_unidades`, `tractores`, `semis` y formaciones `unidades` en Supabase.\n- **Paso 3 (Inyección Movimientos):** Registra en `movimientos` quién maneja qué unidad hoy y vincula `choferes.unidad_id`.",
+        "height": 240,
+        "width": 1460,
+        "color": 5
+      },
+      "id": "note-p3",
+      "name": "Nota P3: Flota",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [80, 600]
+    },
+    {
+      "parameters": {
+        "content": "## 📅 PLANILLA 4: DIAGRAMAS Y TURNOS (12 Meses y 60 Días Hot RAM)\n- **Paso 1 (Extracción):** Lee las 12 pestañas mensuales ➔ guarda en `data/diagramas.json`.\n- **Paso 2 (Inyección Choferes):** Actualiza `choferes` con JSON de diagramas, contabilizadores y `servicio_id`.\n- **Paso 3 (Inyección Histórica):** Carga tabla `diagramas` histórica de turnos en Supabase.",
+        "height": 240,
+        "width": 1460,
+        "color": 3
+      },
+      "id": "note-p4",
+      "name": "Nota P4: Diagramas",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [80, 900]
+    },
+    {
+      "parameters": {
+        "content": "## ⛽ PLANILLA 5: KILÓMETROS (Viajes y KMs de 6 Meses)\n- **Paso 1 (Extracción):** Lee hoja `KM` (33.000+ filas) ➔ guarda `data/kilometros.json` y caché disco.\n- **Paso 2 (Inyección Supabase):** Carga optimizada en `choferes_km_mensual` (rollup O(1)) y `cisternas_km` (auditoría semis).",
+        "height": 240,
+        "width": 1180,
+        "color": 2
+      },
+      "id": "note-p5",
+      "name": "Nota P5: Kilómetros",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [80, 1200]
+    },
+    {
+      "parameters": {
+        "content": "## 📋 PLANILLA 6: LEGAJOS, VENCIMIENTOS MÉDICOS Y OBSERVACIONES\n- **Paso 1 (Extracción):** Consolida legajos, aptos y 1.100+ observaciones ➔ guarda `data/legajos.json`.\n- **Paso 2 (Inyección Supabase):** Upsert en `chofer_documentacion` e inserción en `chofer_observaciones`.",
+        "height": 240,
+        "width": 1180,
+        "color": 7
+      },
+      "id": "note-p6",
+      "name": "Nota P6: Legajos",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [80, 1500]
+    }
+  ],
+  "connections": {
+    "▶️ Disparar: Master (Marcas)": {
+      "main": [
+        [
+          {
+            "node": "1. Extraer Marcas Master",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "1. Extraer Marcas Master": {
+      "main": [
+        [
+          {
+            "node": "2. Inyectar Marcas a Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2. Inyectar Marcas a Supabase": {
+      "main": [
+        [
+          {
+            "node": "📊 Reporte Supabase: Marcas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "▶️ Disparar: Uni QM (Vencimientos)": {
+      "main": [
+        [
+          {
+            "node": "1. Extraer Vencimientos Uni QM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "1. Extraer Vencimientos Uni QM": {
+      "main": [
+        [
+          {
+            "node": "2. Inyectar Vencimientos a Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2. Inyectar Vencimientos a Supabase": {
+      "main": [
+        [
+          {
+            "node": "📊 Reporte Supabase: Vencimientos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "▶️ Disparar: Movimientos & Flota": {
+      "main": [
+        [
+          {
+            "node": "1. Extraer Flota y Pareos Hoy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "1. Extraer Flota y Pareos Hoy": {
+      "main": [
+        [
+          {
+            "node": "2. Inyectar Formaciones a Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2. Inyectar Formaciones a Supabase": {
+      "main": [
+        [
+          {
+            "node": "3. Inyectar Pareos Activos de Hoy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "3. Inyectar Pareos Activos de Hoy": {
+      "main": [
+        [
+          {
+            "node": "📊 Reporte Supabase: Flota",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "▶️ Disparar: Diagramas & Turnos": {
+      "main": [
+        [
+          {
+            "node": "1. Extraer Diagramas (60d RAM)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "1. Extraer Diagramas (60d RAM)": {
+      "main": [
+        [
+          {
+            "node": "2. Inyectar Choferes a Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2. Inyectar Choferes a Supabase": {
+      "main": [
+        [
+          {
+            "node": "3. Inyectar Diagramas Históricos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "3. Inyectar Diagramas Históricos": {
+      "main": [
+        [
+          {
+            "node": "📊 Reporte Supabase: Diagramas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "▶️ Disparar: Kilómetros (6 Meses)": {
+      "main": [
+        [
+          {
+            "node": "1. Extraer Kilómetros (6 Meses)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "1. Extraer Kilómetros (6 Meses)": {
+      "main": [
+        [
+          {
+            "node": "2. Inyectar Kilómetros a Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2. Inyectar Kilómetros a Supabase": {
+      "main": [
+        [
+          {
+            "node": "📊 Reporte Supabase: Kilómetros",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "▶️ Disparar: Legajos & Docs": {
+      "main": [
+        [
+          {
+            "node": "1. Extraer Legajos y Novedades",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "1. Extraer Legajos y Novedades": {
+      "main": [
+        [
+          {
+            "node": "2. Inyectar Legajos a Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2. Inyectar Legajos a Supabase": {
+      "main": [
+        [
+          {
+            "node": "📊 Reporte Supabase: Legajos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

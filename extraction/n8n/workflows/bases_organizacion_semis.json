@@ -1,0 +1,219 @@
+{
+  "name": "Bases Organización - 2. Recorte Semis + Cisternado (Movimientos)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trig-manual-semis",
+      "name": "▶️ Disparar Recorte: Semis + Cisternado",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [120, 240]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "recorte-semis",
+        "options": {}
+      },
+      "id": "trig-webhook-semis",
+      "name": "⚡ Webhook: Edición Semis / Cisternado",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [120, 440],
+      "webhookId": "recorte-semis",
+      "notesInFlow": true,
+      "notes": "Trigger granular para disparar al editar la Columna F (Semi) o D (Cisternado) vía Apps Script onEdit."
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "param-spreadsheet-id",
+              "name": "spreadsheetId",
+              "value": "14Mb5rD853zxDkaLDS-IrW-OBDTDBjuJxn_3olXeWlkc",
+              "type": "string"
+            },
+            {
+              "id": "param-tab-name",
+              "name": "sheetName",
+              "value": "OCTUBRE 2026- Mov.Unidades y Choferes",
+              "type": "string"
+            },
+            {
+              "id": "param-range",
+              "name": "range",
+              "value": "A1:F350",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-config-semis",
+      "name": "⚙️ Configuración Mensual",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [380, 340],
+      "notesInFlow": true,
+      "notes": "Único punto de cambio mensual: edita aquí el ID y la pestaña del nuevo mes."
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('⚙️ Configuración Mensual').item.json.spreadsheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $('⚙️ Configuración Mensual').item.json.sheetName }}",
+          "mode": "name"
+        },
+        "options": {
+          "range": "={{ $('⚙️ Configuración Mensual').item.json.range }}"
+        }
+      },
+      "id": "read-sheets-semis",
+      "name": "1. Leer Recorte Movimientos (A1:F350)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [640, 340],
+      "notesInFlow": true,
+      "notes": "Lee únicamente el recorte A1:F350 sin cargar los días operativos (cols 27+)."
+    },
+    {
+      "parameters": {
+        "jsCode": "// =======================================================================\n// NODO CODE: RECORTE Y NORMALIZACIÓN DE SEMIS + CISTERNADO (MOVIMIENTOS)\n// =======================================================================\nconst rows = $input.all();\nconst semisMap = new Map();\nlet currentServicio = 'GENERAL';\n\n// Palabras reservadas a descartar como patentes\nconst blacklist = new Set([\n  'TRACTOR', 'PATENTE', 'SEMI', 'CISTERNADO', 'NOVEDADES', \n  'LIVIANO', 'METANOL', 'CAMPO', 'GLP', 'SOCIO', 'SEPTIEMBRE', 'OCTUBRE', 'FECHA', 'N'\n]);\n\nfor (const item of rows) {\n  const row = item.json;\n  \n  // Soporta tanto propiedades por nombre de columna como índices por posición\n  const colA = String(row['N'] || row['0'] || Object.values(row)[0] || '').trim();\n  const colC = String(row['N° UTE'] || row['2'] || Object.values(row)[2] || '').trim();\n  const colD = String(row['Cisternado'] || row['3'] || Object.values(row)[3] || '').trim();\n  const colE = String(row['Tractor'] || row['4'] || Object.values(row)[4] || '').trim();\n  const colF = String(row['SEMI'] || row['5'] || Object.values(row)[5] || '').trim();\n\n  // 1. Detección de fila cabecera de Servicio / Categoría (Col A con texto y demás columnas vacías)\n  if (colA && !colC && !colE && !colF) {\n    const upA = colA.toUpperCase();\n    if (!upA.includes('FECHA') && !upA.includes('N°') && !upA.includes('OCTUBRE') && !upA.includes('NOVEDADES')) {\n      currentServicio = upA;\n    }\n    continue;\n  }\n\n  // 2. Extracción y saneamiento de patente del SEMI (sin espacios, mayúsculas)\n  const rawSemi = colF.toUpperCase().replace(/\\s+/g, '');\n  if (!rawSemi || blacklist.has(rawSemi) || rawSemi.length < 5) {\n    continue;\n  }\n\n  // 3. Saneamiento del cisternado (ej. '7-7-5-5-6-7')\n  const cisternadoLimpio = colD && colD !== '-' ? colD.trim() : null;\n\n  // 4. Deduplicación canónica (sin íconos de estado, estado estándar 'disponible')\n  if (!semisMap.has(rawSemi)) {\n    semisMap.set(rawSemi, {\n      patente: rawSemi,\n      cisternado: cisternadoLimpio,\n      servicio_denominacion: currentServicio,\n      estado: 'disponible',\n      n_ute: colC || null,\n      actualizado_el: new Date().toISOString()\n    });\n  } else {\n    // Si ya existía sin cisternado pero en otra fila lo tiene, actualizar\n    const existing = semisMap.get(rawSemi);\n    if (!existing.cisternado && cisternadoLimpio) {\n      existing.cisternado = cisternadoLimpio;\n    }\n  }\n}\n\nreturn Array.from(semisMap.values()).map(s => ({ json: s }));"
+      },
+      "id": "code-semis",
+      "name": "2. Filtrar y Normalizar Semis + Cisternado",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 340],
+      "notesInFlow": true,
+      "notes": "Descarta emojis, normaliza patentes, asocia el cisternado y deduplica unidades únicas."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.semis (patente, cisternado, estado, actualizado_el)\nVALUES ('{{ $json.patente }}', {{ $json.cisternado ? \"'\" + $json.cisternado + \"'\" : \"NULL\" }}, '{{ $json.estado }}', NOW())\nON CONFLICT (patente) DO UPDATE\nSET cisternado = COALESCE(EXCLUDED.cisternado, semis.cisternado),\n    estado = EXCLUDED.estado,\n    actualizado_el = NOW();"
+      },
+      "id": "db-semis",
+      "name": "3. Upsert Semis en Supabase",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1160, 340],
+      "notesInFlow": true,
+      "notes": "Preserva intacta la marca y actualiza el cisternado y estado en Supabase."
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst total = items.length;\nconst conCisternado = items.filter(i => i.json.cisternado).length;\nconst sample = items.slice(0, 5).map(i => `${i.json.patente || i.json} (${i.json.cisternado || 'S/C'})`);\n\nreturn [{\n  json: {\n    timestamp: new Date().toLocaleString('es-AR'),\n    modulo: 'Bases Organización - Semis y Cisternado',\n    total_semis_sincronizados: total,\n    con_cisternado: conCisternado,\n    sin_cisternado: total - conCisternado,\n    estado: '✅ Catálogo de semis y cisternados actualizado con éxito en Supabase',\n    muestra_semis: sample,\n    detalle: 'Patentes normalizadas, cisternados asignados y marcas preservadas en base de datos.'\n  }\n}];"
+      },
+      "id": "rep-semis",
+      "name": "📊 Resumen y KPIs de Semis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1420, 340]
+    },
+    {
+      "parameters": {
+        "content": "## 🛢️ BASES ORGANIZACIÓN: SEMIS + CISTERNADO\n**Origen:** Planilla Movimientos Octubre 2.1 (A1:F350)\n**Reglas:**\n- Extrae Col F (SEMI) y Col D (Cisternado).\n- Descarta íconos/emojis en Col A.\n- Hereda servicio desde cabeceras (LIVIANO, METANOL, etc.).\n- Deduplica patentes canónicas.\n- **Pareo en Supabase:** Preserva la columna `marca` intacta en `public.semis`.",
+        "height": 240,
+        "width": 640,
+        "color": 4
+      },
+      "id": "note-semis-org",
+      "name": "Nota 1: Arquitectura Semis",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [360, 40]
+    },
+    {
+      "parameters": {
+        "content": "## 🔑 GESTIÓN DE CUENTAS Y MIGRACIÓN\n1. **Fase 1 (Hoy):** Usa la cuenta Google existente en n8n.\n2. **Fase 2 (Migración):** Cuando IT habilite la cuenta corporativa, solo cambia la credencial en el nodo '1. Leer Recorte Movimientos' con un clic.\n3. **Cero reescritura de código ni de conexiones.**",
+        "height": 240,
+        "width": 480,
+        "color": 6
+      },
+      "id": "note-semis-cuentas",
+      "name": "Nota 2: Migración",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [1040, 40]
+    }
+  ],
+  "connections": {
+    "▶️ Disparar Recorte: Semis + Cisternado": {
+      "main": [
+        [
+          {
+            "node": "⚙️ Configuración Mensual",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⚡ Webhook: Edición Semis / Cisternado": {
+      "main": [
+        [
+          {
+            "node": "⚙️ Configuración Mensual",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⚙️ Configuración Mensual": {
+      "main": [
+        [
+          {
+            "node": "1. Leer Recorte Movimientos (A1:F350)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "1. Leer Recorte Movimientos (A1:F350)": {
+      "main": [
+        [
+          {
+            "node": "2. Filtrar y Normalizar Semis + Cisternado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2. Filtrar y Normalizar Semis + Cisternado": {
+      "main": [
+        [
+          {
+            "node": "3. Upsert Semis en Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "3. Upsert Semis en Supabase": {
+      "main": [
+        [
+          {
+            "node": "📊 Resumen y KPIs de Semis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

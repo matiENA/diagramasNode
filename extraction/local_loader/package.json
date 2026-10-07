@@ -1,0 +1,32 @@
+{
+  "name": "local-supabase-loader",
+  "version": "1.0.0",
+  "description": "Extractor local de Google Sheets a Supabase con servidor daemon en puerto dedicado",
+  "main": "index.js",
+  "scripts": {
+    "start": "node server.js",
+    "control": "node server.js",
+    "sync": "node sync.js",
+    "sync:dry": "node sync.js --dry-run",
+    "verify": "node verify_db.js"
+  },
+  "keywords": [
+    "sheets",
+    "extractor",
+    "supabase",
+    "etl",
+    "local-loader"
+  ],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.117.0",
+    "cors": "^2.8.5",
+    "dotenv": "^18.0.2",
+    "express": "^5.0.0",
+    "google-auth-library": "^11.1.0",
+    "google-spreadsheet": "^5.3.0",
+    "pg": "^8.23.0"
+  }
+}

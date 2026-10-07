@@ -1,0 +1,216 @@
+{
+  "name": "Extractor Local - Orquestación de Flota y Google Sheets",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "11111111-1111-1111-1111-111111111111",
+      "name": "Cada 15 Minutos (Programado)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        200,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "sync-trigger",
+        "options": {}
+      },
+      "id": "22222222-2222-2222-2222-222222222222",
+      "name": "Webhook Google Sheets (Manual o Trigger)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        200,
+        440
+      ],
+      "webhookId": "sync-trigger"
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:3010/health",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "33333333-3333-3333-3333-333333333333",
+      "name": "1. Health Check Extractor (Puerto 3010)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        460,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3010/sync",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "44444444-4444-4444-4444-444444444444",
+      "name": "2. Ejecutar Sincronización (POST /sync)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        700,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\n\nreturn [{\n  json: {\n    timestamp: new Date().toLocaleString('es-AR'),\n    estado: response.success ? '✅ Sincronización Exitosa' : '⚠️ Falló la sincronización',\n    mensaje: response.message || 'Extracción completada y cargada a Supabase',\n    duracion_ms: response.duration || null,\n    detalles: response\n  }\n}];"
+      },
+      "id": "55555555-5555-5555-5555-555555555555",
+      "name": "3. Formatear Resumen y KPIs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        940,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 3 * * *"
+            }
+          ]
+        }
+      },
+      "id": "66666666-6666-6666-6666-666666666666",
+      "name": "Cron Nocturno KM (03:00 AM)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        200,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3010/api/km/sync",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "77777777-7777-7777-7777-777777777777",
+      "name": "Extracción Pesada Kilómetros (POST /api/km/sync)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        460,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🚛 Extracción Regular (15 min o Webhook)\nExtrae:\n1. Marcas Master\n2. Vencimientos\n3. Diagramas 60 días\n4. Movimientos y Choferes\nCarga a: Supabase PostgreSQL",
+        "height": 260,
+        "width": 360,
+        "color": 6
+      },
+      "id": "88888888-8888-8888-8888-888888888888",
+      "name": "Nota 1: Flujo Regular",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        680,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## ⛽ Extracción Nocturna de KM\nProcesa hojas de 6 meses de kilometraje y consolida choferes_km_mensual y cisternas_km sin saturar el tráfico diurno.",
+        "height": 180,
+        "width": 360,
+        "color": 4
+      },
+      "id": "99999999-9999-9999-9999-999999999999",
+      "name": "Nota 2: Flujo KM",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        200,
+        800
+      ]
+    }
+  ],
+  "connections": {
+    "Cada 15 Minutos (Programado)": {
+      "main": [
+        [
+          {
+            "node": "1. Health Check Extractor (Puerto 3010)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Google Sheets (Manual o Trigger)": {
+      "main": [
+        [
+          {
+            "node": "1. Health Check Extractor (Puerto 3010)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "1. Health Check Extractor (Puerto 3010)": {
+      "main": [
+        [
+          {
+            "node": "2. Ejecutar Sincronización (POST /sync)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2. Ejecutar Sincronización (POST /sync)": {
+      "main": [
+        [
+          {
+            "node": "3. Formatear Resumen y KPIs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cron Nocturno KM (03:00 AM)": {
+      "main": [
+        [
+          {
+            "node": "Extracción Pesada Kilómetros (POST /api/km/sync)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

@@ -1,0 +1,1441 @@
+{
+  "name": "Bases Organización (Choferes, Tractores, Semis, Unidades, Días, Movimientos)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "# 🏢 BASES ORGANIZACIÓN Y OPERATIVAS (5 PARTICIONES INTEGRADAS)\n**5 Particiones Independientes con Triggers Manuales y Webhooks Aislados + Disparador Global.**\n- **Partición 1 (Choferes Base):** Diagramas EOR (Tab mensual `Oct-26`, cols A:D catálogo ligero).\n- **Partición 2 (Tractores):** Movimientos (Col E, marcas y estados preservados).\n- **Partición 3 (Semis):** Movimientos (Cols F y D, cisternados asociados).\n- **Partición 4 (Unidades):** Build relacional (`n_ute + tractor_id + semi_id + servicio_id`).\n- **Partición 5 (Días Diagrama):** Diagramas EOR (Tab mensual `Oct-26`, cabecera fila 5 y datos fila 6, matriz diaria y contabilizador).",
+        "height": 180,
+        "width": 1900,
+        "color": 6
+      },
+      "id": "note-header",
+      "name": "Banner: Bases Organización",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -304,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### 🌐 DISPARADOR GLOBAL\nSincroniza las 5 particiones en paralelo con un solo clic.",
+        "height": 400,
+        "width": 240,
+        "color": 7
+      },
+      "id": "note-global-trig",
+      "name": "Nota: Trigger Global",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -304,
+        888
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "trig-global",
+      "name": "🌐 Disparar Todo: Bases Organización",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -256,
+        1048
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 👥 PARTICIÓN 1: LISTA CHOFERES (DIAGRAMAS EOR REV01)\n- **Origen:** Tab mensual ligera (`Oct-26`), rango `A6:D350` (Legajo, Nombre, Servicio, Diagrama Tipo).\n- **Supabase:** `UPSERT` en `public.choferes`.",
+        "height": 380,
+        "width": 1600,
+        "color": 6
+      },
+      "id": "note-choferes",
+      "name": "Nota: Choferes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -48,
+        112
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "trig-manual-chof",
+      "name": "▶️ Disparar: Choferes",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "recorte-choferes",
+        "options": {}
+      },
+      "id": "trig-webhook-chof",
+      "name": "⚡ Webhook: Choferes (Diagramas)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        352
+      ],
+      "webhookId": "recorte-choferes"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "p-sp-chof",
+              "name": "spreadsheetId",
+              "value": "={{ $json.body?.spreadsheetId || $json.spreadsheetId || '1mhfXpFCF6upMlnRnZjDdBVS_wqTx5q8v0qQArNCnNAU' }}",
+              "type": "string"
+            },
+            {
+              "id": "p-sh-chof",
+              "name": "sheetName",
+              "value": "={{ $json.body?.sheetName || $json.sheetName || 'Oct-26' }}",
+              "type": "string"
+            },
+            {
+              "id": "p-rg-chof",
+              "name": "range",
+              "value": "={{ $json.body?.range || $json.range || 'A6:D350' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-config-chof",
+      "name": "⚙️ Configuración: Choferes",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        272
+      ],
+      "notesInFlow": true,
+      "notes": "Parámetros para Choferes (Diagramas EOR 2026: cambia anualmente, pestaña mensual)."
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $json.spreadsheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $json.sheetName }}",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "read-sheets-chof",
+      "name": "1. Leer Diagramas (Choferes Mes)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        512,
+        272
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "XHGqePhAYeBdE6zw",
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all();\nconst choferesMap = new Map();\nconst blacklist = new Set([\n  'APELLIDO Y NOMBRE', 'PERSONAL ACTIVO', 'LEGAJO', 'CUENTA', \n  'SERVICIO', 'DIAGRAMA', 'TOTAL', 'CHOFER', 'NOMBRE', 'FECHA', \n  'PASIVO EN BASE', 'PASIVO', 'FECHA', 'NOMENCLATURAS'\n]);\n\nfor (const item of rows) {\n  const row = item.json;\n  const rawLegajo = String(\n    row.col_1 ?? row.LEGAJO ?? row.legajo ?? row['0'] ?? ''\n  ).trim();\n  const rawNombre = String(\n    row.col_2 ?? row['APELLIDO Y NOMBRE'] ?? row.nombre ?? row['1'] ?? ''\n  ).trim().toUpperCase();\n  const rawServicio = String(\n    row.col_3 ?? row.SERVICIO ?? row.CUENTA ?? row.servicio ?? row['2'] ?? ''\n  ).trim().toUpperCase();\n  const rawDiag = String(\n    row.col_4 ?? row.DIAGRAMA ?? row.diagrama ?? row['3'] ?? ''\n  ).trim().toUpperCase();\n\n  if (!rawNombre || rawNombre.length < 3 || /^\\d+$/.test(rawNombre) || blacklist.has(rawNombre)) {\n    continue;\n  }\n  if (/^[A-Z]{3}-\\d{2}$/i.test(rawNombre) || rawNombre.startsWith('%')) {\n    continue;\n  }\n  if (rawNombre.includes('TOTAL') || rawNombre.includes('ACTIVO') || rawNombre.includes('FRANCO') || \n      rawNombre.includes('ENFERM') || rawNombre.includes('VACAC') || rawNombre.includes('SUSPEN') || \n      rawNombre.includes('AUSENT') || rawNombre.includes('INGRES') || rawNombre.includes('DIAS')) {\n    continue;\n  }\n\n  if (!choferesMap.has(rawNombre)) {\n    choferesMap.set(rawNombre, {\n      nombre: rawNombre.replace(/'/g, \"''\"),\n      legajo: (rawLegajo && rawLegajo !== '-' && /^\\d+$/.test(rawLegajo)) ? rawLegajo : null,\n      c_servicio: (rawServicio && rawServicio !== '-') ? rawServicio.replace(/'/g, \"''\") : 'S/A',\n      diagrama_tipo: (rawDiag && rawDiag !== '-') ? rawDiag.replace(/'/g, \"''\") : null,\n      estado: 'inactivo',\n      actualizado_el: new Date().toISOString()\n    });\n  }\n}\nreturn Array.from(choferesMap.values()).map(c => ({ json: c }));"
+      },
+      "id": "code-chof",
+      "name": "2. Filtrar y Normalizar Choferes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        768,
+        272
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "DO $$\nDECLARE\n  v_ch_id UUID := NULL;\n  v_srv_id UUID := NULL;\n  v_srv_name TEXT := TRIM('{{ $json.c_servicio || \"\" }}');\n  v_legajo TEXT := NULLIF(TRIM('{{ $json.legajo || \"\" }}'), '');\n  v_nombre TEXT := TRIM('{{ $json.nombre || \"\" }}');\nBEGIN\n  IF v_srv_name <> '' AND v_srv_name <> 'S/A' THEN\n    INSERT INTO public.servicios_choferes (denominacion)\n    VALUES (v_srv_name)\n    ON CONFLICT (denominacion) DO NOTHING;\n    \n    SELECT id INTO v_srv_id \n    FROM public.servicios_choferes \n    WHERE UPPER(denominacion) = UPPER(v_srv_name) \n    LIMIT 1;\n  END IF;\n\n  IF v_legajo IS NOT NULL THEN\n    SELECT id INTO v_ch_id FROM public.choferes WHERE legajo = v_legajo LIMIT 1;\n  END IF;\n  \n  IF v_ch_id IS NULL AND v_nombre <> '' THEN\n    SELECT id INTO v_ch_id FROM public.choferes WHERE UPPER(nombre) = UPPER(v_nombre) LIMIT 1;\n  END IF;\n\n  IF v_ch_id IS NOT NULL THEN\n    UPDATE public.choferes\n    SET legajo = COALESCE(v_legajo, choferes.legajo),\n        servicio_id = COALESCE(v_srv_id, choferes.servicio_id),\n        actualizado_el = NOW()\n    WHERE id = v_ch_id;\n  ELSE\n    INSERT INTO public.choferes (nombre, legajo, servicio_id, estado, actualizado_el)\n    VALUES (v_nombre, v_legajo, v_srv_id, 'inactivo', NOW());\n  END IF;\nEND $$;"
+      },
+      "id": "db-chof",
+      "name": "3. Upsert Choferes en Supabase",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1024,
+        272
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "btR7zwShyhyAPRUg",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $('2. Filtrar y Normalizar Choferes').all();\nreturn [{\n  json: {\n    estado: '✅ Choferes sincronizados exitosamente',\n    total_choferes_procesados: items.length,\n    origen: 'Diagramas EOR REV01 (Pestaña mensual)',\n    destino: 'public.choferes',\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "rep-chof",
+      "name": "📊 Resumen: Lista Choferes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        272
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🚜 PARTICIÓN 2: TRACTORES (MOVIMIENTOS)\n- **Origen:** Columna E de Movimientos (Tractor).\n- **Supabase:** `UPSERT` en `public.tractores`.",
+        "height": 380,
+        "width": 1600,
+        "color": 6
+      },
+      "id": "note-tractores",
+      "name": "Nota: Tractores",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -48,
+        512
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "trig-manual-trac",
+      "name": "▶️ Disparar: Tractores",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        592
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "recorte-tractores",
+        "options": {}
+      },
+      "id": "trig-webhook-trac",
+      "name": "⚡ Webhook: Tractores (Col E)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        752
+      ],
+      "webhookId": "recorte-tractores"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "p-sp-trac",
+              "name": "spreadsheetId",
+              "value": "={{ $json.body?.spreadsheetId || $json.spreadsheetId || '14Mb5rD853zxDkaLDS-IrW-OBDTDBjuJxn_3olXeWlkc' }}",
+              "type": "string"
+            },
+            {
+              "id": "p-sh-trac",
+              "name": "sheetName",
+              "value": "={{ $json.body?.sheetName || $json.sheetName || 'OCTUBRE 2026- Mov.Unidades y Choferes' }}",
+              "type": "string"
+            },
+            {
+              "id": "p-rg-trac",
+              "name": "range",
+              "value": "={{ $json.body?.range || $json.range || 'A1:F350' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-config-trac",
+      "name": "⚙️ Configuración: Tractores",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        672
+      ],
+      "notesInFlow": true,
+      "notes": "Parámetros individuales para la partición de Tractores."
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $json.spreadsheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $json.sheetName }}",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "read-sheets-trac",
+      "name": "1. Leer Movimientos (Tractores)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        512,
+        672
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "XHGqePhAYeBdE6zw",
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all();\nconst tractoresMap = new Map();\nlet currentServicio = 'GENERAL';\nconst blacklist = new Set(['TRACTOR', 'PATENTE', 'SEMI', 'CISTERNADO', 'NOVEDADES', 'LIVIANO', 'METANOL', 'CAMPO', 'GLP', 'SOCIO', 'SEPTIEMBRE', 'OCTUBRE', 'FECHA', 'N']);\n\nfor (const item of rows) {\n  const row = item.json;\n  const colA = String(row.col_1 || row['0'] || Object.values(row)[0] || '').trim().toUpperCase();\n  const colE = String(row.col_5 || row['4'] || Object.values(row)[4] || '').trim().toUpperCase();\n\n  if (colA && ['LIVIANO', 'METANOL', 'CAMPO', 'GLP', 'SOCIO', 'GENERAL', 'DISTRIBUCION'].includes(colA)) {\n    currentServicio = colA;\n  }\n\n  const rawTractor = colE.replace(/[^A-Z0-9]/g, '');\n  if (!rawTractor || rawTractor.length < 5 || rawTractor.length > 8 || blacklist.has(rawTractor)) {\n    continue;\n  }\n\n  if (!tractoresMap.has(rawTractor)) {\n    tractoresMap.set(rawTractor, {\n      patente: rawTractor,\n      servicio: currentServicio,\n      estado: 'disponible',\n      actualizado_el: new Date().toISOString()\n    });\n  }\n}\nreturn Array.from(tractoresMap.values()).map(t => ({ json: t }));"
+      },
+      "id": "code-trac",
+      "name": "2. Filtrar y Normalizar Tractores",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        768,
+        672
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "DO $$\nDECLARE\n  v_srv_id UUID := NULL;\n  v_srv_name TEXT := TRIM('{{ $json.servicio || \"\" }}');\n  v_patente TEXT := TRIM('{{ $json.patente || \"\" }}');\nBEGIN\n  IF v_patente = '' THEN\n    RETURN;\n  END IF;\n\n  IF v_srv_name <> '' THEN\n    INSERT INTO public.servicios_unidades (denominacion)\n    VALUES (v_srv_name)\n    ON CONFLICT (denominacion) DO NOTHING;\n    \n    SELECT id INTO v_srv_id \n    FROM public.servicios_unidades \n    WHERE UPPER(denominacion) = UPPER(v_srv_name) \n    LIMIT 1;\n  END IF;\n\n  INSERT INTO public.tractores (patente, servicio_id, estado, actualizado_el)\n  VALUES (v_patente, v_srv_id, 'disponible', NOW())\n  ON CONFLICT (patente) \n  DO UPDATE SET \n    servicio_id = COALESCE(v_srv_id, public.tractores.servicio_id),\n    actualizado_el = NOW();\nEND $$;"
+      },
+      "id": "db-trac",
+      "name": "3. Upsert Tractores en Supabase",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1024,
+        672
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "btR7zwShyhyAPRUg",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $('2. Filtrar y Normalizar Tractores').all();\nreturn [{\n  json: {\n    estado: '✅ Tractores sincronizados exitosamente',\n    total_tractores_procesados: items.length,\n    origen: 'Movimientos (Columna E)',\n    destino: 'public.tractores',\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "rep-trac",
+      "name": "📊 Resumen: Tractores",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        672
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🛢️ PARTICIÓN 3: SEMIS + CISTERNADO (MOVIMIENTOS)\n- **Origen:** Columnas F (Semi) y D (Cisternado) de Movimientos.\n- **Supabase:** `UPSERT` en `public.semis`.",
+        "height": 380,
+        "width": 1600,
+        "color": 6
+      },
+      "id": "note-semis",
+      "name": "Nota: Semis",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -48,
+        912
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "trig-manual-semis",
+      "name": "▶️ Disparar: Semis + Cisternado",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        992
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "recorte-semis",
+        "options": {}
+      },
+      "id": "trig-webhook-semis",
+      "name": "⚡ Webhook: Semis / Cisternado",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        1152
+      ],
+      "webhookId": "recorte-semis"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "p-sp-semis",
+              "name": "spreadsheetId",
+              "value": "={{ $json.body?.spreadsheetId || $json.spreadsheetId || '14Mb5rD853zxDkaLDS-IrW-OBDTDBjuJxn_3olXeWlkc' }}",
+              "type": "string"
+            },
+            {
+              "id": "p-sh-semis",
+              "name": "sheetName",
+              "value": "={{ $json.body?.sheetName || $json.sheetName || 'OCTUBRE 2026- Mov.Unidades y Choferes' }}",
+              "type": "string"
+            },
+            {
+              "id": "p-rg-semis",
+              "name": "range",
+              "value": "={{ $json.body?.range || $json.range || 'A1:F350' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-config-semis",
+      "name": "⚙️ Configuración: Semis",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        1072
+      ],
+      "notesInFlow": true,
+      "notes": "Parámetros individuales para la partición de Semis y Cisternado."
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $json.spreadsheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $json.sheetName }}",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "read-sheets-semis",
+      "name": "1. Leer Movimientos (Semis)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        512,
+        1072
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "XHGqePhAYeBdE6zw",
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all();\nconst semisMap = new Map();\nlet currentServicio = 'GENERAL';\nconst blacklist = new Set(['TRACTOR', 'PATENTE', 'SEMI', 'CISTERNADO', 'NOVEDADES', 'LIVIANO', 'METANOL', 'CAMPO', 'GLP', 'SOCIO', 'SEPTIEMBRE', 'OCTUBRE', 'FECHA', 'N']);\n\nfor (const item of rows) {\n  const row = item.json;\n  const colA = String(row.col_1 || row['0'] || Object.values(row)[0] || '').trim().toUpperCase();\n  const colD = String(row.col_4 || row['3'] || Object.values(row)[3] || '').trim();\n  const colF = String(row.col_6 || row['5'] || Object.values(row)[5] || '').trim().toUpperCase();\n\n  if (colA && ['LIVIANO', 'METANOL', 'CAMPO', 'GLP', 'SOCIO', 'GENERAL', 'DISTRIBUCION'].includes(colA)) {\n    currentServicio = colA;\n  }\n\n  const rawSemi = colF.replace(/[^A-Z0-9]/g, '');\n  if (!rawSemi || rawSemi.length < 5 || rawSemi.length > 8 || blacklist.has(rawSemi)) {\n    continue;\n  }\n\n  const rawCisternado = colD && colD !== '-' ? colD.trim() : null;\n\n  if (!semisMap.has(rawSemi)) {\n    semisMap.set(rawSemi, {\n      patente: rawSemi,\n      cisternado: rawCisternado,\n      servicio: currentServicio,\n      estado: 'disponible',\n      actualizado_el: new Date().toISOString()\n    });\n  } else if (rawCisternado && !semisMap.get(rawSemi).cisternado) {\n    semisMap.get(rawSemi).cisternado = rawCisternado;\n  }\n}\nreturn Array.from(semisMap.values()).map(s => ({ json: s }));"
+      },
+      "id": "code-semis",
+      "name": "2. Filtrar y Normalizar Semis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        768,
+        1072
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "DO $$\nDECLARE\n  v_srv_id UUID := NULL;\n  v_srv_name TEXT := TRIM('{{ $json.servicio || \"\" }}');\n  v_patente TEXT := TRIM('{{ $json.patente || \"\" }}');\n  v_cisternado TEXT := NULLIF(TRIM('{{ $json.cisternado || \"\" }}'), '');\nBEGIN\n  IF v_patente = '' THEN\n    RETURN;\n  END IF;\n\n  IF v_srv_name <> '' THEN\n    INSERT INTO public.servicios_unidades (denominacion)\n    VALUES (v_srv_name)\n    ON CONFLICT (denominacion) DO NOTHING;\n    \n    SELECT id INTO v_srv_id \n    FROM public.servicios_unidades \n    WHERE UPPER(denominacion) = UPPER(v_srv_name) \n    LIMIT 1;\n  END IF;\n\n  INSERT INTO public.semis (patente, cisternado, servicio_id, estado, actualizado_el)\n  VALUES (v_patente, v_cisternado, v_srv_id, 'disponible', NOW())\n  ON CONFLICT (patente) \n  DO UPDATE SET \n    cisternado = COALESCE(v_cisternado, public.semis.cisternado),\n    servicio_id = COALESCE(v_srv_id, public.semis.servicio_id),\n    actualizado_el = NOW();\nEND $$;"
+      },
+      "id": "db-semis",
+      "name": "3. Upsert Semis en Supabase",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1024,
+        1072
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "btR7zwShyhyAPRUg",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $('2. Filtrar y Normalizar Semis').all();\nreturn [{\n  json: {\n    estado: '✅ Semis sincronizados exitosamente',\n    total_semis_procesados: items.length,\n    origen: 'Movimientos (Columnas F y D)',\n    destino: 'public.semis',\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "rep-semis",
+      "name": "📊 Resumen: Semis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        1072
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🚛 PARTICIÓN 4: BUILD LISTA DE UNIDADES (ACOPLE)\n- **Origen:** Columnas C (N° UTE), E (Tractor) y F (Semi) de Movimientos.\n- **Supabase:** Sincronización en `public.unidades`.",
+        "height": 380,
+        "width": 1600,
+        "color": 6
+      },
+      "id": "note-unidades",
+      "name": "Nota: Unidades",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -48,
+        1312
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "trig-manual-uni",
+      "name": "▶️ Disparar: Build Lista de Unidades",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        1392
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "recorte-unidades",
+        "options": {}
+      },
+      "id": "trig-webhook-uni",
+      "name": "⚡ Webhook: Acople Unidades",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        1552
+      ],
+      "webhookId": "recorte-unidades"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "p-sp-uni",
+              "name": "spreadsheetId",
+              "value": "={{ $json.body?.spreadsheetId || $json.spreadsheetId || '14Mb5rD853zxDkaLDS-IrW-OBDTDBjuJxn_3olXeWlkc' }}",
+              "type": "string"
+            },
+            {
+              "id": "p-sh-uni",
+              "name": "sheetName",
+              "value": "={{ $json.body?.sheetName || $json.sheetName || 'OCTUBRE 2026- Mov.Unidades y Choferes' }}",
+              "type": "string"
+            },
+            {
+              "id": "p-rg-uni",
+              "name": "range",
+              "value": "={{ $json.body?.range || $json.range || 'A1:F350' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-config-uni",
+      "name": "⚙️ Configuración: Unidades",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        1472
+      ],
+      "notesInFlow": true,
+      "notes": "Parámetros individuales para el Build de Lista de Unidades."
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $json.spreadsheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $json.sheetName }}",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "read-sheets-uni",
+      "name": "1. Leer Movimientos (Unidades)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        512,
+        1472
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "XHGqePhAYeBdE6zw",
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all();\nconst unidadesList = [];\nlet currentServicio = 'GENERAL';\nconst blacklist = new Set(['TRACTOR', 'PATENTE', 'SEMI', 'CISTERNADO', 'NOVEDADES', 'LIVIANO', 'METANOL', 'CAMPO', 'GLP', 'SOCIO', 'SEPTIEMBRE', 'OCTUBRE', 'FECHA', 'N']);\n\nfor (const item of rows) {\n  const row = item.json;\n  const colA = String(row.col_1 || row['0'] || Object.values(row)[0] || '').trim().toUpperCase();\n  const colC = String(row.col_3 || row['2'] || Object.values(row)[2] || '').trim();\n  const colE = String(row.col_5 || row['4'] || Object.values(row)[4] || '').trim().toUpperCase();\n  const colF = String(row.col_6 || row['5'] || Object.values(row)[5] || '').trim().toUpperCase();\n\n  if (colA && ['LIVIANO', 'METANOL', 'CAMPO', 'GLP', 'SOCIO', 'GENERAL', 'DISTRIBUCION'].includes(colA)) {\n    currentServicio = colA;\n  }\n\n  const rawTractor = colE.replace(/[^A-Z0-9]/g, '');\n  const rawSemi = colF.replace(/[^A-Z0-9]/g, '');\n\n  const validTractor = (rawTractor && rawTractor.length >= 5 && rawTractor.length <= 8 && !blacklist.has(rawTractor)) ? rawTractor : null;\n  const validSemi = (rawSemi && rawSemi.length >= 5 && rawSemi.length <= 8 && !blacklist.has(rawSemi)) ? rawSemi : null;\n\n  if (!validTractor && !validSemi) continue;\n\n  const rawUte = colC.replace(/[^0-9]/g, '');\n  const nUte = rawUte ? parseInt(rawUte, 10) : null;\n\n  unidadesList.push({\n    n_ute: nUte,\n    patente_tractor: validTractor,\n    patente_semi: validSemi,\n    servicio_nombre: currentServicio,\n    estado: 'disponible',\n    actualizado_el: new Date().toISOString()\n  });\n}\nreturn unidadesList.map(u => ({ json: u }));"
+      },
+      "id": "code-uni",
+      "name": "2. Mapear Formaciones (Unidades)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        768,
+        1472
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "DO $$\nDECLARE\n  v_trac_id UUID := NULL;\n  v_semi_id UUID := NULL;\n  v_srv_id UUID := NULL;\n  v_unit_id UUID := NULL;\n  v_curr_trac UUID := NULL;\n  v_curr_semi UUID := NULL;\n  v_ute TEXT := NULLIF(TRIM('{{ $json.n_ute || \"\" }}'), '');\n  v_pat_trac TEXT := TRIM('{{ $json.patente_tractor || \"\" }}');\n  v_pat_semi TEXT := TRIM('{{ $json.patente_semi || \"\" }}');\n  v_srv_name TEXT := TRIM('{{ $json.servicio_nombre || \"\" }}');\nBEGIN\n  IF v_pat_trac <> '' THEN\n    SELECT id INTO v_trac_id FROM public.tractores WHERE UPPER(patente) = UPPER(v_pat_trac) LIMIT 1;\n  END IF;\n\n  IF v_pat_semi <> '' THEN\n    SELECT id INTO v_semi_id FROM public.semis WHERE UPPER(patente) = UPPER(v_pat_semi) LIMIT 1;\n  END IF;\n\n  IF v_srv_name <> '' THEN\n    INSERT INTO public.servicios_unidades (denominacion)\n    VALUES (v_srv_name)\n    ON CONFLICT (denominacion) DO NOTHING;\n    \n    SELECT id INTO v_srv_id \n    FROM public.servicios_unidades \n    WHERE UPPER(denominacion) = UPPER(v_srv_name) \n    LIMIT 1;\n  END IF;\n\n  IF v_trac_id IS NOT NULL THEN\n    SELECT id, tractor_id, semi_id INTO v_unit_id, v_curr_trac, v_curr_semi FROM public.unidades WHERE tractor_id = v_trac_id LIMIT 1;\n  END IF;\n\n  IF v_unit_id IS NULL AND v_semi_id IS NOT NULL THEN\n    SELECT id, tractor_id, semi_id INTO v_unit_id, v_curr_trac, v_curr_semi FROM public.unidades WHERE semi_id = v_semi_id LIMIT 1;\n  END IF;\n\n  IF v_unit_id IS NULL AND v_ute IS NOT NULL THEN\n    SELECT id, tractor_id, semi_id INTO v_unit_id, v_curr_trac, v_curr_semi FROM public.unidades WHERE n_ute = v_ute LIMIT 1;\n  END IF;\n\n  IF v_unit_id IS NOT NULL THEN\n    UPDATE public.unidades\n    SET n_ute = COALESCE(v_ute, unidades.n_ute),\n        tractor_id = COALESCE(v_trac_id, unidades.tractor_id),\n        semi_id = COALESCE(v_semi_id, unidades.semi_id),\n        servicio_id = COALESCE(v_srv_id, unidades.servicio_id),\n        fecha_acople = CASE \n          WHEN (v_trac_id IS DISTINCT FROM v_curr_trac OR v_semi_id IS DISTINCT FROM v_curr_semi) THEN NOW()\n          ELSE unidades.fecha_acople \n        END\n    WHERE id = v_unit_id;\n  ELSE\n    INSERT INTO public.unidades (n_ute, tractor_id, semi_id, servicio_id, fecha_acople, estado)\n    VALUES (v_ute, v_trac_id, v_semi_id, v_srv_id, NOW(), 'disponible');\n  END IF;\nEND $$;"
+      },
+      "id": "db-uni",
+      "name": "3. Sincronizar Formaciones en Supabase",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1024,
+        1472
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "btR7zwShyhyAPRUg",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $('2. Mapear Formaciones (Unidades)').all();\nreturn [{\n  json: {\n    estado: '✅ Formaciones de unidades sincronizadas',\n    total_unidades_procesadas: items.length,\n    origen: 'Movimientos (Columnas C, E, F)',\n    destino: 'public.unidades (con tractor_id y semi_id)',\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "rep-uni",
+      "name": "📊 Resumen: Lista de Unidades",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        1472
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 📅 PARTICIÓN 5: DÍAS DIAGRAMA (OPERATIVAS DIARIAS - DIAGRAMAS EOR)\n- **Origen:** Pestaña mensual activa (`Oct-26`), cabecera en fila 5 (`1-10..31-10`) y choferes desde fila 6.\n- **Motor:** Mapeo de calendario ISO + Contabilizador canónico de turnos trabajados, francos, vacaciones y ausencias.\n- **Supabase:** `UPSERT` en `public.diagramas` (matriz JSONB y métricas) y actualización de contabilizador en `public.choferes`.",
+        "height": 380,
+        "width": 1600,
+        "color": 5
+      },
+      "id": "note-dias",
+      "name": "Nota: Días Diagrama",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -48,
+        1712
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "trig-manual-dias",
+      "name": "▶️ Disparar: Días Diagrama",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        1792
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "operativa-dias-diagrama",
+        "options": {}
+      },
+      "id": "trig-webhook-dias",
+      "name": "⚡ Webhook: Días Diagrama",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        1952
+      ],
+      "webhookId": "operativa-dias-diagrama"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "p-sp-dias",
+              "name": "spreadsheetId",
+              "value": "1mhfXpFCF6upMlnRnZjDdBVS_wqTx5q8v0qQArNCnNAU",
+              "type": "string"
+            },
+            {
+              "id": "p-sh-dias",
+              "name": "sheetName",
+              "value": "={{ $json.body?.sheetName || $json.sheetName || 'Oct-26' }}",
+              "type": "string"
+            },
+            {
+              "id": "p-rg-dias",
+              "name": "range",
+              "value": "={{ $json.body?.range || $json.range || 'A5:AN350' }}",
+              "type": "string"
+            },
+            {
+              "id": "p-an-dias",
+              "name": "anio",
+              "value": "={{ $json.body?.anio || $json.anio || 2026 }}",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-config-dias",
+      "name": "⚙️ Configuración: Días Diagrama",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        1872
+      ],
+      "notesInFlow": true,
+      "notes": "Planilla Diagramas EOR (cambio anual de ID, pestaña mensual activa)."
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $json.spreadsheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $json.sheetName }}",
+          "mode": "name"
+        },
+        "options": {
+          "dataLocationOnSheet": {
+            "values": {
+              "rangeDefinition": "specifyRange",
+              "headerRow": 5,
+              "firstDataRow": 6
+            }
+          }
+        }
+      },
+      "id": "read-sheets-dias",
+      "name": "1. Leer Matriz Diagramas (Google Sheets)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        512,
+        1872
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "XHGqePhAYeBdE6zw",
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// NODO CODE: NORMALIZAR MATRIZ DE DÍAS Y CONTABILIZADOR CANÓNICO\nconst items = $input.all().map(i => i.json);\nconst configNode = $('⚙️ Configuración: Días Diagrama').first().json;\nconst mesTab = String(configNode.sheetName || 'Oct-26').trim();\nconst anio = Number(configNode.anio || 2026);\n\nfunction getBaseState(val) {\n  if (val === undefined || val === null) return '';\n  const str = String(val).trim().toUpperCase();\n  if (str.includes('+')) return str.split('+')[0].trim();\n  return str;\n}\n\nfunction contabilizarDias(diasMap) {\n  let trabajados = 0, francos = 0, vacaciones = 0, ausencias = 0, inactivos = 0;\n  const desglose = { enfermedad: 0, art: 0, indisposicion: 0, suspension: 0, ausencia: 0, permiso: 0, otros: 0 };\n  const entries = Object.entries(diasMap || {});\n  for (const [, val] of entries) {\n    if (!val || val === '-' || val === '0' || val === 'NULL' || val === 'UNDEFINED' || val === '') {\n      inactivos++;\n      continue;\n    }\n    const base = getBaseState(val);\n    if ((!isNaN(base) && base !== '') || base === 'O' || base === 'OPERATIVO') {\n      trabajados++;\n    } else if (['F', 'FSF', 'FRANCO', 'RPT'].includes(base)) {\n      francos++;\n    } else if (['V', 'VSF', 'VACACIONES'].includes(base)) {\n      vacaciones++;\n    } else if (['E', 'ART', 'IND', 'IIND', 'A', 'S', 'P', 'MED', 'SUSP', 'LIC'].some(k => base.includes(k))) {\n      ausencias++;\n      if (base === 'E' || base.startsWith('MED')) desglose.enfermedad++;\n      else if (base === 'ART') desglose.art++;\n      else if (base.startsWith('IND')) desglose.indisposicion++;\n      else if (base === 'S' || base.startsWith('SUSP')) desglose.suspension++;\n      else if (base === 'A') desglose.ausencia++;\n      else if (base === 'P') desglose.permiso++;\n      else desglose.otros++;\n    } else {\n      desglose.otros++;\n    }\n  }\n  return { total_evaluados: entries.length, trabajados, francos, vacaciones, ausencias, inactivos, desglose };\n}\n\nconst blacklist = new Set([\n  'APELLIDO Y NOMBRE', 'PERSONAL ACTIVO', 'LEGAJO', 'CUENTA', 'SERVICIO', \n  'DIAGRAMA', 'TOTAL', 'CHOFER', 'NOMBRE', 'FECHA', 'PASIVO EN BASE', 'PASIVO', 'NOMENCLATURAS'\n]);\nconst monthNames = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];\nconst mesTabLower = mesTab.toLowerCase();\nconst mIdx = monthNames.findIndex(m => mesTabLower.includes(m));\nconst mesNumero = mIdx !== -1 ? mIdx + 1 : (new Date().getMonth() + 1);\nconst mesStr = String(mesNumero).padStart(2, '0');\n\nconst choferesMap = new Map();\n\nfor (const row of items) {\n  const rawLegajo = String(row.col_1 ?? row.LEGAJO ?? row.legajo ?? row['0'] ?? '').trim();\n  const rawNombre = String(row.col_2 ?? row['APELLIDO Y NOMBRE'] ?? row.nombre ?? row['1'] ?? '').trim().toUpperCase();\n  const rawServicio = String(row.col_3 ?? row.SERVICIO ?? row.CUENTA ?? row.servicio ?? row['2'] ?? '').trim().toUpperCase();\n  const rawDiag = String(row.col_4 ?? row.DIAGRAMA ?? row.diagrama ?? row['3'] ?? '').trim().toUpperCase();\n\n  if (!rawNombre || rawNombre.length < 3 || /^\\d+$/.test(rawNombre) || blacklist.has(rawNombre)) continue;\n  if (/^[A-Z]{3}-\\d{2}$/i.test(rawNombre) || rawNombre.startsWith('%')) continue;\n  if (rawNombre.includes('TOTAL') || rawNombre.includes('ACTIVO') || rawNombre.includes('FRANCO') || \n      rawNombre.includes('ENFERM') || rawNombre.includes('VACAC') || rawNombre.includes('SUSPEN') || \n      rawNombre.includes('AUSENT') || rawNombre.includes('INGRES') || rawNombre.includes('DIAS')) continue;\n\n  // Extraer todas las columnas de días (claves con formato D-M o DD-MM)\n  const dayEntries = [];\n  for (const k of Object.keys(row)) {\n    const m = k.trim().match(/^(\\d+)[\\/\\-](\\d+)$/);\n    if (m) {\n      dayEntries.push({ key: k, dayNum: parseInt(m[1], 10) });\n    }\n  }\n  dayEntries.sort((a, b) => a.dayNum - b.dayNum);\n\n  const diasMap = {};\n  const tiraArr = [];\n\n  for (const d of dayEntries) {\n    const val = (row[d.key] !== undefined && row[d.key] !== null && String(row[d.key]).trim() !== '') ? String(row[d.key]).trim().toUpperCase() : '-';\n    const cleanVal = val === '' ? '-' : val;\n    const isoDate = `${anio}-${mesStr}-${String(d.dayNum).padStart(2, '0')}`;\n    diasMap[isoDate] = cleanVal;\n    tiraArr.push(cleanVal);\n  }\n\n  const contabilizador = contabilizarDias(diasMap);\n\n  if (!choferesMap.has(rawNombre)) {\n    choferesMap.set(rawNombre, {\n      chofer_nombre: rawNombre.replace(/'/g, \"''\"),\n      legajo: (rawLegajo && rawLegajo !== '-' && /^\\d+$/.test(rawLegajo)) ? rawLegajo : null,\n      servicio: (rawServicio && rawServicio !== '-') ? rawServicio.replace(/'/g, \"''\") : 'S/A',\n      diagrama_tipo: (rawDiag && rawDiag !== '-') ? rawDiag.replace(/'/g, \"''\") : null,\n      mes_tab: mesTab,\n      anio: anio,\n      mes_numero: mesNumero,\n      dias: diasMap,\n      tira_dias: tiraArr.join(','),\n      contabilizador: contabilizador,\n      dias_json_str: JSON.stringify(diasMap).replace(/'/g, \"''\"),\n      contabilizador_json_str: JSON.stringify(contabilizador).replace(/'/g, \"''\")\n    });\n  }\n}\n\nreturn Array.from(choferesMap.values()).map(c => ({ json: c }));"
+      },
+      "id": "code-dias",
+      "name": "2. Normalizar Calendario y Contabilizador",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        768,
+        1872
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "DO $$\nDECLARE\n  v_chofer_id UUID := NULL;\n  v_diag_id UUID := NULL;\n  v_srv_id UUID := NULL;\n  v_legajo TEXT := NULLIF(TRIM('{{ $json.legajo || \"\" }}'), '');\n  v_nombre TEXT := TRIM('{{ $json.chofer_nombre || \"\" }}');\n  v_srv_name TEXT := TRIM('{{ $json.servicio || \"\" }}');\n  v_diag_tipo TEXT := NULLIF(TRIM('{{ $json.diagrama_tipo || \"\" }}'), '');\n  v_dias JSONB := '{{ $json.dias_json_str }}'::jsonb;\n  v_contabilizador JSONB := '{{ $json.contabilizador_json_str }}'::jsonb;\nBEGIN\n  IF v_legajo IS NOT NULL THEN\n    SELECT id INTO v_chofer_id FROM public.choferes WHERE legajo = v_legajo LIMIT 1;\n  END IF;\n\n  IF v_chofer_id IS NULL AND v_nombre <> '' THEN\n    SELECT id INTO v_chofer_id FROM public.choferes WHERE UPPER(nombre) = UPPER(v_nombre) LIMIT 1;\n  END IF;\n\n  IF v_chofer_id IS NULL AND v_nombre <> '' THEN\n    IF v_srv_name <> '' AND v_srv_name <> 'S/A' THEN\n      INSERT INTO public.servicios_choferes (denominacion)\n      VALUES (v_srv_name)\n      ON CONFLICT (denominacion) DO NOTHING;\n      SELECT id INTO v_srv_id FROM public.servicios_choferes WHERE UPPER(denominacion) = UPPER(v_srv_name) LIMIT 1;\n    END IF;\n\n    INSERT INTO public.choferes (nombre, legajo, servicio_id, estado, actualizado_el)\n    VALUES (v_nombre, v_legajo, v_srv_id, 'inactivo', NOW())\n    RETURNING id INTO v_chofer_id;\n  END IF;\n\n  IF v_chofer_id IS NOT NULL THEN\n    SELECT id INTO v_diag_id \n    FROM public.diagramas \n    WHERE chofer_id = v_chofer_id AND mes_tab = '{{ $json.mes_tab }}' \n    LIMIT 1;\n\n    IF v_diag_id IS NOT NULL THEN\n      UPDATE public.diagramas\n      SET diagrama_tipo = COALESCE(v_diag_tipo, public.diagramas.diagrama_tipo),\n          anio = {{ $json.anio }},\n          mes_numero = {{ $json.mes_numero }},\n          dias = v_dias,\n          tira_dias = '{{ $json.tira_dias }}',\n          contabilizador = v_contabilizador,\n          actualizado_el = NOW()\n      WHERE id = v_diag_id;\n    ELSE\n      INSERT INTO public.diagramas (\n        chofer_id,\n        diagrama_tipo,\n        mes_tab,\n        anio,\n        mes_numero,\n        dias,\n        tira_dias,\n        contabilizador,\n        actualizado_el\n      )\n      VALUES (\n        v_chofer_id,\n        v_diag_tipo,\n        '{{ $json.mes_tab }}',\n        {{ $json.anio }},\n        {{ $json.mes_numero }},\n        v_dias,\n        '{{ $json.tira_dias }}',\n        v_contabilizador,\n        NOW()\n      );\n    END IF;\n  END IF;\nEND $$;"
+      },
+      "id": "db-dias",
+      "name": "3. Upsert en public.diagramas y Choferes",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1024,
+        1872
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "btR7zwShyhyAPRUg",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const normalizedItems = $('2. Normalizar Calendario y Contabilizador').all();\nconst totalChoferes = normalizedItems.length;\n\nlet totalTrabajados = 0;\nlet totalFrancos = 0;\nlet totalVacaciones = 0;\nlet totalAusencias = 0;\nlet mesTab = 'Oct-26';\n\nfor (const item of normalizedItems) {\n  const c = item.json.contabilizador || {};\n  totalTrabajados += (c.trabajados || 0);\n  totalFrancos += (c.francos || 0);\n  totalVacaciones += (c.vacaciones || 0);\n  totalAusencias += (c.ausencias || 0);\n  if (item.json.mes_tab) mesTab = item.json.mes_tab;\n}\n\nreturn [{\n  json: {\n    estado: '✅ Sincronización exitosa de Días Diagrama',\n    mes_tab: mesTab,\n    total_choferes_procesados: totalChoferes,\n    metricas_acumuladas: {\n      turnos_trabajados: totalTrabajados,\n      francos_totales: totalFrancos,\n      dias_vacaciones: totalVacaciones,\n      ausencias_licencias: totalAusencias\n    },\n    tablas_actualizadas: [\n      'public.diagramas (matriz mensual por chofer)',\n      'public.choferes (contabilizador actualizado)'\n    ],\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "rep-dias",
+      "name": "📊 Resumen: Días Diagrama",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        1872
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🔄 PARTICIÓN 6: MOVIMIENTOS ACTIVOS DE HOY\n- **Origen:** Planilla mensual Movimientos (`A1:ZZ350`).\n- **Detección Dinámica:** Localiza la columna del día operativo actual y vincula unidad <-> chofer.\n- **Supabase:** `UPSERT` atómico en `public.movimientos` y sincronización en cascada vía trigger.",
+        "height": 380,
+        "width": 1600,
+        "color": 4
+      },
+      "id": "note-movimientos",
+      "name": "Nota: Movimientos",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -48,
+        2240
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "trig-manual-mov",
+      "name": "▶️ Disparar: Movimientos Activos",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        2320
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "recorte-movimientos",
+        "options": {}
+      },
+      "id": "trig-webhook-mov",
+      "name": "⚡ Webhook: Movimientos",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        2480
+      ],
+      "webhookId": "recorte-movimientos"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "p-sp-mov",
+              "name": "spreadsheetId",
+              "value": "={{ $json.body?.spreadsheetId || $json.spreadsheetId || '14Mb5rD853zxDkaLDS-IrW-OBDTDBjuJxn_3olXeWlkc' }}",
+              "type": "string"
+            },
+            {
+              "id": "p-sh-mov",
+              "name": "sheetName",
+              "value": "={{ $json.body?.sheetName || $json.sheetName || 'OCTUBRE 2026- Mov.Unidades y Choferes' }}",
+              "type": "string"
+            },
+            {
+              "id": "p-rg-mov",
+              "name": "range",
+              "value": "={{ $json.body?.range || $json.range || 'A1:ZZ350' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-config-mov",
+      "name": "⚙️ Configuración: Movimientos",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        2400
+      ],
+      "notesInFlow": true,
+      "notes": "Parámetros de extracción de la planilla mensual de Movimientos."
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $json.spreadsheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $json.sheetName }}",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "read-sheets-mov",
+      "name": "1. Leer Movimientos (Google Sheets)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        512,
+        2400
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "XHGqePhAYeBdE6zw",
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// NODO CODE: FILTRAR Y NORMALIZAR PAREOS DIARIOS (MOVIMIENTOS ACTIVOS DE HOY)\nconst rows = $input.all().map(i => i.json);\nconst mesesLargo = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];\n\nconst hoy = new Date();\nconst diaHoy = hoy.getDate();\nconst mesHoy = hoy.getMonth();\nconst regexFechaHoy = new RegExp(`\\\\b0?${diaHoy}\\\\s+${mesesLargo[mesHoy]}\\\\b`, 'i');\n\n// 1. Detectar columna de fecha y de chofer de hoy en cabecera\nlet colFechaHoy = -1;\nif (rows.length > 0) {\n  const row0 = rows[0];\n  const keys = Object.keys(row0);\n  for (let c = 0; c < keys.length; c++) {\n    const val = String(row0[keys[c]] || '').toLowerCase().trim();\n    if (regexFechaHoy.test(val) || val.includes(`${diaHoy}/${mesHoy + 1}/`) || val.includes(`${String(diaHoy).padStart(2, '0')}/${String(mesHoy + 1).padStart(2, '0')}/`)) {\n      colFechaHoy = c;\n      break;\n    }\n  }\n}\n\n// Si no encontró fecha en cabecera, usar stride: 27 + 13 * (diaHoy - 1)\nconst colChoferHoy = colFechaHoy >= 3 ? (colFechaHoy - 3) : (27 + 13 * (diaHoy - 1));\n\nconst blacklist = new Set([\n  'TRACTOR', 'SEMI', 'CHOFER', 'NOMBRE', 'APELLIDO', '1', '0', '-', 'S/A', 'VACANTE',\n  'FECHA', 'N°', 'CISTERNADO', 'TOTAL', 'LIVIANO', 'METANOL', 'CAMPO', 'GLP', 'SOCIO', 'OCTUBRE'\n]);\n\nconst pareos = [];\nlet currentServicio = 'GENERAL';\n\nfor (let i = 1; i < rows.length; i++) {\n  const row = rows[i];\n  if (!row) continue;\n  const values = Object.values(row);\n\n  const colA = String(values[0] || '').trim();\n  const colC = String(values[2] || '').trim();\n  const colE = String(values[4] || '').trim();\n  const colF = String(values[5] || '').trim();\n\n  // Detección de fila cabecera de Categoría / Servicio\n  if (colA && !colC && !colE && !colF) {\n    const upA = colA.toUpperCase();\n    if (!upA.includes('FECHA') && !upA.includes('N°') && !upA.includes('OCTUBRE')) {\n      currentServicio = upA;\n    }\n    continue;\n  }\n\n  const tractor = colE.toUpperCase().replace(/\\s+/g, '');\n  const semi = colF.toUpperCase().replace(/\\s+/g, '');\n  const nUte = colC.replace(/[^0-9]/g, '');\n\n  if (!tractor && !semi && !nUte) continue;\n  if (tractor === 'TRACTOR' || semi === 'SEMI') continue;\n\n  const rawChofer = colChoferHoy < values.length ? String(values[colChoferHoy] || '').trim() : '';\n  if (!rawChofer || rawChofer === '1' || rawChofer.length < 3 || !/[a-zA-Z]/.test(rawChofer) || blacklist.has(rawChofer.toUpperCase())) {\n    continue;\n  }\n\n  pareos.push({\n    patente_tractor: tractor || '',\n    patente_semi: semi || '',\n    n_ute: nUte || null,\n    chofer_nombre: rawChofer.toUpperCase(),\n    servicio_denominacion: currentServicio,\n    dia_operativo: diaHoy\n  });\n}\n\nreturn pareos.map(p => ({ json: p }));\n"
+      },
+      "id": "code-mov",
+      "name": "2. Filtrar y Normalizar Pareos Diarios",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        768,
+        2400
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "DO $$\nDECLARE\n  v_unit_id UUID := NULL;\n  v_chofer_id UUID := NULL;\n  v_trac_id UUID := NULL;\n  v_semi_id UUID := NULL;\n  v_pat_trac TEXT := TRIM('{{ $json.patente_tractor || \"\" }}');\n  v_pat_semi TEXT := TRIM('{{ $json.patente_semi || \"\" }}');\n  v_ute TEXT := NULLIF(TRIM('{{ $json.n_ute || \"\" }}'), '');\n  v_chofer_nombre TEXT := TRIM('{{ $json.chofer_nombre || \"\" }}');\nBEGIN\n  -- 1. Resolver id_unidad por Tractor, Semi o N° UTE\n  IF v_pat_trac <> '' THEN\n    SELECT id INTO v_trac_id FROM public.tractores WHERE UPPER(patente) = UPPER(v_pat_trac) LIMIT 1;\n    IF v_trac_id IS NOT NULL THEN\n      SELECT id INTO v_unit_id FROM public.unidades WHERE tractor_id = v_trac_id LIMIT 1;\n    END IF;\n  END IF;\n\n  IF v_unit_id IS NULL AND v_pat_semi <> '' THEN\n    SELECT id INTO v_semi_id FROM public.semis WHERE UPPER(patente) = UPPER(v_pat_semi) LIMIT 1;\n    IF v_semi_id IS NOT NULL THEN\n      SELECT id INTO v_unit_id FROM public.unidades WHERE semi_id = v_semi_id LIMIT 1;\n    END IF;\n  END IF;\n\n  IF v_unit_id IS NULL AND v_ute IS NOT NULL THEN\n    SELECT id INTO v_unit_id FROM public.unidades WHERE n_ute = v_ute LIMIT 1;\n  END IF;\n\n  -- 2. Resolver id_chofer por Nombre\n  IF v_chofer_nombre <> '' THEN\n    SELECT id INTO v_chofer_id FROM public.choferes WHERE UPPER(nombre) = UPPER(v_chofer_nombre) LIMIT 1;\n  END IF;\n\n  -- 3. Upsert atómico en public.movimientos si ambos existen\n  IF v_unit_id IS NOT NULL AND v_chofer_id IS NOT NULL THEN\n    -- Despejar pareos previos de esta unidad o de este chofer\n    DELETE FROM public.movimientos WHERE id_unidad = v_unit_id OR id_chofer = v_chofer_id;\n\n    -- Insertar el movimiento activo (el trigger trg_movimientos_sync actualiza choferes.unidad_id y los estados)\n    INSERT INTO public.movimientos (id_unidad, id_chofer, actualizado_el)\n    VALUES (v_unit_id, v_chofer_id, NOW())\n    ON CONFLICT (id_unidad) DO UPDATE SET \n      id_chofer = EXCLUDED.id_chofer,\n      actualizado_el = NOW();\n  END IF;\nEND $$;"
+      },
+      "id": "db-mov",
+      "name": "3. Upsert Movimientos en Supabase",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1024,
+        2400
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "btR7zwShyhyAPRUg",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $('2. Filtrar y Normalizar Pareos Diarios').all();\nreturn [{\n  json: {\n    estado: '✅ Movimientos activos sincronizados exitosamente',\n    total_pareos_hoy: items.length,\n    origen: 'Movimientos Unidades y Choferes (Día Operativo)',\n    destino: 'public.movimientos (con sync en choferes.unidad_id y unidades)',\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "rep-mov",
+      "name": "📊 Resumen: Movimientos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        2400
+      ]
+    }
+  ],
+  "connections": {
+    "🌐 Disparar Todo: Bases Organización": {
+      "main": [
+        [
+          {
+            "node": "⚙️ Configuración: Choferes",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "⚙️ Configuración: Tractores",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "⚙️ Configuración: Semis",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "⚙️ Configuración: Unidades",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "⚙️ Configuración: Días Diagrama",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "⚙️ Configuración: Movimientos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "▶️ Disparar: Choferes": {
+      "main": [
+        [
+          {
+            "node": "⚙️ Configuración: Choferes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⚡ Webhook: Choferes (Diagramas)": {
+      "main": [
+        [
+          {
+            "node": "⚙️ Configuración: Choferes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⚙️ Configuración: Choferes": {
+      "main": [
+        [
+          {
+            "node": "1. Leer Diagramas (Choferes Mes)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "1. Leer Diagramas (Choferes Mes)": {
+      "main": [
+        [
+          {
+            "node": "2. Filtrar y Normalizar Choferes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2. Filtrar y Normalizar Choferes": {
+      "main": [
+        [
+          {
+            "node": "3. Upsert Choferes en Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "3. Upsert Choferes en Supabase": {
+      "main": [
+        [
+          {
+            "node": "📊 Resumen: Lista Choferes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "▶️ Disparar: Tractores": {
+      "main": [
+        [
+          {
+            "node": "⚙️ Configuración: Tractores",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⚡ Webhook: Tractores (Col E)": {
+      "main": [
+        [
+          {
+            "node": "⚙️ Configuración: Tractores",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⚙️ Configuración: Tractores": {
+      "main": [
+        [
+          {
+            "node": "1. Leer Movimientos (Tractores)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "1. Leer Movimientos (Tractores)": {
+      "main": [
+        [
+          {
+            "node": "2. Filtrar y Normalizar Tractores",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2. Filtrar y Normalizar Tractores": {
+      "main": [
+        [
+          {
+            "node": "3. Upsert Tractores en Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "3. Upsert Tractores en Supabase": {
+      "main": [
+        [
+          {
+            "node": "📊 Resumen: Tractores",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "▶️ Disparar: Semis + Cisternado": {
+      "main": [
+        [
+          {
+            "node": "⚙️ Configuración: Semis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⚡ Webhook: Semis / Cisternado": {
+      "main": [
+        [
+          {
+            "node": "⚙️ Configuración: Semis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⚙️ Configuración: Semis": {
+      "main": [
+        [
+          {
+            "node": "1. Leer Movimientos (Semis)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "1. Leer Movimientos (Semis)": {
+      "main": [
+        [
+          {
+            "node": "2. Filtrar y Normalizar Semis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2. Filtrar y Normalizar Semis": {
+      "main": [
+        [
+          {
+            "node": "3. Upsert Semis en Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "3. Upsert Semis en Supabase": {
+      "main": [
+        [
+          {
+            "node": "📊 Resumen: Semis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "▶️ Disparar: Build Lista de Unidades": {
+      "main": [
+        [
+          {
+            "node": "⚙️ Configuración: Unidades",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⚡ Webhook: Acople Unidades": {
+      "main": [
+        [
+          {
+            "node": "⚙️ Configuración: Unidades",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⚙️ Configuración: Unidades": {
+      "main": [
+        [
+          {
+            "node": "1. Leer Movimientos (Unidades)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "1. Leer Movimientos (Unidades)": {
+      "main": [
+        [
+          {
+            "node": "2. Mapear Formaciones (Unidades)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2. Mapear Formaciones (Unidades)": {
+      "main": [
+        [
+          {
+            "node": "3. Sincronizar Formaciones en Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "3. Sincronizar Formaciones en Supabase": {
+      "main": [
+        [
+          {
+            "node": "📊 Resumen: Lista de Unidades",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "▶️ Disparar: Días Diagrama": {
+      "main": [
+        [
+          {
+            "node": "⚙️ Configuración: Días Diagrama",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⚡ Webhook: Días Diagrama": {
+      "main": [
+        [
+          {
+            "node": "⚙️ Configuración: Días Diagrama",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⚙️ Configuración: Días Diagrama": {
+      "main": [
+        [
+          {
+            "node": "1. Leer Matriz Diagramas (Google Sheets)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "1. Leer Matriz Diagramas (Google Sheets)": {
+      "main": [
+        [
+          {
+            "node": "2. Normalizar Calendario y Contabilizador",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2. Normalizar Calendario y Contabilizador": {
+      "main": [
+        [
+          {
+            "node": "3. Upsert en public.diagramas y Choferes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "3. Upsert en public.diagramas y Choferes": {
+      "main": [
+        [
+          {
+            "node": "📊 Resumen: Días Diagrama",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "▶️ Disparar: Movimientos Activos": {
+      "main": [
+        [
+          {
+            "node": "⚙️ Configuración: Movimientos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⚡ Webhook: Movimientos": {
+      "main": [
+        [
+          {
+            "node": "⚙️ Configuración: Movimientos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⚙️ Configuración: Movimientos": {
+      "main": [
+        [
+          {
+            "node": "1. Leer Movimientos (Google Sheets)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "1. Leer Movimientos (Google Sheets)": {
+      "main": [
+        [
+          {
+            "node": "2. Filtrar y Normalizar Pareos Diarios",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2. Filtrar y Normalizar Pareos Diarios": {
+      "main": [
+        [
+          {
+            "node": "3. Upsert Movimientos en Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "3. Upsert Movimientos en Supabase": {
+      "main": [
+        [
+          {
+            "node": "📊 Resumen: Movimientos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

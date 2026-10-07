@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ETL Hub — Control de Extracción & Inyección</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-layout">
+        <!-- HEADER PRINCIPAL -->
+        <header class="app-header">
+            <div class="header-left">
+                <div class="logo-box">
+                    <span class="logo-icon">🚛</span>
+                    <div>
+                        <h1 class="logo-title">ETL Local Hub & Control Panel</h1>
+                        <p class="logo-subtitle">Orquestador de Extracción (Sheets) ➔ Almacenamiento Local ➔ Inyección (Supabase)</p>
+                    </div>
+                </div>
+            </div>
+            <div class="header-right">
+                <div class="status-indicator-group">
+                    <div class="status-pill" id="server-status-pill">
+                        <span class="dot green"></span>
+                        <span id="server-status-text">Local: Puerto 3010</span>
+                    </div>
+                    <div class="status-pill" id="pipeline-status-pill">
+                        <span class="dot green"></span>
+                        <span id="pipeline-status-text">Listo</span>
+                    </div>
+                    <div class="status-pill">
+                        <span class="dot blue"></span>
+                        <span id="memory-usage-text">RAM: -- MB</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- BARRA MAESTRA DE CONTROL -->
+        <div class="master-action-bar">
+            <div class="master-left">
+                <button class="btn btn-primary btn-lg" id="btn-master-sync" onclick="triggerSync('all')">
+                    <span class="btn-icon">⚡</span>
+                    <span class="btn-text">Sincronización Total (Extraer + Inyectar Todo)</span>
+                </button>
+                <div class="dry-run-toggle">
+                    <label class="switch">
+                        <input type="checkbox" id="global-dry-run">
+                        <span class="slider round"></span>
+                    </label>
+                    <span class="toggle-label" title="Simula las operaciones en Supabase sin escribir ni alterar registros reales">Modo Simulación (Dry-Run)</span>
+                </div>
+            </div>
+            <div class="master-right">
+                <button class="btn btn-outline" onclick="triggerExtract('all')">
+                    <span>📥 Extraer Todo a Local</span>
+                </button>
+                <button class="btn btn-outline" onclick="triggerInject('all')">
+                    <span>📤 Inyectar Todo a Supabase</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- PROGRESS BAR (VISIBLE DURANTE EJECUCIONES) -->
+        <div class="progress-bar-container" id="global-progress-bar" style="display: none;">
+            <div class="progress-bar-fill"></div>
+            <span class="progress-label" id="progress-label">Procesando...</span>
+        </div>
+
+        <!-- NAVEGACIÓN POR PESTAÑAS -->
+        <nav class="nav-tabs">
+            <button class="tab-btn active" data-tab="tab-control">🎛️ Control Modular</button>
+            <button class="tab-btn" data-tab="tab-data">🔍 Visor de Datos Locales</button>
+            <button class="tab-btn" data-tab="tab-terminal">💻 Consola en Vivo <span class="badge" id="log-count-badge">0</span></button>
+            <button class="tab-btn" data-tab="tab-n8n">⚡ Integración con n8n & API</button>
+        </nav>
+
+        <!-- CONTENIDO DE PESTAÑAS -->
+        <main class="tab-content-area">
+
+            <!-- PESTAÑA 1: CONTROL MODULAR -->
+            <section id="tab-control" class="tab-pane active">
+                <div class="columns-grid">
+                    
+                    <!-- COLUMNA 1: EXTRACCIÓN (Sheets -> Local JSON) -->
+                    <div class="column-card">
+                        <div class="column-header">
+                            <div>
+                                <h2 class="column-title">📥 1. Extracción a Local</h2>
+                                <p class="column-desc">Descarga desde Google Sheets y guarda en JSON estructurado localmente</p>
+                            </div>
+                            <button class="btn btn-sm btn-outline" onclick="triggerExtract('all')">Extraer Todos</button>
+                        </div>
+                        <div class="cards-list" id="extract-cards-list">
+                            <!-- Cards generadas dinámicamente -->
+                        </div>
+                    </div>
+
+                    <!-- COLUMNA 2: INYECCIÓN (Local JSON -> Supabase) -->
+                    <div class="column-card">
+                        <div class="column-header">
+                            <div>
+                                <h2 class="column-title">📤 2. Inyección a Supabase</h2>
+                                <p class="column-desc">Lee el JSON local y realiza upserts relacionales en Supabase PostgreSQL</p>
+                            </div>
+                            <button class="btn btn-sm btn-outline" onclick="triggerInject('all')">Inyectar Todos</button>
+                        </div>
+                        <div class="cards-list" id="inject-cards-list">
+                            <!-- Cards generadas dinámicamente -->
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- BANNER PIPELINES CONJUNTOS POR MÓDULO -->
+                <div class="quick-pipelines-strip">
+                    <span class="strip-title">🔄 Sincronización Conjunta Directa por Módulo (Extrae e Inyecta en 1 Clic):</span>
+                    <div class="strip-buttons">
+                        <button class="btn btn-sm btn-ghost" onclick="triggerSync('flota')">🚛 Flota & Movimientos</button>
+                        <button class="btn btn-sm btn-ghost" onclick="triggerSync('choferes')">👨‍✈️ Choferes</button>
+                        <button class="btn btn-sm btn-ghost" onclick="triggerSync('diagramas')">📅 Diagramas</button>
+                        <button class="btn btn-sm btn-ghost" onclick="triggerSync('kilometros')">🛣️ Kilómetros</button>
+                        <button class="btn btn-sm btn-ghost" onclick="triggerSync('legajos')">📋 Legajos & Docs</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- PESTAÑA 2: VISOR DE DATOS LOCALES -->
+            <section id="tab-data" class="tab-pane">
+                <div class="data-inspector-container">
+                    <div class="inspector-sidebar">
+                        <h3 class="sidebar-title">Archivos Locales (JSON)</h3>
+                        <div class="file-list" id="inspector-file-list">
+                            <!-- Lista de archivos -->
+                        </div>
+                    </div>
+                    <div class="inspector-main">
+                        <div class="inspector-header">
+                            <div>
+                                <h3 class="inspector-filename" id="inspector-filename">Selecciona un archivo</h3>
+                                <p class="inspector-meta" id="inspector-meta">Tamaño: -- | Registros: -- | Última extracción: --</p>
+                            </div>
+                            <div class="inspector-actions">
+                                <input type="text" id="inspector-search" placeholder="🔍 Filtrar registros..." class="input-search">
+                                <button class="btn btn-sm btn-outline" id="btn-download-json" onclick="downloadSelectedJson()">⬇️ Descargar JSON</button>
+                                <button class="btn btn-sm btn-outline" onclick="copySelectedJson()">📋 Copiar</button>
+                                <button class="btn btn-sm btn-outline" onclick="loadSelectedModuleData()">🔄 Refrescar</button>
+                            </div>
+                        </div>
+                        <div class="inspector-view-modes">
+                            <button class="mode-btn active" data-mode="table" onclick="setViewerMode('table')">📊 Vista Tabla Resumen</button>
+                            <button class="mode-btn" data-mode="json" onclick="setViewerMode('json')">📄 Vista JSON Crudo</button>
+                        </div>
+                        <div class="inspector-content">
+                            <div id="inspector-table-view" class="viewer-section active">
+                                <div class="table-responsive">
+                                    <table class="data-table" id="data-preview-table">
+                                        <thead><tr id="data-table-header"></tr></thead>
+                                        <tbody id="data-table-body"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div id="inspector-json-view" class="viewer-section">
+                                <pre class="json-code" id="inspector-json-code"><code>// Selecciona un módulo para visualizar su contenido JSON</code></pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- PESTAÑA 3: CONSOLA EN VIVO -->
+            <section id="tab-terminal" class="tab-pane">
+                <div class="terminal-container">
+                    <div class="terminal-header">
+                        <div class="terminal-dots">
+                            <span class="dot-red"></span>
+                            <span class="dot-yellow"></span>
+                            <span class="dot-green"></span>
+                            <span class="terminal-title">ETL Live Stream & Logger (SSE EventStream)</span>
+                        </div>
+                        <div class="terminal-controls">
+                            <label class="terminal-checkbox">
+                                <input type="checkbox" id="terminal-autoscroll" checked>
+                                Auto-scroll
+                            </label>
+                            <button class="btn btn-sm btn-ghost" onclick="clearTerminal()">🧹 Limpiar</button>
+                            <button class="btn btn-sm btn-ghost" onclick="copyTerminalLogs()">📋 Copiar</button>
+                        </div>
+                    </div>
+                    <div class="terminal-body" id="terminal-output">
+                        <!-- Logs renderizados en tiempo real -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- PESTAÑA 4: INTEGRACIÓN CON N8N -->
+            <section id="tab-n8n" class="tab-pane">
+                <div class="n8n-container">
+                    <div class="n8n-hero">
+                        <h2>⚡ Integración con n8n</h2>
+                        <p>Este servidor local expone una API REST limpia y documentada que permite a tus flujos de n8n orquestar extracciones, inspeccionar datos y disparar inyecciones mediante nodos <strong>HTTP Request</strong>.</p>
+                    </div>
+
+                    <div class="api-endpoints-grid">
+                        
+                        <!-- CARD 1: EXTRACCIÓN -->
+                        <div class="api-card">
+                            <div class="api-badge post">POST</div>
+                            <div class="api-path">/api/extract/:module</div>
+                            <p class="api-desc">Descarga de Google Sheets a JSON local sin escribir en Supabase.</p>
+                            <div class="api-params">
+                                <strong>Módulos válidos:</strong> <code>all</code>, <code>master</code>, <code>vencimientos</code>, <code>flota</code>, <code>diagramas</code>, <code>kilometros</code>, <code>legajos</code>
+                            </div>
+                            <div class="code-box">
+                                <pre><code>curl -X POST http://localhost:3010/api/extract/flota</code></pre>
+                            </div>
+                        </div>
+
+                        <!-- CARD 2: INYECCIÓN -->
+                        <div class="api-card">
+                            <div class="api-badge post">POST</div>
+                            <div class="api-path">/api/inject/:module</div>
+                            <p class="api-desc">Lee el JSON local y lo inserta/upserta en Supabase.</p>
+                            <div class="api-params">
+                                <strong>Opciones en Body o Query:</strong> <code>dryRun=true</code> para simular sin escribir.
+                            </div>
+                            <div class="code-box">
+                                <pre><code>curl -X POST http://localhost:3010/api/inject/flota \
+  -H "Content-Type: application/json" \
+  -d '{"dryRun": false}'</code></pre>
+                            </div>
+                        </div>
+
+                        <!-- CARD 3: SYNC COMPLETO -->
+                        <div class="api-card">
+                            <div class="api-badge post">POST</div>
+                            <div class="api-path">/api/sync/:module</div>
+                            <p class="api-desc">Ejecuta extracción e inyección encadenadas en un solo paso.</p>
+                            <div class="api-params">
+                                <strong>Webhook opcional:</strong> Recibe el resultado final en n8n al completar.
+                            </div>
+                            <div class="code-box">
+                                <pre><code>curl -X POST http://localhost:3010/api/sync/all \
+  -H "Content-Type: application/json" \
+  -d '{"webhookUrl": "http://tu-n8n:5678/webhook/etl-done"}'</code></pre>
+                            </div>
+                        </div>
+
+                        <!-- CARD 4: LEER DATOS LIMPIOS -->
+                        <div class="api-card">
+                            <div class="api-badge get">GET</div>
+                            <div class="api-path">/api/data/:module</div>
+                            <p class="api-desc">Retorna los datos JSON extraídos localmente para que n8n los procese.</p>
+                            <div class="code-box">
+                                <pre><code>curl http://localhost:3010/api/data/flota</code></pre>
+                            </div>
+                        </div>
+
+                        <!-- CARD 5: ESTADO -->
+                        <div class="api-card">
+                            <div class="api-badge get">GET</div>
+                            <div class="api-path">/api/status</div>
+                            <p class="api-desc">Consulta el estado del servidor, si está ocupado y las fechas de última sincronización.</p>
+                            <div class="code-box">
+                                <pre><code>curl http://localhost:3010/api/status</code></pre>
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <!-- GUÍA DE CONFIGURACIÓN N8N -->
+                    <div class="n8n-guide-box">
+                        <h3>🛠️ Cómo configurar un nodo HTTP Request en n8n:</h3>
+                        <ol class="guide-steps">
+                            <li><strong>Method:</strong> <code>POST</code></li>
+                            <li><strong>URL:</strong> <code>http://localhost:3010/api/sync/all</code> (o la IP de tu PC en tu red local si n8n corre en Docker: <code>http://host.docker.internal:3010/api/sync/all</code>)</li>
+                            <li><strong>Body Parameters:</strong> JSON con <code>{"dryRun": false}</code></li>
+                            <li><strong>Timeout:</strong> Configurar en <code>300000</code> ms (5 minutos) para permitir la extracción masiva de diagramas y kilómetros.</li>
+                        </ol>
+                    </div>
+
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- MODAL DE NOTIFICACIÓN / ALERTA -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,27 @@
+{
+  "name": "eor-backend",
+  "version": "1.0.0",
+  "description": "Backend unico EOR: API REST + Socket.IO + cache RAM sobre Supabase (todas las rutas: views, movimientos, dash, diagramas, proxy, fotos, auth, servicios, activos)",
+  "main": "server.js",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "type": "commonjs",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.117.0",
+    "compression": "^1.8.2",
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.2",
+    "express": "^5.2.1",
+    "google-auth-library": "^11.1.0",
+    "google-spreadsheet": "^5.3.0",
+    "pg": "^8.23.0",
+    "sharp": "^0.35.4",
+    "socket.io": "^4.8.3"
+  }
+}
