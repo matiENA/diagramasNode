@@ -509,19 +509,32 @@
 }
 
 .chip-badge {
-  font-size: 0.65rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  font-size: 0.68rem;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  padding: 0.15rem 0.45rem;
-  border-radius: var(--radius-sm);
+  padding: 0 0.45rem;
+  border-radius: var(--radius-sm, 4px);
   white-space: nowrap;
+  box-sizing: border-box;
+  line-height: 1;
+  vertical-align: middle;
 }
 
 .chip-service {
   background-color: var(--primary-light);
   color: var(--primary);
-  border: 1px solid rgba(37, 99, 235, 0.2);
+  border: 1px solid rgba(37, 99, 235, 0.25);
+}
+
+html.dark .chip-service {
+  background-color: rgba(96, 165, 250, 0.15);
+  color: #93c5fd;
+  border-color: rgba(96, 165, 250, 0.3);
 }
 
 .chip-legajo {
@@ -530,34 +543,67 @@
   border: 1px solid var(--border-subtle);
 }
 
+html.dark .chip-legajo {
+  background-color: #1e293b;
+  color: #cbd5e1;
+  border-color: #334155;
+}
+
 .chip-ute {
-  background-color: #f0fdf4;
-  color: #166534;
-  border: 1px solid #bbf7d0;
+  background-color: #ecfdf5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
   font-family: var(--font-mono);
+}
+
+html.dark .chip-ute {
+  background-color: rgba(16, 185, 129, 0.15);
+  color: #6ee7b7;
+  border-color: rgba(16, 185, 129, 0.3);
 }
 
 .btn-whatsapp-mini {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.25rem;
+  height: 22px;
   background-color: #ecfdf5;
-  color: #059669;
+  color: #065f46;
   border: 1px solid #86efac;
-  padding: 0.15rem 0.5rem;
+  padding: 0 0.45rem;
   border-radius: 9999px;
-  font-size: 0.7rem;
-  font-weight: 700;
+  font-size: 0.68rem;
+  font-weight: 800;
   text-decoration: none;
   transition: all 0.15s ease;
   white-space: nowrap;
   flex-shrink: 0;
+  box-sizing: border-box;
+  line-height: 1;
+}
+
+html.dark .btn-whatsapp-mini {
+  background-color: rgba(16, 185, 129, 0.15);
+  color: #6ee7b7;
+  border-color: rgba(16, 185, 129, 0.35);
 }
 
 .btn-whatsapp-mini:hover {
   background-color: #059669;
   color: #ffffff;
   border-color: #059669;
+}
+
+html.dark .btn-whatsapp-mini:hover {
+  background-color: #10b981;
+  color: #0f172a;
+  border-color: #10b981;
+}
+
+.btn-whatsapp-mini:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
 }
 
 /* Bloque Central: Unidad Asignada */
@@ -573,16 +619,24 @@
 .unit-badge-pill {
   display: inline-flex;
   align-items: center;
+  height: 26px;
   gap: 0.35rem;
   background-color: var(--bg-surface-muted);
-  border: 0.5px dashed #94a3b8;
-  border-radius: var(--radius-sm);
-  padding: 0.25rem 0.55rem;
+  border: 1px dashed #94a3b8;
+  border-radius: var(--radius-sm, 4px);
+  padding: 0 0.55rem;
   cursor: pointer;
   transition: all 0.15s ease-in-out;
   user-select: none;
   white-space: nowrap;
   flex-shrink: 0;
+  box-sizing: border-box;
+  line-height: 1;
+}
+
+html.dark .unit-badge-pill {
+  background-color: #1e293b;
+  border-color: #64748b;
 }
 
 .unit-badge-pill:hover {
@@ -590,13 +644,32 @@
   background-color: #eff6ff;
 }
 
+html.dark .unit-badge-pill:hover {
+  border-color: #60a5fa;
+  background-color: rgba(59, 130, 246, 0.18);
+}
+
 .unit-badge-pill:hover .unit-val {
   color: #1d4ed8;
 }
 
+html.dark .unit-badge-pill:hover .unit-val {
+  color: #93c5fd;
+}
+
+.unit-badge-pill:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
 .unit-badge-pill.copied {
-  border-color: #10b981 !important;
+  border-color: #059669 !important;
   background-color: #ecfdf5 !important;
+}
+
+html.dark .unit-badge-pill.copied {
+  border-color: #10b981 !important;
+  background-color: rgba(16, 185, 129, 0.2) !important;
 }
 
 .unit-label {
@@ -604,6 +677,7 @@
   font-weight: 800;
   text-transform: uppercase;
   color: var(--text-muted);
+  line-height: 1;
 }
 
 .unit-val {
@@ -611,23 +685,30 @@
   font-weight: 800;
   color: var(--text-main);
   letter-spacing: 0.02em;
+  line-height: 1;
 }
 
 .btn-assign-gear-mini {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.25rem;
-  padding: 0.25rem 0.45rem;
-  border-radius: var(--radius-sm);
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: var(--radius-sm, 4px);
   border: 1px solid var(--border-subtle);
   background-color: var(--bg-surface);
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.15s ease;
-  font-size: 0.68rem;
-  font-weight: 700;
   flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+html.dark .btn-assign-gear-mini {
+  background-color: #1e293b;
+  border-color: #334155;
+  color: #cbd5e1;
 }
 
 .btn-assign-gear-mini:hover {
@@ -636,48 +717,89 @@
   background-color: #eff6ff;
 }
 
+html.dark .btn-assign-gear-mini:hover {
+  border-color: #60a5fa;
+  color: #93c5fd;
+  background-color: rgba(59, 130, 246, 0.2);
+}
+
+.btn-assign-gear-mini:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
 .btn-assign-unit-dashed {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  height: 26px;
   gap: 0.35rem;
-  padding: 0.25rem 0.65rem;
-  border-radius: var(--radius-sm);
+  padding: 0 0.65rem;
+  border-radius: var(--radius-sm, 4px);
   font-size: 0.72rem;
   font-weight: 800;
   background-color: #eff6ff;
-  color: #2563eb;
+  color: #1d4ed8;
   border: 1px dashed #3b82f6;
   cursor: pointer;
   transition: all 0.15s ease-in-out;
   user-select: none;
   white-space: nowrap;
   flex-shrink: 0;
+  box-sizing: border-box;
+  line-height: 1;
+}
+
+html.dark .btn-assign-unit-dashed {
+  background-color: rgba(59, 130, 246, 0.15);
+  color: #93c5fd;
+  border-color: #60a5fa;
 }
 
 .btn-assign-unit-dashed:hover {
   background-color: #dbeafe;
   border-color: #1d4ed8;
-  color: #1d4ed8;
+  color: #1e40af;
+}
+
+html.dark .btn-assign-unit-dashed:hover {
+  background-color: rgba(59, 130, 246, 0.25);
+  border-color: #93c5fd;
+  color: #bfdbfe;
+}
+
+.btn-assign-unit-dashed:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
 }
 
 /* ==============================================================
-   📋 EASYCOPY LEGACY SYSTEM (Badge dashed 0.5px)
+   📋 EASYCOPY LEGACY SYSTEM (Badge dashed 1px, WCAG AA)
    ============================================================== */
 .badge-easycopy {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.25rem;
-  padding: 0.15rem 0.45rem;
+  height: 22px;
+  padding: 0 0.45rem;
   border-radius: var(--radius-sm, 4px);
-  border: 0.5px dashed #94a3b8;
+  border: 1px dashed #94a3b8;
   background-color: #f8fafc;
-  color: #334155;
+  color: #1e293b;
   font-size: 0.68rem;
   font-weight: 700;
   cursor: pointer;
   transition: all 0.15s ease-in-out;
   user-select: none;
-  line-height: 1.2;
+  line-height: 1;
+  box-sizing: border-box;
+}
+
+html.dark .badge-easycopy {
+  background-color: #1e293b;
+  color: #f1f5f9;
+  border-color: #64748b;
 }
 
 .badge-easycopy:hover {
@@ -687,12 +809,23 @@
   box-shadow: 0 1px 3px rgba(37, 99, 235, 0.12);
 }
 
+html.dark .badge-easycopy:hover {
+  border-color: #60a5fa;
+  background-color: rgba(59, 130, 246, 0.18);
+  color: #93c5fd;
+}
+
 .badge-easycopy:active {
   transform: scale(0.97);
 }
 
+.badge-easycopy:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
 .badge-easycopy .easycopy-icon {
-  opacity: 0.55;
+  opacity: 0.65;
   transition: opacity 0.15s ease;
   flex-shrink: 0;
 }
@@ -702,16 +835,23 @@
 }
 
 .badge-easycopy.copied {
-  border-color: #10b981 !important;
+  border-color: #059669 !important;
   background-color: #ecfdf5 !important;
   color: #065f46 !important;
 }
 
+html.dark .badge-easycopy.copied {
+  border-color: #10b981 !important;
+  background-color: rgba(16, 185, 129, 0.2) !important;
+  color: #6ee7b7 !important;
+}
+
 .badge-easycopy-name {
-  border: 0.5px dashed #94a3b8;
+  border: 1px dashed #94a3b8;
   background-color: #f8fafc;
   border-radius: var(--radius-sm, 4px);
-  padding: 0.15rem 0.45rem;
+  height: 28px;
+  padding: 0 0.5rem;
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
@@ -720,6 +860,14 @@
   white-space: nowrap;
   flex-shrink: 0;
   max-width: 100%;
+  box-sizing: border-box;
+  line-height: 1;
+}
+
+html.dark .badge-easycopy-name {
+  background-color: #1e293b;
+  border-color: #64748b;
+  color: #f8fafc;
 }
 
 .badge-easycopy-name:hover {
@@ -728,17 +876,34 @@
   color: #1d4ed8;
 }
 
+html.dark .badge-easycopy-name:hover {
+  border-color: #60a5fa;
+  background-color: rgba(59, 130, 246, 0.18);
+  color: #93c5fd;
+}
+
+.badge-easycopy-name:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
 .badge-easycopy-name.copied {
-  border-color: #10b981 !important;
+  border-color: #059669 !important;
   background-color: #ecfdf5 !important;
   color: #065f46 !important;
+}
+
+html.dark .badge-easycopy-name.copied {
+  border-color: #10b981 !important;
+  background-color: rgba(16, 185, 129, 0.2) !important;
+  color: #6ee7b7 !important;
 }
 
 /* Bloque Derecho: Alertas + Badge de Estado + Toggle */
 .daily-card-right-box {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.65rem;
   margin-left: auto;
   justify-self: end;
 }
@@ -747,17 +912,19 @@
   display: flex;
   align-items: center;
   gap: 0.35rem;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 
 /* Badge Legacy: Retorna HOY / Vuelve en Xd */
 .badge-retorno-legacy {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.25rem;
-  padding: 0.2rem 0.5rem;
-  border-radius: var(--radius-sm, 6px);
-  font-size: 10px;
+  height: 22px;
+  padding: 0 0.5rem;
+  border-radius: var(--radius-sm, 4px);
+  font-size: 0.68rem;
   font-weight: 800;
   background-color: #e0e7ff;
   color: #3730a3;
@@ -766,61 +933,109 @@
   white-space: nowrap;
   letter-spacing: -0.01em;
   user-select: none;
+  box-sizing: border-box;
+  line-height: 1;
+}
+
+html.dark .badge-retorno-legacy {
+  background-color: rgba(99, 102, 241, 0.18);
+  color: #c7d2fe;
+  border-color: rgba(99, 102, 241, 0.4);
 }
 
 .alert-mini-pill {
-  font-size: 0.65rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  height: 22px;
+  font-size: 0.68rem;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  padding: 0.2rem 0.45rem;
-  border-radius: var(--radius-sm);
+  padding: 0 0.45rem;
+  border-radius: var(--radius-sm, 4px);
+  white-space: nowrap;
+  box-sizing: border-box;
+  line-height: 1;
 }
 
+/* WCAG Compliant Alert Colors (>= 4.5:1 ratio) */
 .alert-mini-pill.alert-red {
-  background-color: #fef2f2;
-  color: #dc2626;
-  border: 1px solid #fecaca;
+  background-color: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+}
+
+html.dark .alert-mini-pill.alert-red {
+  background-color: rgba(239, 68, 68, 0.18);
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.4);
 }
 
 .alert-mini-pill.alert-amber {
-  background-color: #fffbeb;
-  color: #d97706;
+  background-color: #fef3c7;
+  color: #92400e;
   border: 1px solid #fde68a;
+}
+
+html.dark .alert-mini-pill.alert-amber {
+  background-color: rgba(245, 158, 11, 0.18);
+  color: #fde68a;
+  border-color: rgba(245, 158, 11, 0.4);
 }
 
 .daily-km-badge {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
+  justify-content: center;
+  gap: 0.3rem;
+  height: 22px;
   background-color: #eef2ff;
   color: #3730a3;
   border: 1px solid #c7d2fe;
-  padding: 0.2rem 0.55rem;
-  border-radius: var(--radius-sm);
-  font-size: 0.72rem;
+  padding: 0 0.5rem;
+  border-radius: var(--radius-sm, 4px);
+  font-size: 0.68rem;
   font-weight: 800;
   box-shadow: 0 1px 2px rgba(99, 102, 241, 0.1);
   white-space: nowrap;
+  box-sizing: border-box;
+  line-height: 1;
+}
+
+html.dark .daily-km-badge {
+  background-color: rgba(99, 102, 241, 0.18);
+  color: #c7d2fe;
+  border-color: rgba(99, 102, 241, 0.4);
 }
 
 .daily-km-icon {
-  font-size: 0.82rem;
+  font-size: 0.75rem;
+  line-height: 1;
 }
 
 .daily-km-val {
   font-family: var(--font-mono);
   font-weight: 800;
+  line-height: 1;
 }
 
 .daily-km-hr {
-  font-size: 0.65rem;
+  font-size: 0.62rem;
   background-color: #ffffff;
   color: #4338ca;
   border: 1px solid #e0e7ff;
   border-radius: 3px;
   padding: 1px 4px;
   font-family: var(--font-mono);
+  line-height: 1;
+}
+
+html.dark .daily-km-hr {
+  background-color: #1e1b4b;
+  color: #c7d2fe;
+  border-color: #4338ca;
 }
 
 /* Badge del Estado del Día (Fatiga 1..35, F, V, IND) */
@@ -836,6 +1051,44 @@
   line-height: 1;
   box-shadow: var(--shadow-sm);
   transition: all 0.15s ease;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+html.dark .daily-day-badge.day-badge-franco {
+  background-color: rgba(34, 197, 94, 0.18) !important;
+  color: #86efac !important;
+  border: 1px solid rgba(34, 197, 94, 0.4) !important;
+}
+
+html.dark .daily-day-badge.day-badge-vacaciones {
+  background-color: rgba(234, 179, 8, 0.18) !important;
+  color: #fde047 !important;
+  border: 1px solid rgba(234, 179, 8, 0.4) !important;
+}
+
+html.dark .daily-day-badge.day-badge-licencia {
+  background-color: rgba(239, 68, 68, 0.18) !important;
+  color: #fca5a5 !important;
+  border: 1px solid rgba(239, 68, 68, 0.4) !important;
+}
+
+html.dark .daily-day-badge.day-badge-operativo {
+  background-color: rgba(59, 130, 246, 0.18) !important;
+  color: #93c5fd !important;
+  border: 2px solid rgba(59, 130, 246, 0.5) !important;
+}
+
+html.dark .daily-day-badge.fatiga-warn {
+  background-color: rgba(249, 115, 22, 0.2) !important;
+  color: #fdba74 !important;
+  border: 2.5px solid #f97316 !important;
+}
+
+html.dark .daily-day-badge.fatiga-crit {
+  background-color: rgba(239, 68, 68, 0.22) !important;
+  color: #fca5a5 !important;
+  border: 2.5px solid #ef4444 !important;
 }
 
 .daily-day-badge-val {

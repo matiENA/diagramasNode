@@ -131,7 +131,7 @@ export const DriverDocAccordion = ({ choferId, chofer }) => {
                   <div className="doc-item-box" style={{ padding: '0.5rem' }}>
                     <div className="doc-item-header" style={{ marginBottom: '0.25rem' }}>
                       <span className="doc-item-name" style={{ fontSize: '0.7rem' }}>PERIÓDICO</span>
-                      <span className={`doc-status-badge badge-${getBadgeState(dates.venc_periodico).type}`} style={{ fontSize: '0.6rem', padding: '0.1rem 0.35rem' }}>
+                      <span className={`doc-status-badge badge-${getBadgeState(dates.venc_periodico).type}`}>
                         {getBadgeState(dates.venc_periodico).label}
                       </span>
                     </div>
@@ -159,7 +159,7 @@ export const DriverDocAccordion = ({ choferId, chofer }) => {
                   <div className="doc-item-box" style={{ padding: '0.5rem' }}>
                     <div className="doc-item-header" style={{ marginBottom: '0.25rem' }}>
                       <span className="doc-item-name" style={{ fontSize: '0.7rem' }}>LICENCIA</span>
-                      <span className={`doc-status-badge badge-${getBadgeState(dates.venc_licencia_nacional).type}`} style={{ fontSize: '0.6rem', padding: '0.1rem 0.35rem' }}>
+                      <span className={`doc-status-badge badge-${getBadgeState(dates.venc_licencia_nacional).type}`}>
                         {getBadgeState(dates.venc_licencia_nacional).label}
                       </span>
                     </div>
@@ -187,7 +187,7 @@ export const DriverDocAccordion = ({ choferId, chofer }) => {
                   <div className="doc-item-box" style={{ padding: '0.5rem' }}>
                     <div className="doc-item-header" style={{ marginBottom: '0.25rem' }}>
                       <span className="doc-item-name" style={{ fontSize: '0.7rem' }}>CARGAS PEL.</span>
-                      <span className={`doc-status-badge badge-${getBadgeState(dates.venc_cargas_peligrosas).type}`} style={{ fontSize: '0.6rem', padding: '0.1rem 0.35rem' }}>
+                      <span className={`doc-status-badge badge-${getBadgeState(dates.venc_cargas_peligrosas).type}`}>
                         {getBadgeState(dates.venc_cargas_peligrosas).label}
                       </span>
                     </div>
@@ -215,7 +215,7 @@ export const DriverDocAccordion = ({ choferId, chofer }) => {
                   <div className="doc-item-box" style={{ padding: '0.5rem' }}>
                     <div className="doc-item-header" style={{ marginBottom: '0.25rem' }}>
                       <span className="doc-item-name" style={{ fontSize: '0.7rem' }}>PSICOFÍSICO</span>
-                      <span className={`doc-status-badge badge-${getBadgeState(dates.venc_psicofisico).type}`} style={{ fontSize: '0.6rem', padding: '0.1rem 0.35rem' }}>
+                      <span className={`doc-status-badge badge-${getBadgeState(dates.venc_psicofisico).type}`}>
                         {getBadgeState(dates.venc_psicofisico).label}
                       </span>
                     </div>
@@ -351,7 +351,7 @@ export const DriverDocAccordion = ({ choferId, chofer }) => {
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
                 <span style={{ fontSize: '0.95rem' }}>🩺</span>
                 <span className="doc-disclosure-title" style={{ fontSize: '0.8rem', fontWeight: 900 }}>AVALADOS Y APTOS</span>
-                <span className={`doc-status-badge ${isAptoAvalado ? 'badge-VIGENTE' : 'badge-VENCIDO'}`} style={{ fontSize: '0.62rem', padding: '0.1rem 0.4rem' }}>
+                <span className={`doc-status-badge ${isAptoAvalado ? 'badge-VIGENTE' : 'badge-VENCIDO'}`}>
                   {isAptoAvalado ? 'AVALADO' : 'NO AVALADO'}
                 </span>
               </div>
@@ -386,11 +386,14 @@ export const DriverDocAccordion = ({ choferId, chofer }) => {
                             backgroundColor: '#ecfdf5',
                             color: '#065f46',
                             border: '1px solid #a7f3d0',
-                            padding: '0.15rem 0.45rem',
+                            padding: '0 0.5rem',
+                            height: '22px',
                             borderRadius: '4px',
                             display: 'inline-flex',
                             alignItems: 'center',
-                            gap: '0.25rem'
+                            gap: '0.25rem',
+                            boxSizing: 'border-box',
+                            lineHeight: 1
                           }}
                         >
                           <ShieldCheck size={12} color="#059669" />
@@ -427,7 +430,7 @@ export const DriverDocAccordion = ({ choferId, chofer }) => {
                   <div className="doc-item-box" style={{ padding: '0.5rem' }}>
                     <div className="doc-item-header" style={{ marginBottom: '0.2rem' }}>
                       <span className="doc-field-label" style={{ fontSize: '0.65rem' }}>VENC. APTO</span>
-                      <span className={`doc-status-badge badge-${getBadgeState(dates.apto_medico_venc).type}`} style={{ fontSize: '0.6rem', padding: '0.1rem 0.35rem' }}>
+                      <span className={`doc-status-badge badge-${getBadgeState(dates.apto_medico_venc).type}`}>
                         {getBadgeState(dates.apto_medico_venc).label}
                       </span>
                     </div>

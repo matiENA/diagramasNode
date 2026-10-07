@@ -250,12 +250,12 @@ export const UnitAssignModal = ({ isOpen, onClose, driver }) => {
                             <span style={{ fontSize: '0.85rem', fontWeight: 900, color: 'var(--text-main)', fontFamily: 'var(--font-mono)' }}>
                               UTE: {u.n_ute || '—'}
                             </span>
-                            <span style={{ fontSize: '0.72rem', padding: '0.1rem 0.4rem', borderRadius: '4px', backgroundColor: '#e2e8f0', fontWeight: 700 }}>
-                              {u.servicio || 'S/A'}
+                            <span className="chip-badge chip-service">
+                              {u.servicio || 'GENERAL'}
                             </span>
                             {tieneAlertaDocs && (
-                              <span style={{ fontSize: '0.7rem', color: '#dc2626', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.2rem' }} title="VTV o MAS Vencido">
-                                <ShieldAlert size={12} />
+                              <span className="alert-mini-pill alert-red" title="VTV o MAS Vencido">
+                                <ShieldAlert size={11} />
                                 <span>VTV</span>
                               </span>
                             )}
@@ -267,8 +267,8 @@ export const UnitAssignModal = ({ isOpen, onClose, driver }) => {
                           </div>
 
                           {ocupadoPorOtro && (
-                            <div style={{ fontSize: '0.72rem', color: '#d97706', fontWeight: 600 }}>
-                              Asignado a: {u.chofer_nombre}
+                            <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                              Asignado a: <strong>{u.chofer_nombre}</strong>
                             </div>
                           )}
                         </div>
@@ -276,7 +276,7 @@ export const UnitAssignModal = ({ isOpen, onClose, driver }) => {
                         {/* Botón Acción Asignar */}
                         <div>
                           {esLaActual ? (
-                            <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--primary)', padding: '0.35rem 0.75rem', backgroundColor: '#dbeafe', borderRadius: 'var(--radius-sm)' }}>
+                            <span className="badge-vtv AL_DIA" style={{ minWidth: 'auto', padding: '0 0.6rem' }}>
                               Asignada
                             </span>
                           ) : (

@@ -45,26 +45,19 @@ const evaluateDateStatus = (val) => {
 };
 
 const renderDateCell = (val) => {
-  if (!val) return <span style={{ color: 'var(--text-muted)' }}>—</span>;
+  if (!val) {
+    return (
+      <span className="badge-vtv S_D" title="Sin fecha registrada">
+        —
+      </span>
+    );
+  }
   const status = evaluateDateStatus(val);
   const formatted = formatDate(val);
 
   if (status === 'vencida') {
     return (
-      <span
-        style={{
-          display: 'inline-block',
-          padding: '0.2rem 0.5rem',
-          borderRadius: '4px',
-          fontSize: '0.78rem',
-          fontWeight: 800,
-          fontFamily: 'var(--font-mono)',
-          backgroundColor: 'rgba(239, 68, 68, 0.12)',
-          color: '#dc2626',
-          border: '1px solid rgba(239, 68, 68, 0.3)',
-        }}
-        title="Vencido"
-      >
+      <span className="badge-vtv VENCIDO" title="Vencido">
         {formatted}
       </span>
     );
@@ -72,27 +65,14 @@ const renderDateCell = (val) => {
 
   if (status === 'por_vencer') {
     return (
-      <span
-        style={{
-          display: 'inline-block',
-          padding: '0.2rem 0.5rem',
-          borderRadius: '4px',
-          fontSize: '0.78rem',
-          fontWeight: 800,
-          fontFamily: 'var(--font-mono)',
-          backgroundColor: 'rgba(245, 158, 11, 0.12)',
-          color: '#d97706',
-          border: '1px solid rgba(245, 158, 11, 0.3)',
-        }}
-        title="Por vencer (menos de 1 mes)"
-      >
+      <span className="badge-vtv POR_VENCER" title="Por vencer (menos de 1 mes)">
         {formatted}
       </span>
     );
   }
 
   return (
-    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-main)', fontWeight: 600 }}>
+    <span className="badge-vtv AL_DIA" title="Vigente / Al día">
       {formatted}
     </span>
   );
@@ -191,50 +171,15 @@ export const FlotaModule = ({ onNavigateToIndividual }) => {
                       <button
                         type="button"
                         onClick={() => handleDriverClick(u.chofer_id)}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '0.3rem',
-                          minWidth: '2.4rem',
-                          padding: '0.25rem 0.55rem',
-                          borderRadius: 'var(--radius-sm)',
-                          fontSize: '0.82rem',
-                          fontWeight: 800,
-                          fontFamily: 'var(--font-mono)',
-                          backgroundColor: u.dia_diagrama && u.dia_diagrama !== '-' ? 'rgba(59, 130, 246, 0.12)' : 'rgba(148, 163, 184, 0.1)',
-                          color: u.dia_diagrama && u.dia_diagrama !== '-' ? '#2563eb' : '#64748b',
-                          border: u.dia_diagrama && u.dia_diagrama !== '-' ? '1px solid rgba(59, 130, 246, 0.3)' : '1px solid rgba(148, 163, 184, 0.2)',
-                          cursor: 'pointer',
-                          transition: 'all 0.15s ease',
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.22)';
-                          e.currentTarget.style.transform = 'translateY(-1px)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = u.dia_diagrama && u.dia_diagrama !== '-' ? 'rgba(59, 130, 246, 0.12)' : 'rgba(148, 163, 184, 0.1)';
-                          e.currentTarget.style.transform = 'none';
-                        }}
+                        className="badge-flota-diag-btn"
                         title={`Clic para abrir ficha individual de ${u.chofer_nombre || 'chofer'}`}
+                        aria-label={`Abrir ficha individual de ${u.chofer_nombre || 'chofer'}`}
                       >
                         <span>{u.dia_diagrama || '—'}</span>
-                        <ExternalLink size={11} style={{ opacity: 0.6 }} />
+                        <ExternalLink size={11} style={{ opacity: 0.7 }} />
                       </button>
                     ) : (
-                      <span
-                        style={{
-                          display: 'inline-block',
-                          minWidth: '2.4rem',
-                          padding: '0.25rem 0.55rem',
-                          borderRadius: 'var(--radius-sm)',
-                          fontSize: '0.82rem',
-                          fontWeight: 700,
-                          fontFamily: 'var(--font-mono)',
-                          backgroundColor: 'rgba(148, 163, 184, 0.1)',
-                          color: '#94a3b8',
-                          border: '1px solid rgba(148, 163, 184, 0.2)',
-                        }}
-                      >
+                      <span className="badge-flota-diag-empty" title="Sin chofer asignado">
                         —
                       </span>
                     )}

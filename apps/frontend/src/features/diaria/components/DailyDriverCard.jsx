@@ -103,12 +103,18 @@ export const DailyDriverCard = ({ driver, fechaContexto, kmInfo, onSelectDriver 
 
                 <div className="daily-card-meta">
                   {/* Nombre con EasyCopy estilo legacy (badge dashed 0.5px) */}
-                  {/* Nombre con EasyCopy estilo legacy (badge dashed 0.5px) y WhatsApp */}
+                  {/* Nombre con EasyCopy estilo legacy (badge dashed 1px) y WhatsApp */}
                   <div className="daily-card-name-row">
                     <div
+                      role="button"
+                      tabIndex={0}
                       className={`badge-easycopy-name ${copiedField === 'nombre' ? 'copied' : ''}`}
                       onClick={(e) => handleCopy(driver.nombre, 'Nombre', e)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') handleCopy(driver.nombre, 'Nombre', e);
+                      }}
                       title={`Clic para copiar Nombre: ${driver.nombre}`}
+                      aria-label={`Copiar nombre: ${driver.nombre}`}
                     >
                       <h3 className="daily-card-name" style={{ margin: 0, whiteSpace: 'nowrap' }}>
                         {driver.nombre}
@@ -127,6 +133,7 @@ export const DailyDriverCard = ({ driver, fechaContexto, kmInfo, onSelectDriver 
                         rel="noreferrer"
                         className="btn-whatsapp-mini"
                         title={`WhatsApp: ${driver.telefono}`}
+                        aria-label={`Enviar WhatsApp a ${driver.nombre}`}
                         onClick={(e) => e.stopPropagation()}
                       >
                         <MessageCircle size={12} />
@@ -143,9 +150,15 @@ export const DailyDriverCard = ({ driver, fechaContexto, kmInfo, onSelectDriver 
                     {/* DNI EasyCopy */}
                     {driver.dni && (
                       <span
+                        role="button"
+                        tabIndex={0}
                         className={`badge-easycopy ${copiedField === 'dni' ? 'copied' : ''}`}
                         onClick={(e) => handleCopy(driver.dni, 'DNI', e)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') handleCopy(driver.dni, 'DNI', e);
+                        }}
                         title={`Clic para copiar DNI: ${driver.dni}`}
+                        aria-label={`Copiar DNI: ${driver.dni}`}
                       >
                         <span>DNI: {driver.dni}</span>
                         {copiedField === 'dni' ? (
@@ -164,9 +177,15 @@ export const DailyDriverCard = ({ driver, fechaContexto, kmInfo, onSelectDriver 
                 {driver.tractor || driver.semi || driver.n_ute ? (
                   <>
                     <div
+                      role="button"
+                      tabIndex={0}
                       className={`unit-badge-pill ${copiedField === 'tractor' ? 'copied' : ''}`}
                       onClick={(e) => handleCopy(driver.tractor, 'Tractor', e)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') handleCopy(driver.tractor, 'Tractor', e);
+                      }}
                       title={`Clic para copiar Tractor: ${driver.tractor || '—'}`}
+                      aria-label={`Copiar Tractor: ${driver.tractor || '—'}`}
                     >
                       <span className="unit-label">TRAC</span>
                       <span className="unit-val font-mono">{driver.tractor || '—'}</span>
@@ -178,9 +197,15 @@ export const DailyDriverCard = ({ driver, fechaContexto, kmInfo, onSelectDriver 
                     </div>
 
                     <div
+                      role="button"
+                      tabIndex={0}
                       className={`unit-badge-pill ${copiedField === 'semi' ? 'copied' : ''}`}
                       onClick={(e) => handleCopy(driver.semi, 'Semi', e)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') handleCopy(driver.semi, 'Semi', e);
+                      }}
                       title={`Clic para copiar Semi: ${driver.semi || '—'}`}
+                      aria-label={`Copiar Semi: ${driver.semi || '—'}`}
                     >
                       <span className="unit-label">SEMI</span>
                       <span className="unit-val font-mono">{driver.semi || '—'}</span>
@@ -199,15 +224,22 @@ export const DailyDriverCard = ({ driver, fechaContexto, kmInfo, onSelectDriver 
                       }}
                       className="btn-assign-gear-mini"
                       title="Cambiar o reasignar tractor / semi"
+                      aria-label="Cambiar o reasignar tractor o semi"
                     >
                       <Truck size={12} />
                     </button>
 
                     {driver.n_ute && (
                       <div
+                        role="button"
+                        tabIndex={0}
                         className={`unit-badge-pill ${copiedField === 'n_ute' ? 'copied' : ''}`}
                         onClick={(e) => handleCopy(driver.n_ute, 'UTE', e)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') handleCopy(driver.n_ute, 'UTE', e);
+                        }}
                         title={`Clic para copiar UTE: ${driver.n_ute}`}
+                        aria-label={`Copiar UTE: ${driver.n_ute}`}
                       >
                         <span className="unit-label">UTE:</span>
                         <span className="unit-val font-mono">{driver.n_ute}</span>
@@ -221,12 +253,21 @@ export const DailyDriverCard = ({ driver, fechaContexto, kmInfo, onSelectDriver 
                   </>
                 ) : (
                   <div
+                    role="button"
+                    tabIndex={0}
                     onClick={(e) => {
                       e.stopPropagation();
                       setIsAssignModalOpen(true);
                     }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.stopPropagation();
+                        setIsAssignModalOpen(true);
+                      }
+                    }}
                     className="btn-assign-unit-dashed"
                     title="Asignar unidad operativa a este chofer"
+                    aria-label="Asignar unidad operativa a este chofer"
                   >
                     <Truck size={13} />
                     <span>+ Asignar</span>
@@ -241,7 +282,7 @@ export const DailyDriverCard = ({ driver, fechaContexto, kmInfo, onSelectDriver 
                   {/* Badge Legacy: Retorna Hoy / Vuelve en Xd */}
                   {returnInfo && (
                     <span
-                      className="badge-retorno-legacy px-2 py-1 rounded-md text-[10px] font-bold bg-indigo-100 text-indigo-800 border border-indigo-300"
+                      className="badge-retorno-legacy"
                       title={returnInfo.returnsToday ? 'El conductor retoma actividades hoy' : `Retoma servicio el ${returnInfo.date.substring(5).replace('-', '/')}`}
                     >
                       {returnInfo.returnsToday ? '🔄 Retorna HOY' : `🔄 Vuelve en ${returnInfo.diffDays}d`}
@@ -283,7 +324,7 @@ export const DailyDriverCard = ({ driver, fechaContexto, kmInfo, onSelectDriver 
 
                 {/* Badge Principal del Estado del Día (Fatiga / F / V / IND) */}
                 <div
-                  className="daily-day-badge"
+                  className={`daily-day-badge day-badge-${dayStatus.type ? dayStatus.type.toLowerCase() : 'default'} ${dayStatus.cons >= 22 ? 'fatiga-crit' : dayStatus.cons >= 18 ? 'fatiga-warn' : ''}`}
                   style={getBadgeStyle()}
                   title={`Estado: ${dayStatus.raw} (${dayStatus.type}) • Fecha: ${displayDate}${driver.diagrama_tipo ? ' • Tipo: ' + driver.diagrama_tipo : ''}`}
                 >
@@ -294,7 +335,7 @@ export const DailyDriverCard = ({ driver, fechaContexto, kmInfo, onSelectDriver 
                 </div>
 
                 {/* Botón Acordeón Desplegable */}
-                <DisclosureButton className="btn-card-accordion-toggle" title="Ver detalle de vencimientos y métricas">
+                <DisclosureButton className="btn-card-accordion-toggle" title="Ver detalle de vencimientos y métricas" aria-label="Desplegar detalle de conductor">
                   {open ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                 </DisclosureButton>
               </div>

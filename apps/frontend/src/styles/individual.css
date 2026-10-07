@@ -208,21 +208,43 @@
 .btn-whatsapp-chat {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.35rem;
+  height: 24px;
   background-color: #ecfdf5;
-  color: #059669;
+  color: #065f46;
   border: 1px solid #a7f3d0;
-  padding: 0.25rem 0.6rem;
-  border-radius: var(--radius-sm);
-  font-size: 0.75rem;
+  padding: 0 0.6rem;
+  border-radius: var(--radius-sm, 6px);
+  font-size: 0.74rem;
   font-weight: 800;
   text-decoration: none;
   transition: all 0.15s ease;
+  box-sizing: border-box;
+  line-height: 1;
+}
+
+html.dark .btn-whatsapp-chat {
+  background-color: rgba(16, 185, 129, 0.15);
+  color: #6ee7b7;
+  border-color: rgba(16, 185, 129, 0.35);
 }
 
 .btn-whatsapp-chat:hover {
   background-color: #059669;
   color: #ffffff;
+  border-color: #059669;
+}
+
+html.dark .btn-whatsapp-chat:hover {
+  background-color: #10b981;
+  color: #0f172a;
+  border-color: #10b981;
+}
+
+.btn-whatsapp-chat:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
 }
 
 /* Tarjeta de Unidad Operativa */
@@ -273,9 +295,10 @@
 }
 
 .driver-unit-prop-val.badge-easycopy {
-  border: 0.5px dashed #94a3b8;
+  border: 1px dashed #94a3b8;
   background-color: #ffffff;
-  padding: 0.2rem 0.5rem;
+  height: 30px;
+  padding: 0 0.55rem;
   border-radius: var(--radius-sm, 4px);
   display: inline-flex;
   align-items: center;
@@ -283,7 +306,15 @@
   gap: 0.35rem;
   cursor: pointer;
   transition: all 0.15s ease-in-out;
-  width: fit-content;
+  width: 100%;
+  box-sizing: border-box;
+  line-height: 1;
+}
+
+html.dark .driver-unit-prop-val.badge-easycopy {
+  background-color: #1e293b;
+  border-color: #64748b;
+  color: #f8fafc;
 }
 
 .driver-unit-prop-val.badge-easycopy:hover {
@@ -293,10 +324,53 @@
   box-shadow: 0 1px 3px rgba(37, 99, 235, 0.12);
 }
 
+html.dark .driver-unit-prop-val.badge-easycopy:hover {
+  border-color: #60a5fa;
+  background-color: rgba(59, 130, 246, 0.2);
+  color: #93c5fd;
+}
+
+.driver-unit-prop-val.badge-easycopy:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
 .driver-unit-prop-val.badge-easycopy.copied {
-  border-color: #10b981 !important;
+  border-color: #059669 !important;
   background-color: #ecfdf5 !important;
   color: #065f46 !important;
+}
+
+html.dark .driver-unit-prop-val.badge-easycopy.copied {
+  border-color: #10b981 !important;
+  background-color: rgba(16, 185, 129, 0.2) !important;
+  color: #6ee7b7 !important;
+}
+
+.driver-unit-service-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  padding: 0 0.75rem;
+  border-radius: var(--radius-sm, 4px);
+  background-color: #fef3c7;
+  border: 1px solid #fde68a;
+  color: #92400e;
+  font-weight: 900;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  width: fit-content;
+  cursor: default;
+  user-select: none;
+  box-sizing: border-box;
+  line-height: 1;
+}
+
+html.dark .driver-unit-service-badge {
+  background-color: rgba(245, 158, 11, 0.18);
+  border-color: rgba(245, 158, 11, 0.4);
+  color: #fde68a;
 }
 
 .driver-name-easycopy {
@@ -1034,36 +1108,67 @@ html.dark .btn-range-limpiar:hover:not(:disabled) {
 }
 
 .doc-status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
   font-size: 0.68rem;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  padding: 0.2rem 0.55rem;
-  border-radius: var(--radius-sm);
+  padding: 0 0.5rem;
+  border-radius: var(--radius-sm, 4px);
+  box-sizing: border-box;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .doc-status-badge.badge-VIGENTE {
   background-color: #ecfdf5;
-  color: #059669;
+  color: #065f46;
   border: 1px solid #a7f3d0;
 }
 
+html.dark .doc-status-badge.badge-VIGENTE {
+  background-color: rgba(16, 185, 129, 0.18);
+  color: #6ee7b7;
+  border-color: rgba(16, 185, 129, 0.35);
+}
+
 .doc-status-badge.badge-POR_VENCER {
-  background-color: #fffbeb;
-  color: #d97706;
+  background-color: #fef3c7;
+  color: #92400e;
   border: 1px solid #fde68a;
 }
 
+html.dark .doc-status-badge.badge-POR_VENCER {
+  background-color: rgba(245, 158, 11, 0.18);
+  color: #fde68a;
+  border-color: rgba(245, 158, 11, 0.4);
+}
+
 .doc-status-badge.badge-VENCIDO {
-  background-color: #fef2f2;
-  color: #dc2626;
-  border: 1px solid #fecaca;
+  background-color: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+}
+
+html.dark .doc-status-badge.badge-VENCIDO {
+  background-color: rgba(239, 68, 68, 0.18);
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.4);
 }
 
 .doc-status-badge.badge-S_D {
-  background-color: var(--bg-surface);
+  background-color: var(--bg-surface-muted);
   color: var(--text-muted);
   border: 1px solid var(--border-subtle);
+}
+
+html.dark .doc-status-badge.badge-S_D {
+  background-color: #1e293b;
+  color: #94a3b8;
+  border-color: #334155;
 }
 
 .doc-input-row {

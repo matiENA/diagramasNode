@@ -205,9 +205,15 @@ export const DriverProfileCard = ({ chofer }) => {
             <span style={{ opacity: 0.4 }}>•</span>
 
             <span
+              role="button"
+              tabIndex={0}
               className={`badge-easycopy ${copiedField === 'dni' ? 'copied' : ''}`}
               onClick={(e) => handleCopy(chofer.dni, 'dni', e)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') handleCopy(chofer.dni, 'dni', e);
+              }}
               title="Clic para copiar DNI"
+              aria-label={`Copiar DNI: ${chofer.dni || 'S/D'}`}
               style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}
             >
               <span>DNI: <strong>{chofer.dni || 'S/D'}</strong></span>
@@ -234,20 +240,8 @@ export const DriverProfileCard = ({ chofer }) => {
                 target="_blank"
                 rel="noreferrer"
                 className="btn-whatsapp-chat"
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.3rem',
-                  backgroundColor: '#ecfdf5',
-                  color: '#059669',
-                  border: '1px solid #a7f3d0',
-                  padding: '0.2rem 0.6rem',
-                  borderRadius: 'var(--radius-sm, 6px)',
-                  fontWeight: 800,
-                  fontSize: '0.74rem',
-                  textDecoration: 'none'
-                }}
                 title={`Abrir WhatsApp con ${chofer.telefono}`}
+                aria-label={`Abrir WhatsApp con ${chofer.telefono}`}
               >
                 <MessageCircle size={14} />
                 <span>CHAT</span>
@@ -271,10 +265,15 @@ export const DriverProfileCard = ({ chofer }) => {
                 N° UTE INTERNO
               </span>
               <span
+                role="button"
+                tabIndex={0}
                 className={`driver-unit-prop-val badge-easycopy ${copiedField === 'n_ute' ? 'copied' : ''}`}
                 onClick={(e) => handleCopy(chofer.n_ute, 'n_ute', e)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') handleCopy(chofer.n_ute, 'n_ute', e);
+                }}
                 title={`Copiar UTE: ${chofer.n_ute || '-'}`}
-                style={{ fontSize: '0.88rem', border: '1px dashed #94a3b8', padding: '0.25rem 0.55rem', borderRadius: '4px' }}
+                aria-label={`Copiar UTE: ${chofer.n_ute || '-'}`}
               >
                 <span>{chofer.n_ute || '-'}</span>
                 {copiedField === 'n_ute' ? <Check size={12} color="#059669" /> : <Copy size={11} className="easycopy-icon" />}
@@ -287,10 +286,16 @@ export const DriverProfileCard = ({ chofer }) => {
                 TRACTOR
               </span>
               <span
+                role="button"
+                tabIndex={0}
                 className={`driver-unit-prop-val badge-easycopy ${copiedField === 'tractor' ? 'copied' : ''}`}
                 onClick={(e) => handleCopy(chofer.tractor, 'tractor', e)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') handleCopy(chofer.tractor, 'tractor', e);
+                }}
                 title={`Copiar Tractor: ${chofer.tractor || '-'}`}
-                style={{ fontSize: '0.88rem', color: 'var(--primary)', border: '1px dashed #94a3b8', padding: '0.25rem 0.55rem', borderRadius: '4px' }}
+                aria-label={`Copiar Tractor: ${chofer.tractor || '-'}`}
+                style={{ color: 'var(--primary)' }}
               >
                 <span>{chofer.tractor || '-'}</span>
                 {copiedField === 'tractor' ? <Check size={12} color="#059669" /> : <Copy size={11} className="easycopy-icon" />}
@@ -306,10 +311,15 @@ export const DriverProfileCard = ({ chofer }) => {
                 SEMI
               </span>
               <span
+                role="button"
+                tabIndex={0}
                 className={`driver-unit-prop-val badge-easycopy ${copiedField === 'semi' ? 'copied' : ''}`}
                 onClick={(e) => handleCopy(chofer.semi, 'semi', e)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') handleCopy(chofer.semi, 'semi', e);
+                }}
                 title={`Copiar Semi: ${chofer.semi || '-'}`}
-                style={{ fontSize: '0.88rem', border: '1px dashed #94a3b8', padding: '0.25rem 0.55rem', borderRadius: '4px' }}
+                aria-label={`Copiar Semi: ${chofer.semi || '-'}`}
               >
                 <span>{chofer.semi || '-'}</span>
                 {copiedField === 'semi' ? <Check size={12} color="#059669" /> : <Copy size={11} className="easycopy-icon" />}
@@ -326,23 +336,7 @@ export const DriverProfileCard = ({ chofer }) => {
               <span className="driver-unit-prop-label" style={{ fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)' }}>
                 SERVICIO
               </span>
-              <span
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  padding: '0.25rem 0.75rem',
-                  borderRadius: '4px',
-                  backgroundColor: '#fffbeb',
-                  border: '1px solid #fde68a',
-                  color: '#92400e',
-                  fontWeight: 900,
-                  fontSize: '0.85rem',
-                  textTransform: 'uppercase',
-                  width: 'fit-content',
-                  cursor: 'default',
-                  userSelect: 'none'
-                }}
-              >
+              <span className="driver-unit-service-badge">
                 {chofer.servicio || 'GENERAL'}
               </span>
             </div>
