@@ -2,14 +2,21 @@ import React from 'react';
 import { Search, Filter, X, ShieldAlert, Truck } from 'lucide-react';
 
 export const FiltersSidebar = ({ filters, onFilterChange, onResetFilters }) => {
-  const servicios = ['TODOS', 'METANOL', 'LIVIANO', 'CAMPO', 'GLP', 'YPF', 'ABASTECEDORES'];
+  const servicios = ['TODOS', 'METANOL', 'LIVIANO', 'CAMPO', 'GLP', 'YPF', 'GRALES.'];
 
-  const estadosOperativos = [
-    { id: 'TODOS', label: 'Todos los estados' },
-    { id: 'ACTIVOS', label: '🟢 Activos (Trabajando)' },
-    { id: 'FRANCOS', label: '🔵 Francos (F)' },
-    { id: 'VACACIONES', label: '🟡 Vacaciones (V)' },
-    { id: 'LICENCIAS', label: '🔴 Licencias / Indispuesto' },
+  const estadosGrid = [
+    // Fila 1: Descansos y Trabajo
+    { id: 'F', label: 'F', title: 'Francos (F)' },
+    { id: 'FSF', label: 'FSF', title: 'Franco Sin Franco' },
+    { id: 'V', label: 'V', title: 'Vacaciones (V)' },
+    { id: 'VSF', label: 'VSF', title: 'Vacaciones Sin Franco' },
+    { id: 'ACT', label: 'ACT', title: 'Activos (Trabajando)' },
+    // Fila 2: Novedades / Ausencias
+    { id: 'E', label: 'E', title: 'Enfermedad' },
+    { id: 'ART', label: 'ART', title: 'Accidente Laboral / ART' },
+    { id: 'IND', label: 'IND', title: 'Indispuesto' },
+    { id: 'S', label: 'S', title: 'Suspensión' },
+    { id: 'A', label: 'A', title: 'Ausente' },
   ];
 
   const alertas = [
@@ -87,23 +94,37 @@ export const FiltersSidebar = ({ filters, onFilterChange, onResetFilters }) => {
         </button>
       </div>
 
-      {/* Filtro por Estado Operativo del Día */}
+      {/* Filtro por Estado Operativo del Día (Grilla 5x2) */}
       <div className="filter-section">
         <span className="filter-label">Estado del Día</span>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-          {estadosOperativos.map((st) => {
-            const isSelected = (filters.estado || 'TODOS') === st.id;
-            return (
-              <button
-                key={st.id}
-                onClick={() => onFilterChange('estado', st.id)}
-                className={`filter-chip-btn ${isSelected ? 'active' : ''}`}
-                style={{ textAlign: 'left', padding: '0.5rem 0.75rem', borderRadius: 'var(--radius-sm)' }}
-              >
-                {st.label}
-              </button>
-            );
-          })}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+          {/* Botón Principal: Todos los Estados */}
+          <button
+            type="button"
+            onClick={() => onFilterChange('estado', 'TODOS')}
+            className={`filter-chip-btn ${(filters.estado || 'TODOS') === 'TODOS' ? 'active' : ''}`}
+            style={{ width: '100%', textAlign: 'left', padding: '0.55rem 0.75rem', borderRadius: 'var(--radius-sm)' }}
+          >
+            Todos los estados
+          </button>
+
+          {/* Micro-Grilla 5x2 de Estados */}
+          <div className="filter-states-grid-5x2">
+            {estadosGrid.map((st) => {
+              const isSelected = filters.estado === st.id;
+              return (
+                <button
+                  key={st.id}
+                  type="button"
+                  onClick={() => onFilterChange('estado', isSelected ? 'TODOS' : st.id)}
+                  className={`filter-state-chip chip-${st.id} ${isSelected ? 'active' : ''}`}
+                  title={st.title}
+                >
+                  {st.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 

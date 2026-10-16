@@ -36,8 +36,13 @@ module.exports = function createViewsRouter() {
             const params = [];
 
             if (servicio && servicio !== 'TODOS') {
-                params.push(servicio.trim().toUpperCase());
-                conditions.push(`UPPER(servicio) = $${params.length}`);
+                const sUpper = servicio.trim().toUpperCase();
+                if (sUpper === 'GRALES.' || sUpper === 'GRALES') {
+                    conditions.push(`UPPER(servicio) IN ('GRALES', 'GRALES.')`);
+                } else {
+                    params.push(sUpper);
+                    conditions.push(`UPPER(servicio) = $${params.length}`);
+                }
             }
 
             if (alerta === 'DOCS_VENCIDOS') {
@@ -124,8 +129,13 @@ module.exports = function createViewsRouter() {
             }
 
             if (servicio && servicio !== 'TODOS') {
-                params.push(servicio.trim().toUpperCase());
-                conditions.push(`UPPER(COALESCE(servicio, '')) = $${params.length}`);
+                const sUpper = servicio.trim().toUpperCase();
+                if (sUpper === 'GRALES.' || sUpper === 'GRALES') {
+                    conditions.push(`UPPER(COALESCE(servicio, '')) IN ('GRALES', 'GRALES.')`);
+                } else {
+                    params.push(sUpper);
+                    conditions.push(`UPPER(COALESCE(servicio, '')) = $${params.length}`);
+                }
             }
 
             if (tipo && tipo !== 'TODOS') {
@@ -245,8 +255,13 @@ module.exports = function createViewsRouter() {
             const params = [mesTab.trim()];
 
             if (servicio && servicio !== 'TODOS') {
-                params.push(servicio.trim().toUpperCase());
-                conditions.push(`UPPER(COALESCE(servicio, '')) = $${params.length}`);
+                const sUpper = servicio.trim().toUpperCase();
+                if (sUpper === 'GRALES.' || sUpper === 'GRALES') {
+                    conditions.push(`UPPER(COALESCE(servicio, '')) IN ('GRALES', 'GRALES.')`);
+                } else {
+                    params.push(sUpper);
+                    conditions.push(`UPPER(COALESCE(servicio, '')) = $${params.length}`);
+                }
             }
 
             if (search && search.trim().length > 0) {
@@ -361,16 +376,31 @@ module.exports = function createViewsRouter() {
                 fechaEvaluada = fecha.trim();
             }
 
-            // 2. Filtro por tipo de retorno (HOY, MANANA o TODOS)
-            if (tipo && ['HOY', 'MANANA'].includes(tipo.trim().toUpperCase())) {
-                params.push(tipo.trim().toUpperCase());
-                conditions.push(`retorna_cuando = $${params.length}`);
+            // 2. Filtro por tipo de retorno (HOY, MANANA / MAÑANA, 2, 3, 4 o TODOS)
+            if (tipo) {
+                const tUpper = tipo.trim().toUpperCase();
+                if (tUpper === 'HOY') {
+                    conditions.push(`retorna_cuando = 'HOY'`);
+                } else if (tUpper === 'MANANA' || tUpper === 'MAÑANA') {
+                    conditions.push(`retorna_cuando IN ('MANANA', 'MAÑANA')`);
+                } else if (tUpper === '2' || tUpper === '2_DIAS' || tUpper === 'EN 2 DÍAS') {
+                    conditions.push(`dias_para_retorno = 2`);
+                } else if (tUpper === '3' || tUpper === '3_DIAS' || tUpper === 'EN 3 DÍAS') {
+                    conditions.push(`dias_para_retorno = 3`);
+                } else if (tUpper === '4' || tUpper === '4_DIAS' || tUpper === 'EN 4 DÍAS') {
+                    conditions.push(`dias_para_retorno = 4`);
+                }
             }
 
             // 3. Filtro por servicio
             if (servicio && servicio !== 'TODOS') {
-                params.push(servicio.trim().toUpperCase());
-                conditions.push(`UPPER(COALESCE(servicio, '')) = $${params.length}`);
+                const sUpper = servicio.trim().toUpperCase();
+                if (sUpper === 'GRALES.' || sUpper === 'GRALES') {
+                    conditions.push(`UPPER(COALESCE(servicio, '')) IN ('GRALES', 'GRALES.')`);
+                } else {
+                    params.push(sUpper);
+                    conditions.push(`UPPER(COALESCE(servicio, '')) = $${params.length}`);
+                }
             }
 
             // 4. Búsqueda por texto (nombre, legajo, dni, tractor, n_ute)
@@ -391,14 +421,17 @@ module.exports = function createViewsRouter() {
             const dataQuery = `
                 SELECT * FROM ${fromSource}
                 ${whereClause}
-                ORDER BY retorna_cuando ASC, nombre ASC
+                ORDER BY fecha_retorno ASC, nombre ASC
             `;
 
             const dataRes = await db.query(dataQuery, params);
             const rows = dataRes.rows || [];
 
-            const vuelvenHoy = rows.filter(r => r.retorna_cuando === 'HOY').length;
-            const vuelvenManana = rows.filter(r => r.retorna_cuando === 'MANANA').length;
+            const vuelvenHoy = rows.filter(r => r.retorna_cuando === 'HOY' || r.dias_para_retorno === 0).length;
+            const vuelvenManana = rows.filter(r => r.retorna_cuando === 'MANANA' || r.retorna_cuando === 'MAÑANA' || r.dias_para_retorno === 1).length;
+            const vuelven2Dias = rows.filter(r => r.dias_para_retorno === 2).length;
+            const vuelven3Dias = rows.filter(r => r.dias_para_retorno === 3).length;
+            const vuelven4Dias = rows.filter(r => r.dias_para_retorno === 4).length;
 
             res.json({
                 success: true,
@@ -408,7 +441,10 @@ module.exports = function createViewsRouter() {
                 total: rows.length,
                 resumen: {
                     vuelven_hoy: vuelvenHoy,
-                    vuelven_manana: vuelvenManana
+                    vuelven_manana: vuelvenManana,
+                    vuelven_2dias: vuelven2Dias,
+                    vuelven_3dias: vuelven3Dias,
+                    vuelven_4dias: vuelven4Dias
                 },
                 datos: rows
             });
@@ -542,8 +578,13 @@ module.exports = function createViewsRouter() {
             const params = [];
 
             if (servicio && servicio !== 'TODOS') {
-                params.push(servicio.trim().toUpperCase());
-                conditions.push(`(UPPER(COALESCE(servicio_unidad, '')) = $${params.length} OR UPPER(COALESCE(chofer_servicio, '')) = $${params.length})`);
+                const sUpper = servicio.trim().toUpperCase();
+                if (sUpper === 'GRALES.' || sUpper === 'GRALES') {
+                    conditions.push(`(UPPER(COALESCE(servicio_unidad, '')) IN ('GRALES', 'GRALES.') OR UPPER(COALESCE(chofer_servicio, '')) IN ('GRALES', 'GRALES.'))`);
+                } else {
+                    params.push(sUpper);
+                    conditions.push(`(UPPER(COALESCE(servicio_unidad, '')) = $${params.length} OR UPPER(COALESCE(chofer_servicio, '')) = $${params.length})`);
+                }
             }
 
             if (estado && estado !== 'TODOS') {

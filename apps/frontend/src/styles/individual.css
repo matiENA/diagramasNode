@@ -719,6 +719,19 @@ html.dark .calendar-day-cell.status-activo {
   border: 1px solid #93c5fd00;
 }
 
+.calendar-day-cell.status-ind {
+  background-color: var(--novedad-ind-bg, #f1f5f9);
+  color: var(--novedad-ind-text, #334155);
+  border: 1px solid var(--novedad-ind-border, #cbd5e1);
+  font-weight: 800;
+}
+
+html.dark .calendar-day-cell.status-ind {
+  background-color: var(--novedad-ind-bg, rgba(100, 116, 139, 0.20));
+  color: var(--novedad-ind-text, #cbd5e1);
+  border-color: var(--novedad-ind-border, rgba(148, 163, 184, 0.35));
+}
+
 .calendar-day-cell.status-default {
   background-color: var(--bg-surface-muted);
   border: 1px solid var(--border-subtle);

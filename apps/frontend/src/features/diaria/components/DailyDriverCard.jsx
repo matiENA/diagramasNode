@@ -16,8 +16,10 @@ export const DailyDriverCard = ({ driver, fechaContexto, kmInfo, onSelectDriver 
   const returnInfo = driver.retorno_info
     ? {
         date: driver.retorno_info.fecha_retorno,
-        diffDays: driver.retorno_info.retorna_cuando === 'HOY' ? 0 : 1,
-        returnsToday: driver.retorno_info.retorna_cuando === 'HOY',
+        diffDays: driver.retorno_info.dias_para_retorno !== undefined && driver.retorno_info.dias_para_retorno !== null
+          ? driver.retorno_info.dias_para_retorno
+          : (driver.retorno_info.retorna_cuando === 'HOY' ? 0 : 1),
+        returnsToday: driver.retorno_info.retorna_cuando === 'HOY' || driver.retorno_info.dias_para_retorno === 0,
       }
     : calculateDriverReturn(driver, fechaContexto);
 

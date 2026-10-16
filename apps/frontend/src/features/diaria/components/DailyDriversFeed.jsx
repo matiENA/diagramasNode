@@ -30,11 +30,16 @@ export const DailyDriversFeed = ({ fechaContexto, filters, onSelectDriver }) => 
     if (filters.estado && filters.estado !== 'TODOS') {
       list = list.filter((driver) => {
         const st = getDriverDayStatus(driver, fechaContexto);
-        if (filters.estado === 'ACTIVOS') return st.type === 'OPERATIVO';
+        if (filters.estado === 'ACT' || filters.estado === 'ACTIVOS') return st.type === 'OPERATIVO';
         if (filters.estado === 'FRANCOS') return st.type === 'FRANCO';
         if (filters.estado === 'VACACIONES') return st.type === 'VACACIONES';
         if (filters.estado === 'LICENCIAS') return st.type === 'LICENCIA';
-        return true;
+
+        // Coincidencia exacta o por prefijo con el código de novedad seleccionado (F, FSF, V, VSF, E, ART, IND, S, A)
+        const base = (st.base || '').trim().toUpperCase();
+        const raw = (st.raw || '').trim().toUpperCase();
+        const target = filters.estado.trim().toUpperCase();
+        return base === target || raw === target || base.startsWith(target);
       });
     }
 
@@ -43,6 +48,14 @@ export const DailyDriversFeed = ({ fechaContexto, filters, onSelectDriver }) => 
         if (driver.retorno_info) return true;
         const ret = calculateDriverReturn(driver, fechaContexto);
         return Boolean(ret);
+      });
+
+      // Orden cronológico de retorno en lugar de orden alfabético
+      list = [...list].sort((a, b) => {
+        const dateA = a.retorno_info?.fecha_retorno || '';
+        const dateB = b.retorno_info?.fecha_retorno || '';
+        if (dateA && dateB && dateA !== dateB) return dateA.localeCompare(dateB);
+        return (a.nombre || '').localeCompare(b.nombre || '');
       });
     }
 
@@ -104,8 +117,8 @@ export const DailyDriversFeed = ({ fechaContexto, filters, onSelectDriver }) => 
         />
       ))}
 
-      {/* Botón o trigger de Carga Paginada */}
-      {hasNextPage && (
+      {/* Botón o trigger de Carga Paginada (oculto en modo retorno para renderizar todos de una vez) */}
+      {hasNextPage && !filters.retornan && (
         <div style={{ padding: '1.5rem', textAlign: 'center' }}>
           <button
             onClick={() => fetchNextPage()}

@@ -16,7 +16,8 @@ export const CalendarDayCell = ({
 
     if (v === 'F' || v.startsWith('F')) return 'status-franco';
     if (v === 'V' || v.startsWith('V')) return 'status-vacaciones';
-    if (['E', 'ART', 'IND', 'S', 'A', 'P', 'MED'].some((k) => v.includes(k))) return 'status-ausencia';
+    if (v === 'IND' || v.startsWith('IND')) return 'status-ind';
+    if (['E', 'ART', 'S', 'A', 'MED'].some((k) => v.includes(k))) return 'status-ausencia';
 
     // Activo / Operativo ('O', 'OPERATIVO', 'ACTIVO')
     if (v === 'O' || v.startsWith('O') || v === 'ACTIVO') return 'status-activo';

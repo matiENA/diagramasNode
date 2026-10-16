@@ -1,0 +1,206 @@
+<svg width="310" height="678" viewBox="0 0 310 678" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&amp;family=Roboto+Mono:wght@700;800;900&amp;display=swap');
+      text {
+        font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      }
+      .mono-chip {
+        font-family: 'Roboto Mono', monospace;
+      }
+    </style>
+    <filter id="card-shadow" x="-4" y="0" width="318" height="686" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#000000" flood-opacity="0.06"/>
+    </filter>
+  </defs>
+
+  <!-- CONTENEDOR PRINCIPAL / CARD -->
+  <g id="Filtros_Operativos_Sidebar">
+    <!-- Card Background -->
+    <rect id="Card_Background" x="0.5" y="0.5" width="309" height="677" rx="16" fill="#FFFFFF" stroke="#E2E8F0" filter="url(#card-shadow)"/>
+
+    <!-- ==================== 1. CABECERA ==================== -->
+    <g id="Header">
+      <!-- Icono Filtro -->
+      <g transform="translate(20, 20)">
+        <path d="M6.67 13.33a.67.67 0 0 0 .37.6l1.33.67a.67.67 0 0 0 .96-.6v-4.67a1.33 1.33 0 0 1 .34-.9L14.5 3.11a.67.67 0 0 0-.5-.78H2a.67.67 0 0 0-.5 1.11l4.82 5.33a1.33 1.33 0 0 1 .35.89v4.67z"
+              stroke="#0F172A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      </g>
+      <!-- Título -->
+      <text id="Title" x="42" y="33" fill="#0F172A" font-size="13" font-weight="800" letter-spacing="0.7">FILTROS OPERATIVOS</text>
+      <!-- Botón Limpiar -->
+      <text id="Btn_Limpiar" x="290" y="33" text-anchor="end" fill="#19407E" font-size="11.5" font-weight="700" text-decoration="underline" cursor="pointer">Limpiar</text>
+      <!-- Línea Divisoria -->
+      <line x1="20" y1="48" x2="290" y2="48" stroke="#E2E8F0" stroke-width="1"/>
+    </g>
+
+    <!-- ==================== 2. BUSCADOR ==================== -->
+    <g id="Search_Box">
+      <rect x="20" y="62" width="270" height="38" rx="12" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+      <g transform="translate(32, 73)">
+        <path d="m14 14-2.9-2.9" stroke="#64748B" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <circle cx="7.3" cy="7.3" r="5.3" stroke="#64748B" stroke-width="1.8" fill="none"/>
+      </g>
+      <text x="54" y="86" fill="#64748B" font-size="12" font-weight="400">Buscar chofer, tractor, semi, UTE...</text>
+    </g>
+
+    <!-- ==================== 3. RETORNO ==================== -->
+    <g id="Filtro_Retorno">
+      <rect x="20" y="116" width="270" height="38" rx="8" fill="#EEF2FF" stroke="#C7D2FE" stroke-width="1"/>
+      <g transform="translate(32, 127)">
+        <path d="M14 2v4h-4M2 14v-4h4" stroke="#3730A3" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <path d="M2.5 6a6.5 6.5 0 0 1 11 1.5L14 6M13.5 10a6.5 6.5 0 0 1-11-1.5L2 10" stroke="#3730A3" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      </g>
+      <text x="54" y="140" fill="#3730A3" font-size="12.5" font-weight="800">Personal que Retorna</text>
+      <line x1="20" y1="170" x2="290" y2="170" stroke="#E2E8F0" stroke-width="1"/>
+    </g>
+
+    <!-- ==================== 4. ESTADO DEL DÍA (GRILLA 5x2) ==================== -->
+    <g id="Estado_Del_Dia">
+      <text x="20" y="190" fill="#64748B" font-size="11" font-weight="800" letter-spacing="0.5">ESTADO DEL DÍA</text>
+
+      <!-- Botón: Todos los estados (Activo) -->
+      <g id="Btn_Estado_Todos">
+        <rect x="20" y="202" width="270" height="34" rx="8" fill="#19407E"/>
+        <text x="34" y="224" fill="#FFFFFF" font-size="12" font-weight="800">Todos los estados</text>
+      </g>
+
+      <!-- Grilla 5x2: Fila 1 (Descansos y Trabajo) -->
+      <!-- F -->
+      <g id="Chip_F" cursor="pointer">
+        <rect x="20" y="244" width="50" height="33" rx="6" fill="#EFF6FF" stroke="#BFDBFE" stroke-width="1"/>
+        <text class="mono-chip" x="45" y="265" text-anchor="middle" fill="#1D4ED8" font-size="11.5" font-weight="900">F</text>
+      </g>
+      <!-- FSF -->
+      <g id="Chip_FSF" cursor="pointer">
+        <rect x="75" y="244" width="50" height="33" rx="6" fill="#EFF6FF" stroke="#93C5FD" stroke-width="1.5" stroke-dasharray="2.5 2"/>
+        <text class="mono-chip" x="100" y="265" text-anchor="middle" fill="#1D4ED8" font-size="10.5" font-weight="900">FSF</text>
+      </g>
+      <!-- V -->
+      <g id="Chip_V" cursor="pointer">
+        <rect x="130" y="244" width="50" height="33" rx="6" fill="#ECFDF5" stroke="#A7F3D0" stroke-width="1"/>
+        <text class="mono-chip" x="155" y="265" text-anchor="middle" fill="#065F46" font-size="11.5" font-weight="900">V</text>
+      </g>
+      <!-- VSF -->
+      <g id="Chip_VSF" cursor="pointer">
+        <rect x="185" y="244" width="50" height="33" rx="6" fill="#ECFDF5" stroke="#34D399" stroke-width="1.5" stroke-dasharray="2.5 2"/>
+        <text class="mono-chip" x="210" y="265" text-anchor="middle" fill="#065F46" font-size="10.5" font-weight="900">VSF</text>
+      </g>
+      <!-- ACT -->
+      <g id="Chip_ACT" cursor="pointer">
+        <rect x="240" y="244" width="50" height="33" rx="6" fill="#F0FDF4" stroke="#BBF7D0" stroke-width="1"/>
+        <text class="mono-chip" x="265" y="265" text-anchor="middle" fill="#166534" font-size="10.5" font-weight="900">ACT</text>
+      </g>
+
+      <!-- Grilla 5x2: Fila 2 (Novedades Médicas y Ausencias) -->
+      <!-- E -->
+      <g id="Chip_E" cursor="pointer">
+        <rect x="20" y="283" width="50" height="33" rx="6" fill="#FFE4E6" stroke="#FECDD3" stroke-width="1"/>
+        <text class="mono-chip" x="45" y="304" text-anchor="middle" fill="#9F1239" font-size="11.5" font-weight="900">E</text>
+      </g>
+      <!-- ART -->
+      <g id="Chip_ART" cursor="pointer">
+        <rect x="75" y="283" width="50" height="33" rx="6" fill="#F5F3FF" stroke="#DDD6FE" stroke-width="1"/>
+        <text class="mono-chip" x="100" y="304" text-anchor="middle" fill="#5B21B6" font-size="10.5" font-weight="900">ART</text>
+      </g>
+      <!-- IND -->
+      <g id="Chip_IND" cursor="pointer">
+        <rect x="130" y="283" width="50" height="33" rx="6" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1"/>
+        <text class="mono-chip" x="155" y="304" text-anchor="middle" fill="#334155" font-size="10.5" font-weight="900">IND</text>
+      </g>
+      <!-- S -->
+      <g id="Chip_S" cursor="pointer">
+        <rect x="185" y="283" width="50" height="33" rx="6" fill="#FFF7ED" stroke="#FED7AA" stroke-width="1"/>
+        <text class="mono-chip" x="210" y="304" text-anchor="middle" fill="#9A3412" font-size="11.5" font-weight="900">S</text>
+      </g>
+      <!-- A -->
+      <g id="Chip_A" cursor="pointer">
+        <rect x="240" y="283" width="50" height="33" rx="6" fill="#FEF2F2" stroke="#FECACA" stroke-width="1"/>
+        <text class="mono-chip" x="265" y="304" text-anchor="middle" fill="#991B1B" font-size="11.5" font-weight="900">A</text>
+      </g>
+
+      <line x1="20" y1="330" x2="290" y2="330" stroke="#E2E8F0" stroke-width="1"/>
+    </g>
+
+    <!-- ==================== 5. ALERTAS DE VENCIMIENTO ==================== -->
+    <g id="Alertas_De_Vencimiento">
+      <text x="20" y="350" fill="#64748B" font-size="11" font-weight="800" letter-spacing="0.5">ALERTAS DE VENCIMIENTO</text>
+
+      <!-- Alerta: Sin filtro (Activo) -->
+      <g id="Btn_Alerta_SinFiltro">
+        <rect x="20" y="362" width="270" height="34" rx="8" fill="#19407E"/>
+        <text x="34" y="384" fill="#FFFFFF" font-size="12" font-weight="800">Sin filtro de alerta</text>
+      </g>
+
+      <!-- Alerta: Documentación Chofer Vencida -->
+      <g id="Btn_Alerta_ChoferVencido">
+        <rect x="20" y="402" width="270" height="34" rx="8" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+        <circle cx="38" cy="419" r="4.5" fill="#EF4444"/>
+        <text x="50" y="423" fill="#475569" font-size="12" font-weight="700">Documentación Chofer Vencida</text>
+      </g>
+
+      <!-- Alerta: Unidad (VTV/MASS) Vencida -->
+      <g id="Btn_Alerta_UnidadVencida">
+        <rect x="20" y="442" width="270" height="34" rx="8" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+        <g transform="translate(32, 451)">
+          <path d="M1 3h10v9H1zM11 6h3l2 3v3h-5z" fill="none" stroke="#D97706" stroke-width="1.3"/>
+          <circle cx="3.5" cy="12" r="1.5" fill="#D97706"/>
+          <circle cx="12.5" cy="12" r="1.5" fill="#D97706"/>
+        </g>
+        <text x="50" y="463" fill="#475569" font-size="12" font-weight="700">Unidad (VTV/MASS) Vencida</text>
+      </g>
+
+      <!-- Alerta: Cualquier Alerta Activa -->
+      <g id="Btn_Alerta_Cualquiera">
+        <rect x="20" y="482" width="270" height="34" rx="8" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+        <g transform="translate(32, 491)">
+          <path d="m7.5 1 6.5 12H1L7.5 1z" fill="#FEF3C7" stroke="#D97706" stroke-width="1.3" stroke-linejoin="round"/>
+          <path d="M7.5 5v3.5M7.5 10.5h.01" stroke="#D97706" stroke-width="1.5" stroke-linecap="round"/>
+        </g>
+        <text x="50" y="503" fill="#475569" font-size="12" font-weight="700">Cualquier Alerta Activa</text>
+      </g>
+
+      <line x1="20" y1="530" x2="290" y2="530" stroke="#E2E8F0" stroke-width="1"/>
+    </g>
+
+    <!-- ==================== 6. SERVICIO (CON GRALES.) ==================== -->
+    <g id="Servicios">
+      <text x="20" y="550" fill="#64748B" font-size="11" font-weight="800" letter-spacing="0.5">SERVICIO</text>
+
+      <!-- Fila 1 -->
+      <g id="Srv_Todos">
+        <rect x="20" y="562" width="58" height="28" rx="6" fill="#19407E"/>
+        <text x="49" y="580" text-anchor="middle" fill="#FFFFFF" font-size="11" font-weight="800">TODOS</text>
+      </g>
+      <g id="Srv_Metanol">
+        <rect x="84" y="562" width="76" height="28" rx="6" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+        <text x="122" y="580" text-anchor="middle" fill="#475569" font-size="11" font-weight="700">METANOL</text>
+      </g>
+      <g id="Srv_Liviano">
+        <rect x="166" y="562" width="70" height="28" rx="6" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+        <text x="201" y="580" text-anchor="middle" fill="#475569" font-size="11" font-weight="700">LIVIANO</text>
+      </g>
+
+      <!-- Fila 2 -->
+      <g id="Srv_Campo">
+        <rect x="20" y="596" width="64" height="28" rx="6" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+        <text x="52" y="614" text-anchor="middle" fill="#475569" font-size="11" font-weight="700">CAMPO</text>
+      </g>
+      <g id="Srv_GLP">
+        <rect x="90" y="596" width="48" height="28" rx="6" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+        <text x="114" y="614" text-anchor="middle" fill="#475569" font-size="11" font-weight="700">GLP</text>
+      </g>
+      <g id="Srv_YPF">
+        <rect x="144" y="596" width="48" height="28" rx="6" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+        <text x="168" y="614" text-anchor="middle" fill="#475569" font-size="11" font-weight="700">YPF</text>
+      </g>
+
+      <!-- Fila 3 (GRALES. agregado según directiva 5e34da42) -->
+      <g id="Srv_Grales">
+        <rect x="20" y="630" width="74" height="28" rx="6" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+        <text x="57" y="648" text-anchor="middle" fill="#475569" font-size="11" font-weight="700">GRALES.</text>
+      </g>
+    </g>
+
+  </g>
+</svg>

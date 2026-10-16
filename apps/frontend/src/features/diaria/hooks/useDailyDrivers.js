@@ -132,23 +132,72 @@ export const useDailyDrivers = (filters = {}, fechaContexto = null) => {
           };
         }
 
-        const ids = retRows.map((r) => r.chofer_id).filter(Boolean);
-        const retMap = new Map(retRows.map((r) => [r.chofer_id, r]));
-
-        // Traer fichas operativas con los filtros correspondientes
+        // Traer fichas operativas con los filtros correspondientes (sin límite restrictivo de 200)
         const { drivers } = await apiClient.getDiaria({
-          limit: 200,
+          limit: 500,
           offset: 0,
           servicio: filters.servicio,
           alerta: filters.alerta,
           search: filters.search,
         });
 
-        const filtered = (drivers || []).filter((d) => ids.includes(d.chofer_id));
-        const enrichedDrivers = filtered.map((driver) => ({
-          ...driver,
-          retorno_info: retMap.get(driver.chofer_id) || null,
-        }));
+        const driverMap = new Map((drivers || []).map((d) => [d.chofer_id, d]));
+
+        // Construir listado enriquecido de todos los conductores que retornan sin truncamiento
+        const enrichedDrivers = retRows
+          .filter((r) => {
+            if (filters.servicio && filters.servicio !== 'TODOS') {
+              const sFilter = filters.servicio.trim().toUpperCase();
+              const sRow = (r.servicio || '').trim().toUpperCase();
+              if (sFilter === 'GRALES.' || sFilter === 'GRALES') {
+                if (sRow !== 'GRALES' && sRow !== 'GRALES.') return false;
+              } else if (sRow !== sFilter) {
+                return false;
+              }
+            }
+            if (filters.search && filters.search.trim()) {
+              const term = filters.search.trim().toLowerCase();
+              const match =
+                (r.nombre || '').toLowerCase().includes(term) ||
+                (r.legajo || '').toLowerCase().includes(term) ||
+                (r.dni || '').toLowerCase().includes(term) ||
+                (r.tractor || '').toLowerCase().includes(term) ||
+                (r.n_ute || '').toLowerCase().includes(term);
+              if (!match) return false;
+            }
+            return true;
+          })
+          .map((r) => {
+            const baseDriver = driverMap.get(r.chofer_id);
+            if (baseDriver) {
+              return {
+                ...baseDriver,
+                retorno_info: r,
+              };
+            }
+            // Fallback para garantizar que el 100% de los choferes que retornan aparezcan
+            return {
+              chofer_id: r.chofer_id,
+              nombre: r.nombre,
+              legajo: r.legajo,
+              dni: r.dni,
+              servicio: r.servicio,
+              tractor: r.tractor,
+              semi: r.semi,
+              n_ute: r.n_ute,
+              dia_codigo: r.codigo_hoy,
+              dia_fecha: fechaTarget,
+              retorno_info: r,
+            };
+          });
+
+        // Orden cronológico estricto por fecha_retorno ASC, luego por nombre ASC
+        enrichedDrivers.sort((a, b) => {
+          const dateA = a.retorno_info?.fecha_retorno || '';
+          const dateB = b.retorno_info?.fecha_retorno || '';
+          if (dateA && dateB && dateA !== dateB) return dateA.localeCompare(dateB);
+          return (a.nombre || '').localeCompare(b.nombre || '');
+        });
 
         return {
           drivers: enrichedDrivers,
