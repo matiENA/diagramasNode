@@ -35,9 +35,8 @@ export const DiagramaModule = () => {
     if (!search.trim()) return true;
     const term = search.toLowerCase();
     const matchNom = d.chofer_nombre && d.chofer_nombre.toLowerCase().includes(term);
-    const matchLeg = d.legajo && d.legajo.toLowerCase().includes(term);
     const matchTr = d.tractor && d.tractor.toLowerCase().includes(term);
-    return matchNom || matchLeg || matchTr;
+    return matchNom || matchTr;
   });
 
   const getDayClass = (val) => {
@@ -64,7 +63,7 @@ export const DiagramaModule = () => {
             <Search size={15} className="filter-search-icon" />
             <input
               type="text"
-              placeholder="Buscar conductor o legajo..."
+              placeholder="Buscar conductor..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="filter-search-input"
@@ -112,7 +111,6 @@ export const DiagramaModule = () => {
             <thead>
               <tr>
                 <th style={{ minWidth: '180px' }}>Conductor</th>
-                <th>Legajo</th>
                 <th>Servicio</th>
                 <th>Tractor</th>
                 {/* Días 1 al 31 */}
@@ -129,7 +127,6 @@ export const DiagramaModule = () => {
                 return (
                   <tr key={d.registro_id}>
                     <td style={{ fontWeight: 700 }}>{d.chofer_nombre}</td>
-                    <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}>{d.legajo || '-'}</td>
                     <td><span style={{ fontWeight: 700, color: 'var(--primary)' }}>{d.servicio}</span></td>
                     <td style={{ fontFamily: 'var(--font-mono)' }}>{d.tractor || '-'}</td>
                     {Array.from({ length: 31 }, (_, i) => {

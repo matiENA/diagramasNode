@@ -144,10 +144,9 @@ export const DailyDriverCard = ({ driver, fechaContexto, kmInfo, onSelectDriver 
                     )}
                   </div>
 
-                  {/* Chips: Servicio, Legajo, DNI (EasyCopy) */}
+                  {/* Chips: Servicio, DNI (EasyCopy) */}
                   <div className="daily-card-chips">
                     <span className="chip-badge chip-service">{driver.servicio || 'GENERAL'}</span>
-                    <span className="chip-badge chip-legajo">LEG: {driver.legajo || 'S/D'}</span>
 
                     {/* DNI EasyCopy */}
                     {driver.dni && (

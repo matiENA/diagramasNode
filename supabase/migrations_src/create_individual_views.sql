@@ -10,7 +10,6 @@ CREATE OR REPLACE VIEW public.view_individual_chofer AS
 SELECT 
   c.id AS chofer_id,
   c.nombre,
-  c.legajo,
   c.estado AS estado_chofer,
   c.foto,
   COALESCE(sc.denominacion, 'GENERAL') AS servicio,

@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { CalendarRange, X, Route, Check } from 'lucide-react';
+import React, { useEffect } from 'react';
+import { CalendarRange, X, Route } from 'lucide-react';
 
 export const RangeActionBar = ({
   selectedRange,
@@ -9,22 +9,15 @@ export const RangeActionBar = ({
   onAssignStatus,
   isPending = false,
 }) => {
-  const [customStatus, setCustomStatus] = useState('');
-  const inputRef = useRef(null);
-
   useEffect(() => {
-    if (selectedRange?.startIso) {
-      setCustomStatus('');
-      // Auto-enfoque inmediato del input al seleccionar un día o rango
-      const timer = setTimeout(() => {
-        if (inputRef.current) {
-          inputRef.current.focus();
-          inputRef.current.select();
-        }
-      }, 40);
-      return () => clearTimeout(timer);
-    }
-  }, [selectedRange?.startIso, selectedRange?.endIso]);
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        onClear();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClear]);
 
   if (!selectedRange || !selectedRange.startIso || !selectedRange.endIso) return null;
 
@@ -40,24 +33,6 @@ export const RangeActionBar = ({
   const formatShort = (iso) => {
     const parts = iso.split('-');
     return `${parts[2]}/${parts[1]}`;
-  };
-
-  const handleApplyCustom = (e) => {
-    if (e) e.preventDefault();
-    const val = customStatus.trim().toUpperCase();
-    if (!val) return;
-    onAssignStatus(val);
-    setCustomStatus('');
-  };
-
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      handleApplyCustom();
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      onClear();
-    }
   };
 
   return (
@@ -85,33 +60,6 @@ export const RangeActionBar = ({
 
       {/* 2. Controles de Asignación con Optimistic UI */}
       <div className="range-actions-btns">
-        {/* Input libre de asignación de diagramas */}
-        <form onSubmit={handleApplyCustom} className="range-input-form">
-          <input
-            ref={inputRef}
-            type="text"
-            value={customStatus}
-            onChange={(e) => setCustomStatus(e.target.value.toUpperCase())}
-            onKeyDown={handleKeyDown}
-            placeholder="Código (F, V, 1..35, ART...)"
-            maxLength={10}
-            className="range-status-input"
-            disabled={isPending}
-            autoFocus
-          />
-          <button
-            type="submit"
-            disabled={!customStatus.trim() || isPending}
-            className="btn-range-action btn-range-apply"
-            title="Asignar código ingresado (<Enter>)"
-          >
-            <Check size={14} />
-            <span>Asignar</span>
-          </button>
-        </form>
-
-        <div className="range-actions-separator" />
-
         {/* Botones Presets Rápidos */}
         <button
           type="button"

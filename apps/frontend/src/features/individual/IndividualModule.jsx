@@ -51,7 +51,6 @@ export const IndividualModule = () => {
   const cleanSearch = search.trim().toLowerCase();
   const choferesFiltrados = (choferes || []).filter((c) =>
     c.nombre.toLowerCase().includes(cleanSearch) ||
-    (c.legajo && String(c.legajo).toLowerCase().includes(cleanSearch)) ||
     (c.dni && String(c.dni).toLowerCase().includes(cleanSearch))
   );
 
@@ -79,7 +78,7 @@ export const IndividualModule = () => {
             <Search size={14} className="filter-search-icon" />
             <input
               type="text"
-              placeholder="Buscar por Nombre, DNI o Legajo..."
+              placeholder="Buscar por Nombre o DNI..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="filter-search-input"
@@ -119,7 +118,7 @@ export const IndividualModule = () => {
                       {c.nombre}
                     </span>
                     <span style={{ fontSize: '0.68rem', opacity: 0.85 }}>
-                      Leg: {c.legajo || 'S/D'} • DNI: {c.dni || 'S/D'}
+                      DNI: {c.dni || 'S/D'}
                     </span>
                   </div>
 

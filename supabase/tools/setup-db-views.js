@@ -234,7 +234,6 @@ async function run() {
             d.diagrama_tipo,
             d.chofer_id,
             d.chofer_nombre,
-            d.legajo,
             d.tira_dias,
             COALESCE((d.contabilizador->>'trabajados')::int, 0) AS dias_trabajados,
             COALESCE((d.contabilizador->>'francos')::int, 0) AS dias_francos,
@@ -284,7 +283,6 @@ async function run() {
             s.mas AS mas_semi,
             c.id AS chofer_id,
             c.nombre AS chofer_nombre,
-            c.legajo AS chofer_legajo,
             cd.dni AS chofer_dni,
             cd.cuil AS chofer_cuil,
             cd.telefono AS chofer_telefono,
@@ -382,7 +380,6 @@ async function run() {
         RETURNS TABLE (
             chofer_id UUID,
             nombre TEXT,
-            legajo TEXT,
             dni TEXT,
             servicio TEXT,
             diagrama_tipo TEXT,
@@ -409,7 +406,6 @@ async function run() {
                 SELECT 
                     c.id AS q_chofer_id,
                     c.nombre AS q_nombre,
-                    c.legajo AS q_legajo,
                     cd.dni AS q_dni,
                     COALESCE(sc.denominacion, 'GENERAL') AS q_servicio,
                     d.diagrama_tipo AS q_diagrama_tipo,
@@ -455,7 +451,6 @@ async function run() {
                 SELECT 
                     evaluados.q_chofer_id,
                     evaluados.q_nombre,
-                    evaluados.q_legajo,
                     evaluados.q_dni,
                     evaluados.q_servicio,
                     evaluados.q_diagrama_tipo,
@@ -494,7 +489,6 @@ async function run() {
             SELECT 
                 clasificados.q_chofer_id,
                 clasificados.q_nombre,
-                clasificados.q_legajo,
                 clasificados.q_dni,
                 clasificados.q_servicio,
                 clasificados.q_diagrama_tipo,

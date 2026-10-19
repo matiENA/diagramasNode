@@ -58,7 +58,6 @@ module.exports = function createViewsRouter() {
                 const idx = params.length;
                 conditions.push(`(
                     LOWER(nombre) LIKE $${idx} OR 
-                    LOWER(COALESCE(legajo, '')) LIKE $${idx} OR 
                     LOWER(COALESCE(dni, '')) LIKE $${idx} OR 
                     LOWER(COALESCE(tractor, '')) LIKE $${idx} OR 
                     LOWER(COALESCE(semi, '')) LIKE $${idx} OR 
@@ -269,7 +268,6 @@ module.exports = function createViewsRouter() {
                 const idx = params.length;
                 conditions.push(`(
                     LOWER(COALESCE(chofer_nombre, '')) LIKE $${idx} OR 
-                    LOWER(COALESCE(legajo, '')) LIKE $${idx} OR 
                     LOWER(COALESCE(tractor, '')) LIKE $${idx}
                 )`);
             }
@@ -403,13 +401,12 @@ module.exports = function createViewsRouter() {
                 }
             }
 
-            // 4. Búsqueda por texto (nombre, legajo, dni, tractor, n_ute)
+            // 4. Búsqueda por texto (nombre, dni, tractor, n_ute)
             if (search && search.trim().length > 0) {
                 params.push(`%${search.trim().toLowerCase()}%`);
                 const idx = params.length;
                 conditions.push(`(
                     LOWER(COALESCE(nombre, '')) LIKE $${idx} OR 
-                    LOWER(COALESCE(legajo, '')) LIKE $${idx} OR 
                     LOWER(COALESCE(dni, '')) LIKE $${idx} OR 
                     LOWER(COALESCE(tractor, '')) LIKE $${idx} OR 
                     LOWER(COALESCE(n_ute, '')) LIKE $${idx}
@@ -464,7 +461,7 @@ module.exports = function createViewsRouter() {
             }
 
             const dataRes = await db.query(`
-                SELECT chofer_id, nombre, legajo, dni, servicio, foto, telefono, estado_chofer
+                SELECT chofer_id, nombre, dni, servicio, foto, telefono, estado_chofer
                 FROM public.view_individual_chofer
                 ORDER BY nombre ASC
             `);
@@ -498,7 +495,7 @@ module.exports = function createViewsRouter() {
             const { choferId } = req.params;
             const dataRes = await db.query(`
                 SELECT * FROM public.view_individual_chofer
-                WHERE chofer_id::text = $1 OR legajo = $1
+                WHERE chofer_id::text = $1 OR dni = $1
                 LIMIT 1
             `, [choferId]);
 
@@ -597,7 +594,6 @@ module.exports = function createViewsRouter() {
                 const idx = params.length;
                 conditions.push(`(
                     LOWER(COALESCE(chofer_nombre, '')) LIKE $${idx} OR 
-                    LOWER(COALESCE(chofer_legajo, '')) LIKE $${idx} OR 
                     LOWER(COALESCE(chofer_dni, '')) LIKE $${idx} OR 
                     LOWER(COALESCE(tractor, '')) LIKE $${idx} OR 
                     LOWER(COALESCE(semi, '')) LIKE $${idx} OR 

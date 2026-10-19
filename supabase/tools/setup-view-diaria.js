@@ -22,7 +22,6 @@ async function run() {
             c.id AS chofer_id,
             c.nombre,
             cd.dni,
-            c.legajo,
             cd.telefono,
             COALESCE(sc.denominacion, 'GENERAL') AS servicio,
             c.estado AS estado_chofer,
@@ -123,7 +122,7 @@ async function run() {
     console.log('✅ Vista public.view_diaria_operativa creada con éxito en PostgreSQL.');
 
     // Verificamos consultando las primeras 2 filas
-    const res = await db.query('SELECT chofer_id, nombre, legajo, servicio, tractor, semi, alerta_docs_chofer, alerta_docs_unidad FROM public.view_diaria_operativa LIMIT 2');
+    const res = await db.query('SELECT chofer_id, nombre, servicio, tractor, semi, alerta_docs_chofer, alerta_docs_unidad FROM public.view_diaria_operativa LIMIT 2');
     console.log('\n🔍 Verificación de datos (primeras 2 filas):');
     console.table(res.rows);
 

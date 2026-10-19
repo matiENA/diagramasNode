@@ -64,7 +64,7 @@ class ApiClient {
     }
     if (search && search.trim()) {
       const t = search.trim();
-      query = query.or(`nombre.ilike.%${t}%,legajo.ilike.%${t}%,dni.ilike.%${t}%,tractor.ilike.%${t}%,semi.ilike.%${t}%,n_ute.ilike.%${t}%`);
+      query = query.or(`nombre.ilike.%${t}%,dni.ilike.%${t}%,tractor.ilike.%${t}%,semi.ilike.%${t}%,n_ute.ilike.%${t}%`);
     }
 
     const from = offset;
@@ -126,7 +126,7 @@ class ApiClient {
 
     const { data, error } = await supabase
       .from('view_individual_chofer')
-      .select('chofer_id, nombre, legajo, dni, servicio, foto, telefono, estado_chofer')
+      .select('chofer_id, nombre, dni, servicio, foto, telefono, estado_chofer')
       .order('nombre');
 
     if (error) throw error;
@@ -290,7 +290,7 @@ class ApiClient {
     }
     if (search && search.trim()) {
       const t = search.trim();
-      query = query.or(`chofer_nombre.ilike.%${t}%,chofer_legajo.ilike.%${t}%,chofer_dni.ilike.%${t}%,tractor.ilike.%${t}%,semi.ilike.%${t}%,n_ute.ilike.%${t}%`);
+      query = query.or(`chofer_nombre.ilike.%${t}%,chofer_dni.ilike.%${t}%,tractor.ilike.%${t}%,semi.ilike.%${t}%,n_ute.ilike.%${t}%`);
     }
 
     const from = offset;

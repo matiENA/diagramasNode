@@ -14,7 +14,7 @@ El componente `DiagramaModule.jsx` consumía la vista agregada en PostgreSQL:
     - Trabajo / Guardias
   - Filtro por mes (`mes_tab` ej. `Sep-26`, `Ago-26`, etc.).
   - Filtro por servicio operativo (`LIVIANO`, `METANOL`, `CAMPO`, `GLP`, `TDS`, `EURO`).
-  - Buscador reactivo por nombre de conductor, número de legajo o unidad de tractor.
+  - Buscador reactivo por nombre de conductor o unidad de tractor.
   - Cómputo resumido de días trabajados y días de franco.
 
 > **Nota:** La gestión y edición individual de diagramas por chofer sigue disponible operativamente a través del módulo **Individual** (`TrimestralCalendar.jsx`).

@@ -119,7 +119,7 @@ export const UnitAssignModal = ({ isOpen, onClose, driver }) => {
                     <span>Asignar Unidad Operativa</span>
                   </DialogTitle>
                   <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
-                    Chofer: <strong style={{ color: 'var(--text-main)' }}>{driver.nombre}</strong> (Legajo: {driver.legajo || 'S/D'})
+                    Chofer: <strong style={{ color: 'var(--text-main)' }}>{driver.nombre}</strong>
                   </p>
                 </div>
 

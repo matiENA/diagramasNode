@@ -12,46 +12,66 @@ module.exports = function createFotosRouter(cacheDatosGlobales, io) {
 
     router.post('/', async (req, res) => {
         try {
-            const { dni, imagenBase64 } = req.body;
-            if (!dni || !imagenBase64) {
-                return res.status(400).json({ success: false, error: "DNI o imagen no proporcionados." });
+            const { dni, imagenBase64, chofer_id, fotoUrl } = req.body;
+            if (!dni && !chofer_id) {
+                return res.status(400).json({ success: false, error: "Identificador de chofer (DNI o ID) no proporcionado." });
+            }
+            if (!imagenBase64 && !fotoUrl) {
+                return res.status(400).json({ success: false, error: "Imagen o URL de foto no proporcionada." });
             }
 
-            const dniP = String(dni).replace(/\D/g, '');
-            const rawBase64 = imagenBase64.replace(/^data:image\/\w+;base64,/, "");
-            const inputBuffer = Buffer.from(rawBase64, 'base64');
+            const dniP = dni ? String(dni).replace(/\D/g, '') : '';
+            let linkOficial = fotoUrl || null;
 
-            // 1. Optimizar y convertir a WebP (384x512 max, calidad 82%)
-            const webpBuffer = await sharp(inputBuffer)
-                .resize(384, 512, { fit: 'cover', position: 'center' })
-                .webp({ quality: 82, effort: 4 })
-                .toBuffer();
+            if (imagenBase64) {
+                const rawBase64 = imagenBase64.replace(/^data:image\/\w+;base64,/, "");
+                const inputBuffer = Buffer.from(rawBase64, 'base64');
 
-            // 2. Subir directamente a Supabase Storage (Bucket: choferes-fotos)
-            const fileName = `${dniP}.webp`;
-            const { error: uploadError } = await supabase.storage
-                .from('choferes-fotos')
-                .upload(fileName, webpBuffer, {
-                    contentType: 'image/webp',
-                    upsert: true
-                });
+                // 1. Optimizar y convertir a WebP (384x512 max, calidad 82%)
+                const webpBuffer = await sharp(inputBuffer)
+                    .resize(384, 512, { fit: 'cover', position: 'center' })
+                    .webp({ quality: 82, effort: 4 })
+                    .toBuffer();
 
-            if (uploadError) {
-                console.error("❌ Error subiendo a Supabase Storage:", uploadError.message);
-                return res.status(500).json({ success: false, error: "Error al almacenar foto en Supabase Storage." });
+                // 2. Subir directamente a Supabase Storage (Bucket: choferes-fotos)
+                const fileName = dniP ? `${dniP}.webp` : `${chofer_id}.webp`;
+                const { error: uploadError } = await supabase.storage
+                    .from('choferes-fotos')
+                    .upload(fileName, webpBuffer, {
+                        contentType: 'image/webp',
+                        upsert: true
+                    });
+
+                if (uploadError) {
+                    console.error("❌ Error subiendo a Supabase Storage:", uploadError.message);
+                    return res.status(500).json({ success: false, error: "Error al almacenar foto en Supabase Storage." });
+                }
+
+                // URL pública canónica en Supabase CDN
+                linkOficial = `${SUPABASE_URL}/storage/v1/object/public/choferes-fotos/${fileName}?t=${Date.now()}`;
             }
-
-            // URL pública canónica en Supabase CDN
-            const linkOficial = `${SUPABASE_URL}/storage/v1/object/public/choferes-fotos/${fileName}?t=${Date.now()}`;
 
             // 3. Persistir en PostgreSQL (public.choferes)
             try {
-                await pool.query(
-                    `UPDATE public.choferes 
-                     SET foto = $1, actualizado_el = NOW() 
-                     WHERE REPLACE(REPLACE(dni, '.', ''), ' ', '') = $2`,
-                    [linkOficial, dniP]
-                );
+                if (chofer_id) {
+                    await pool.query(
+                        `UPDATE public.choferes 
+                         SET foto = $1, actualizado_el = NOW() 
+                         WHERE id = $2`,
+                        [linkOficial, chofer_id]
+                    );
+                } else if (dniP) {
+                    await pool.query(
+                        `UPDATE public.choferes 
+                         SET foto = $1, actualizado_el = NOW() 
+                         WHERE id IN (
+                             SELECT chofer_id 
+                             FROM chofer_documentacion 
+                             WHERE REPLACE(REPLACE(dni, '.', ''), ' ', '') = $2
+                         )`,
+                        [linkOficial, dniP]
+                    );
+                }
             } catch (dbErr) {
                 console.warn("⚠️ Advertencia al actualizar foto en choferes DB:", dbErr.message);
             }

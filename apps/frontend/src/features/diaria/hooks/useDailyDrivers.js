@@ -159,7 +159,6 @@ export const useDailyDrivers = (filters = {}, fechaContexto = null) => {
               const term = filters.search.trim().toLowerCase();
               const match =
                 (r.nombre || '').toLowerCase().includes(term) ||
-                (r.legajo || '').toLowerCase().includes(term) ||
                 (r.dni || '').toLowerCase().includes(term) ||
                 (r.tractor || '').toLowerCase().includes(term) ||
                 (r.n_ute || '').toLowerCase().includes(term);
@@ -179,7 +178,6 @@ export const useDailyDrivers = (filters = {}, fechaContexto = null) => {
             return {
               chofer_id: r.chofer_id,
               nombre: r.nombre,
-              legajo: r.legajo,
               dni: r.dni,
               servicio: r.servicio,
               tractor: r.tractor,

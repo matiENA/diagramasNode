@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { CalendarMonthCard } from './CalendarMonthCard';
 import { RangeActionBar } from './RangeActionBar';
-import { Calendar, ChevronLeft, ChevronRight, Zap } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useCalendarDiagramaKm, useUpdateDiagramaRange } from '../hooks/useCalendarDiagramaKm';
 import { useAuth } from '@/context/AuthContext';
 
@@ -303,12 +303,6 @@ export const TrimestralCalendar = ({ choferId, choferNombre }) => {
                 {rangeStats.km.toLocaleString('es-AR')} <span className="badge-km-rango-unit">km</span>
               </span>
             </div>
-          )}
-
-          {calData?.totalKm > 0 && (
-            <span className="daily-km-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.75rem', fontWeight: 800, padding: '0.25rem 0.6rem', borderRadius: 'var(--radius-sm)', backgroundColor: '#eff6ff', color: 'var(--primary)', border: '1px solid #bfdbfe' }}>
-              <Zap size={13} /> {calData.totalKm.toLocaleString('es-AR')} km en vista
-            </span>
           )}
 
           <div className="badge-shift-hint">

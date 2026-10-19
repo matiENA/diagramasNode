@@ -148,7 +148,6 @@ SELECT
     -- Datos del Chofer
     c.id AS chofer_id,
     c.nombre AS chofer_nombre,
-    c.legajo AS chofer_legajo,
     cd.dni AS chofer_dni,
     cd.cuil AS chofer_cuil,
     cd.telefono AS chofer_telefono,

@@ -1,15 +1,21 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Camera, Check, Copy, Link as LinkIcon, MessageCircle, User } from 'lucide-react';
 import { supabase } from '@/api/supabaseClient';
 import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/api/queryKeys';
 import { copyToClipboard } from '@/utils/clipboard';
+import { convertImageToWebP } from '@/utils/imageToWebp';
 
 export const DriverProfileCard = ({ chofer }) => {
   const [copiedField, setCopiedField] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [optimisticPhotoUrl, setOptimisticPhotoUrl] = useState(null);
   const fileInputRef = useRef(null);
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    setOptimisticPhotoUrl(null);
+  }, [chofer?.chofer_id, chofer?.id]);
 
   if (!chofer) return null;
 
@@ -33,40 +39,87 @@ export const DriverProfileCard = ({ chofer }) => {
 
   const handlePhotoUpload = async (e) => {
     const file = e.target.files?.[0];
+    if (e.target) e.target.value = '';
     if (!file || !chofer) return;
 
     try {
       setIsUploading(true);
-      const ext = file.name.split('.').pop() || 'webp';
-      const fileName = `${chofer.dni || chofer.chofer_id || chofer.id}.${ext}`;
-      const filePath = `${fileName}`;
 
+      // 1. Convertir cualquier formato a WebP 3:4 (384x512)
+      const { blob, previewUrl } = await convertImageToWebP(file, {
+        maxWidth: 384,
+        maxHeight: 512,
+        quality: 0.82
+      });
+
+      // Reflejo optimista inmediato en la UI
+      setOptimisticPhotoUrl(previewUrl);
+
+      // 2. Definir nombre canónico: <DNI>.webp (o <chofer_id>.webp si no tiene DNI)
+      const rawDni = chofer.dni ? String(chofer.dni).replace(/\D/g, '') : '';
+      const choferId = chofer.chofer_id || chofer.id;
+      const fileName = rawDni ? `${rawDni}.webp` : `${choferId}.webp`;
+
+      // 3. Subir a Supabase Storage (Bucket: choferes-fotos)
       const { error: uploadErr } = await supabase.storage
         .from('choferes-fotos')
-        .upload(filePath, file, { upsert: true });
+        .upload(fileName, blob, {
+          contentType: 'image/webp',
+          upsert: true,
+          cacheControl: '3600'
+        });
 
       if (uploadErr) {
-        console.warn('Error subiendo imagen al storage:', uploadErr.message);
+        throw new Error(`Error en Storage: ${uploadErr.message}`);
       }
 
+      // 4. Obtener URL pública canónica con timestamp anti-caché
       const { data: urlData } = supabase.storage
         .from('choferes-fotos')
-        .getPublicUrl(filePath);
+        .getPublicUrl(fileName);
 
-      const publicUrl = urlData?.publicUrl;
+      const publicUrl = urlData?.publicUrl ? `${urlData.publicUrl}?t=${Date.now()}` : null;
 
-      if (publicUrl) {
-        await supabase
-          .from('choferes')
-          .update({ foto: publicUrl })
-          .eq('id', chofer.chofer_id || chofer.id);
-
-        queryClient.invalidateQueries({ queryKey: queryKeys.individual.catalog });
-        queryClient.invalidateQueries({ queryKey: queryKeys.individual.detail(chofer.chofer_id || chofer.id) });
-        queryClient.invalidateQueries({ queryKey: queryKeys.diaria.all });
+      if (!publicUrl) {
+        throw new Error('No se pudo generar la URL pública de la imagen.');
       }
+
+      // 5. Persistir en la tabla choferes de Supabase
+      const { error: dbErr } = await supabase
+        .from('choferes')
+        .update({
+          foto: publicUrl,
+          actualizado_el: new Date().toISOString()
+        })
+        .eq('id', choferId);
+
+      if (dbErr) {
+        throw new Error(`Error al actualizar tabla choferes: ${dbErr.message}`);
+      }
+
+      // 6. Notificar al backend de forma asíncrona para actualizar caché RAM y respaldo en Sheets
+      try {
+        fetch('/api/subir-foto', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            dni: rawDni || chofer.dni,
+            chofer_id: choferId,
+            fotoUrl: publicUrl
+          })
+        }).catch(() => {});
+      } catch (_) {}
+
+      // 7. Invalidar queries para refrescar estado en React Query
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.individual.catalog }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.individual.detail(choferId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.diaria.all })
+      ]);
     } catch (err) {
-      console.error('Error al procesar foto:', err);
+      console.error('❌ Error al procesar o subir foto:', err);
+      alert(`No se pudo actualizar la foto: ${err.message || err}`);
+      setOptimisticPhotoUrl(null);
     } finally {
       setIsUploading(false);
     }
@@ -115,9 +168,9 @@ export const DriverProfileCard = ({ chofer }) => {
           onClick={() => fileInputRef.current?.click()}
           title="Clic para cambiar foto de perfil"
         >
-          {chofer.foto ? (
+          {optimisticPhotoUrl || chofer.foto ? (
             <img
-              src={chofer.foto}
+              src={optimisticPhotoUrl || chofer.foto}
               alt={chofer.nombre}
               className="driver-avatar-img"
               onError={(e) => {
@@ -190,14 +243,8 @@ export const DriverProfileCard = ({ chofer }) => {
             </button>
           </div>
 
-          {/* LÍNEA 2: LEGAJO • ALTA • DNI • EMAIL • TEL • CHAT */}
+          {/* LÍNEA 2: ALTA • DNI • EMAIL • TEL • CHAT */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-            <span>
-              LEGAJO: <strong>{chofer.legajo || 'S/D'}</strong>
-            </span>
-
-            <span style={{ opacity: 0.4 }}>•</span>
-
             <span>
               ALTA: <strong>{formatAltaDate(chofer.fecha_alta)}</strong>
             </span>

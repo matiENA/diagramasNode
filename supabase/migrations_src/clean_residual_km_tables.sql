@@ -7,7 +7,6 @@
 CREATE OR REPLACE VIEW public.view_individual_chofer AS
 SELECT c.id AS chofer_id,
    c.nombre,
-   c.legajo,
    c.estado AS estado_chofer,
    c.foto,
    COALESCE(sc.denominacion, 'GENERAL'::text) AS servicio,
@@ -77,7 +76,6 @@ SELECT
   (day_kv.key)::date AS fecha,
   ck.chofer_id AS id_chofer,
   c.nombre AS chofer_nombre,
-  c.legajo,
   (day_kv.value->>'id_unidad')::uuid AS id_unidad,
   day_kv.value->>'n_ute' AS n_ute,
   day_kv.value->>'tractor' AS dominio,

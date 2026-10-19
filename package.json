@@ -4,6 +4,8 @@
   "private": true,
   "description": "EOR - proyecto unificado (frontend + backend + extraccion local + supabase + deploy). Sin workspaces: cada app tiene su package.json para que Render las construya de forma independiente.",
   "scripts": {
+    "dev": "node tools/dev.js",
+    "start": "node tools/dev.js",
     "install:all": "npm --prefix apps/backend install && npm --prefix apps/frontend install && npm --prefix extraction/local_loader install",
     "dev:backend": "npm --prefix apps/backend run dev",
     "start:backend": "npm --prefix apps/backend start",
