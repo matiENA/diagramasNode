@@ -17,13 +17,40 @@
 const express = require('express');
 const db = require('../utils/db');
 
-module.exports = function createViewsRouter() {
+module.exports = function createViewsRouter(hotRam = require('../cache/hotRamManager')) {
     const router = express.Router();
 
     // 1. GET /api/views/diaria — Vista Diaria Operativa de Choferes
     router.get('/diaria', async (req, res) => {
         const t0 = Date.now();
         try {
+            // ⚡ 1. Servicio Hot RAM (< 3ms) con soporte ETag HTTP 304
+            if (hotRam && hotRam.isReady) {
+                res.set('Cache-Control', 'public, max-age=10, must-revalidate');
+                const etag = hotRam.getEtag();
+                res.set('ETag', etag);
+
+                const clientEtag = req.headers['if-none-match'];
+                if (clientEtag && (clientEtag === etag || clientEtag === `W/${etag}`)) {
+                    return res.status(304).end();
+                }
+
+                const result = hotRam.queryDiaria(req.query);
+                return res.json({
+                    success: true,
+                    vista: "public.view_diaria_operativa (HOT_RAM)",
+                    latenciaMs: Date.now() - t0,
+                    paginacion: {
+                        total: result.total,
+                        limit: result.limit,
+                        offset: result.offset,
+                        retornados: result.retornados,
+                        hay_mas: result.hay_mas
+                    },
+                    datos: result.datos
+                });
+            }
+
             if (!db.isConfigured()) {
                 return res.status(503).json({ success: false, error: "PostgreSQL no configurado" });
             }
@@ -198,6 +225,27 @@ module.exports = function createViewsRouter() {
     router.get('/flota', async (req, res) => {
         const t0 = Date.now();
         try {
+            // ⚡ 1. Servicio Hot RAM (< 3ms) con soporte ETag HTTP 304
+            if (hotRam && hotRam.isReady) {
+                res.set('Cache-Control', 'public, max-age=10, must-revalidate');
+                const etag = hotRam.getEtag();
+                res.set('ETag', etag);
+
+                const clientEtag = req.headers['if-none-match'];
+                if (clientEtag && (clientEtag === etag || clientEtag === `W/${etag}`)) {
+                    return res.status(304).end();
+                }
+
+                const datos = hotRam.queryFlota(req.query);
+                return res.json({
+                    success: true,
+                    vista: "public.view_flota_operativa (HOT_RAM)",
+                    latenciaMs: Date.now() - t0,
+                    total: datos.length,
+                    datos
+                });
+            }
+
             if (!db.isConfigured()) {
                 return res.status(503).json({ success: false, error: "PostgreSQL no configurado" });
             }
@@ -243,11 +291,35 @@ module.exports = function createViewsRouter() {
     router.get('/diagrama', async (req, res) => {
         const t0 = Date.now();
         try {
+            const { mesTab = 'Sep-26', servicio, search, limit = 500 } = req.query;
+
+            // ⚡ 1. Servicio Hot RAM (< 3ms)
+            if (hotRam && hotRam.isReady) {
+                const datos = hotRam.queryDiagramaMensual(mesTab, { servicio, search, limit });
+                if (datos.length > 0) {
+                    res.set('Cache-Control', 'public, max-age=10, must-revalidate');
+                    const etag = hotRam.getEtag();
+                    res.set('ETag', etag);
+
+                    const clientEtag = req.headers['if-none-match'];
+                    if (clientEtag && (clientEtag === etag || clientEtag === `W/${etag}`)) {
+                        return res.status(304).end();
+                    }
+
+                    return res.json({
+                        success: true,
+                        vista: "public.view_diagrama_mensual (HOT_RAM)",
+                        mes_tab: mesTab,
+                        latenciaMs: Date.now() - t0,
+                        total: datos.length,
+                        datos
+                    });
+                }
+            }
+
             if (!db.isConfigured()) {
                 return res.status(503).json({ success: false, error: "PostgreSQL no configurado" });
             }
-
-            const { mesTab = 'Sep-26', servicio, search, limit = 500 } = req.query;
             const limitNum = Math.min(Math.max(parseInt(limit, 10) || 500, 1), 1000);
 
             const conditions = [`mes_tab = $1`];
@@ -356,11 +428,38 @@ module.exports = function createViewsRouter() {
     router.get('/retorno', async (req, res) => {
         const t0 = Date.now();
         try {
+            const { fecha, tipo, servicio, search } = req.query;
+
+            // ⚡ 1. Servicio Hot RAM (< 2ms) para fecha de hoy o por defecto
+            const hoyIso = new Date().toISOString().split('T')[0];
+            const esFechaHoy = !fecha || fecha.trim() === hoyIso;
+
+            if (hotRam && hotRam.isReady && esFechaHoy) {
+                res.set('Cache-Control', 'public, max-age=10, must-revalidate');
+                const etag = hotRam.getEtag();
+                res.set('ETag', etag);
+
+                const clientEtag = req.headers['if-none-match'];
+                if (clientEtag && (clientEtag === etag || clientEtag === `W/${etag}`)) {
+                    return res.status(304).end();
+                }
+
+                const result = hotRam.queryRetorno({ tipo, servicio, search });
+                return res.json({
+                    success: true,
+                    vista: "public.view_personal_retorno (HOT_RAM)",
+                    fecha_evaluada: hoyIso,
+                    latenciaMs: Date.now() - t0,
+                    total: result.total,
+                    resumen: result.resumen,
+                    datos: result.datos
+                });
+            }
+
             if (!db.isConfigured()) {
                 return res.status(503).json({ success: false, error: "PostgreSQL no configurado" });
             }
 
-            const { fecha, tipo, servicio, search } = req.query;
             const params = [];
             const conditions = [];
 
@@ -456,6 +555,27 @@ module.exports = function createViewsRouter() {
     router.get('/catalogo-choferes', async (req, res) => {
         const t0 = Date.now();
         try {
+            // ⚡ 1. Servicio Hot RAM (< 1ms) con soporte ETag HTTP 304
+            if (hotRam && hotRam.isReady) {
+                res.set('Cache-Control', 'public, max-age=10, must-revalidate');
+                const etag = hotRam.getEtag();
+                res.set('ETag', etag);
+
+                const clientEtag = req.headers['if-none-match'];
+                if (clientEtag && (clientEtag === etag || clientEtag === `W/${etag}`)) {
+                    return res.status(304).end();
+                }
+
+                const datos = hotRam.queryCatalogoChoferes();
+                return res.json({
+                    success: true,
+                    vista: "public.view_individual_chofer (lite, HOT_RAM)",
+                    latenciaMs: Date.now() - t0,
+                    total: datos.length,
+                    datos
+                });
+            }
+
             if (!db.isConfigured()) {
                 return res.status(503).json({ success: false, error: "PostgreSQL no configurado" });
             }
@@ -488,11 +608,25 @@ module.exports = function createViewsRouter() {
     router.get('/individual/:choferId', async (req, res) => {
         const t0 = Date.now();
         try {
+            const { choferId } = req.params;
+
+            // ⚡ 1. Servicio Hot RAM (< 1ms)
+            if (hotRam && hotRam.isReady) {
+                const dato = hotRam.queryIndividualChofer(choferId);
+                if (dato) {
+                    return res.json({
+                        success: true,
+                        vista: "public.view_individual_chofer (HOT_RAM)",
+                        latenciaMs: Date.now() - t0,
+                        dato
+                    });
+                }
+            }
+
             if (!db.isConfigured()) {
                 return res.status(503).json({ success: false, error: "PostgreSQL no configurado" });
             }
 
-            const { choferId } = req.params;
             const dataRes = await db.query(`
                 SELECT * FROM public.view_individual_chofer
                 WHERE chofer_id::text = $1 OR dni = $1
@@ -519,12 +653,26 @@ module.exports = function createViewsRouter() {
     router.get('/calendario/:choferId', async (req, res) => {
         const t0 = Date.now();
         try {
+            const { choferId } = req.params;
+            const { zoom = '3', anio, tabs } = req.query;
+
+            // ⚡ 1. Servicio Hot RAM (< 2ms)
+            if (hotRam && hotRam.isReady) {
+                const datos = hotRam.queryCalendario(choferId, { anio, tabs });
+                if (datos.length > 0) {
+                    return res.json({
+                        success: true,
+                        vista: "public.view_calendario_diagrama_km (HOT_RAM)",
+                        latenciaMs: Date.now() - t0,
+                        total: datos.length,
+                        datos
+                    });
+                }
+            }
+
             if (!db.isConfigured()) {
                 return res.status(503).json({ success: false, error: "PostgreSQL no configurado" });
             }
-
-            const { choferId } = req.params;
-            const { zoom = '3', anio, tabs } = req.query;
 
             let sql = `
                 SELECT diagrama_id, chofer_id, mes_tab, anio, mes_numero, tira_dias, contabilizador, km_mes_total, cant_viajes_mes, dias_km

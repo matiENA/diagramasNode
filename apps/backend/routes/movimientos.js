@@ -15,7 +15,7 @@ const {
     mesesLargo
 } = require('../utils/shared');
 
-module.exports = function createMovimientosRouter() {
+module.exports = function createMovimientosRouter(hotRam = require('../cache/hotRamManager'), io = null) {
     const router = express.Router();
 
     // Caché en memoria para evitar saturar la cuota de Google Sheets (TTL: 30 segundos)
@@ -224,6 +224,11 @@ module.exports = function createMovimientosRouter() {
                         actualizado_el = NOW()
                     WHERE unidad_id = ANY($1::uuid[])
                 `, [desunirIds]);
+
+                // Sincronizar desuniones en Hot RAM inmediatamente
+                if (hotRam) {
+                    desunirIds.forEach(uId => hotRam.desasignarUnidad(uId));
+                }
             }
 
             // PASO 4: Limpiar conflictos previos antes de insertar
@@ -244,6 +249,21 @@ module.exports = function createMovimientosRouter() {
                     RETURNING id
                 `, [JSON.stringify(validPareos)]);
                 insertados = insRes.rowCount;
+
+                // Sincronizar pareos activos en Hot RAM inmediatamente
+                if (hotRam) {
+                    validPareos.forEach(p => {
+                        hotRam.actualizarPareo(p.id_unidad, p.id_chofer);
+                    });
+                }
+
+                if (io) {
+                    io.emit('datos_actualizados', {
+                        timestamp: new Date().toISOString(),
+                        evento: 'pareos_actualizados',
+                        total_pareos: validPareos.length
+                    });
+                }
             }
 
             res.json({

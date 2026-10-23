@@ -5,7 +5,7 @@ const { supabase } = require('../utils/shared');
 /**
  * Router para Activos Canónicos (Tractores, Semis) y Gestión de Acoples
  */
-module.exports = function createActivosRouter(cacheDatosGlobales, io) {
+module.exports = function createActivosRouter(cacheDatosGlobales, io, hotRam = require('../cache/hotRamManager')) {
     const router = express.Router();
 
     // GET /api/tractores — Catálogo de tractores con datos técnicos y de servicio
@@ -173,6 +173,24 @@ module.exports = function createActivosRouter(cacheDatosGlobales, io) {
                         } : null;
                     }
                     if (estado !== undefined) utItem.estado = estado;
+                }
+
+                // Sincronizar en vivo con el motor Hot RAM
+                if (hotRam) {
+                    const nuevoTr = tractor_id ? (cacheDatosGlobales?.tractores || []).find(t => t.id === tractor_id) : null;
+                    const nuevoSemi = semi_id ? (cacheDatosGlobales?.semis || []).find(s => s.id === semi_id) : null;
+                    hotRam.actualizarAcople(id, {
+                        tractor_id,
+                        semi_id,
+                        tractor: nuevoTr?.patente || '',
+                        semi: nuevoSemi?.patente || '',
+                        cisternado: nuevoSemi?.cisternado || '',
+                        vtv_tr: nuevoTr?.vtv || null,
+                        mas_tr: nuevoTr?.mas || null,
+                        vtv_semi: nuevoSemi?.vtv || null,
+                        mas_semi: nuevoSemi?.mas || null,
+                        estado
+                    });
                 }
 
                 // Emitir WebSocket a los frontends

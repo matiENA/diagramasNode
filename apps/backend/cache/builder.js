@@ -27,6 +27,7 @@ try {
 const db = require('../utils/db');
 const { supabase } = require('../utils/shared');
 const crypto = require('crypto');
+const hotRamManager = require('./hotRamManager');
 
 // Control de versión para Dirty Check y supresión de Egress
 let lastSupabaseStatsString = null;
@@ -110,7 +111,7 @@ async function actualizarCacheDesdeSupabase(cacheDatosGlobales, io, ioDash, opci
     const t0 = Date.now();
 
     // 🛡️ 1. DIRTY CHECK: Si ya hay datos en RAM y no es forzado, validar si hubo cambios en BD
-    if (!forceFull && cacheDatosGlobales.diagramas && cacheDatosGlobales.diagramas.diagramas?.length > 0) {
+    if (!forceFull && cacheDatosGlobales.diagramas && cacheDatosGlobales.diagramas.diagramas?.length > 0 && hotRamManager.isReady) {
         const statsActuales = await verificarCambiosSupabase();
         if (statsActuales && statsActuales === lastSupabaseStatsString) {
             console.log("⚡ [RAM Supabase] Dirty Check: Sin cambios en BD (0 bytes egress). RAM al día.");
@@ -603,6 +604,11 @@ async function actualizarCacheDesdeSupabase(cacheDatosGlobales, io, ioDash, opci
         lastSupabaseStatsString = await verificarCambiosSupabase();
 
         console.log(`✅ [RAM Supabase] Caché ensamblado en ${Date.now() - t0} ms (${catalogoUnidades.length} UTs, ${diagramasHibridos.length} choferes, ${Object.keys(viajesFinales).length} con KM en RAM).`);
+
+        // ⚡ Hidratar Vistas Hot RAM en memoria Node.js
+        if (db.isConfigured()) {
+            await hotRamManager.hydrateFromDatabase(db);
+        }
 
         // Emitir WebSocket a clientes conectados (solo si hubo cambio real en los datos)
         if (io) emitirDatosSiCambiaron(io, cacheDatosGlobales);
@@ -1781,14 +1787,14 @@ function iniciarCachePolling(cacheDatosGlobales, io, ioDash) {
     // ⚡ Arranque inmediato desde Supabase (carga inicial completa forzada con KM)
     flujoEncoladoGlobal(cacheDatosGlobales, io, ioDash, { forceFull: true, recargarKm: true }); 
     
-    // Refresco periódico ligero desde Supabase cada 5 minutos (con Dirty Check activado y sin recargar KM)
+    // Refresco periódico ligero desde Supabase cada 30 segundos (con Dirty Check activado: 0 egress si no hay cambios)
     setInterval(() => { 
-        console.log("⏱️ Refresco periódico desde Supabase (5 min, Dirty Check activado)..."); 
         flujoEncoladoGlobal(cacheDatosGlobales, io, ioDash, { forceFull: false, recargarKm: false }); 
-    }, 5 * 60 * 1000);
+    }, 30 * 1000);
 }
 
 module.exports = { 
+    hotRamManager,
     iniciarCachePolling, 
     flujoEncoladoGlobal,
     actualizarCacheDesdeSupabase,
