@@ -143,9 +143,9 @@ export const LoginModal = ({ isOpen, onClose }) => {
               {errorMsg && (
                 <div
                   style={{
-                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                    border: '1px solid rgba(239, 68, 68, 0.25)',
-                    color: '#ef4444',
+                    backgroundColor: 'var(--novedad-a-bg)',
+                    border: '1px solid var(--novedad-a-border)',
+                    color: 'var(--novedad-a-text)',
                     padding: '0.6rem 0.75rem',
                     borderRadius: 'var(--radius-sm)',
                     fontSize: '0.75rem',
@@ -164,9 +164,9 @@ export const LoginModal = ({ isOpen, onClose }) => {
               {isSuccess && (
                 <div
                   style={{
-                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                    border: '1px solid rgba(16, 185, 129, 0.25)',
-                    color: '#10b981',
+                    backgroundColor: 'var(--novedad-v-bg)',
+                    border: '1px solid var(--novedad-v-border)',
+                    color: 'var(--novedad-v-text)',
                     padding: '0.6rem 0.75rem',
                     borderRadius: 'var(--radius-sm)',
                     fontSize: '0.75rem',
@@ -289,8 +289,8 @@ export const LoginModal = ({ isOpen, onClose }) => {
                   style={{
                     marginTop: '0.5rem',
                     padding: '0.7rem 1rem',
-                    backgroundColor: 'var(--primary)',
-                    color: '#ffffff',
+                    backgroundColor: 'var(--primary-solid)',
+                    color: 'var(--on-primary-solid)',
                     border: 'none',
                     borderRadius: 'var(--radius-md)',
                     fontWeight: 800,

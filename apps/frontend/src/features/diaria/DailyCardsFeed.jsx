@@ -46,10 +46,10 @@ export const DailyCardsFeed = ({ filters }) => {
 
   if (isError) {
     return (
-      <div style={{ padding: '2rem', textAlign: 'center', backgroundColor: '#fef2f2', borderRadius: 'var(--radius-md)', border: '1px solid #fecaca' }}>
-        <AlertCircle size={28} style={{ color: '#dc2626', margin: '0 auto 0.5rem auto' }} />
-        <h4 style={{ fontWeight: 800, color: '#991b1b' }}>Error consultando vista de tarjetas</h4>
-        <p style={{ fontSize: '0.82rem', color: '#b91c1c', marginTop: '0.25rem' }}>{error?.message || 'Error desconocido'}</p>
+      <div style={{ padding: '2rem', textAlign: 'center', backgroundColor: 'var(--novedad-a-bg)', borderRadius: 'var(--radius-md)', border: '1px solid var(--novedad-a-border)' }}>
+        <AlertCircle size={28} style={{ color: 'var(--novedad-a-text)', margin: '0 auto 0.5rem auto' }} />
+        <h4 style={{ fontWeight: 800, color: 'var(--novedad-a-text)' }}>Error consultando vista de tarjetas</h4>
+        <p style={{ fontSize: '0.82rem', color: 'var(--novedad-a-text)', marginTop: '0.25rem' }}>{error?.message || 'Error desconocido'}</p>
       </div>
     );
   }

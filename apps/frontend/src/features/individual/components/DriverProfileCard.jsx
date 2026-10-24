@@ -232,14 +232,14 @@ export const DriverProfileCard = ({ chofer }) => {
                 background: 'none',
                 border: 'none',
                 cursor: 'pointer',
-                color: copiedField === 'link' ? '#059669' : 'var(--text-muted)',
+                color: copiedField === 'link' ? 'var(--novedad-v-text)' : 'var(--text-muted)',
                 display: 'inline-flex',
                 alignItems: 'center',
                 padding: '0.2rem',
                 transition: 'color 0.15s ease'
               }}
             >
-              {copiedField === 'link' ? <Check size={18} color="#059669" /> : <LinkIcon size={18} />}
+              {copiedField === 'link' ? <Check size={18} color="currentColor" /> : <LinkIcon size={18} />}
             </button>
           </div>
 
@@ -264,7 +264,7 @@ export const DriverProfileCard = ({ chofer }) => {
               style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}
             >
               <span>DNI: <strong>{chofer.dni || 'S/D'}</strong></span>
-              {copiedField === 'dni' ? <Check size={11} color="#059669" /> : <Copy size={11} className="easycopy-icon" />}
+              {copiedField === 'dni' ? <Check size={11} color="currentColor" /> : <Copy size={11} className="easycopy-icon" />}
             </span>
 
             {chofer.email && (
@@ -323,7 +323,7 @@ export const DriverProfileCard = ({ chofer }) => {
                 aria-label={`Copiar UTE: ${chofer.n_ute || '-'}`}
               >
                 <span>{chofer.n_ute || '-'}</span>
-                {copiedField === 'n_ute' ? <Check size={12} color="#059669" /> : <Copy size={11} className="easycopy-icon" />}
+                {copiedField === 'n_ute' ? <Check size={12} color="currentColor" /> : <Copy size={11} className="easycopy-icon" />}
               </span>
             </div>
 
@@ -342,10 +342,9 @@ export const DriverProfileCard = ({ chofer }) => {
                 }}
                 title={`Copiar Tractor: ${chofer.tractor || '-'}`}
                 aria-label={`Copiar Tractor: ${chofer.tractor || '-'}`}
-                style={{ color: 'var(--primary)' }}
               >
                 <span>{chofer.tractor || '-'}</span>
-                {copiedField === 'tractor' ? <Check size={12} color="#059669" /> : <Copy size={11} className="easycopy-icon" />}
+                {copiedField === 'tractor' ? <Check size={12} color="currentColor" /> : <Copy size={11} className="easycopy-icon" />}
               </span>
               {chofer.marca_tr && (
                 <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{chofer.marca_tr}</span>
@@ -369,7 +368,7 @@ export const DriverProfileCard = ({ chofer }) => {
                 aria-label={`Copiar Semi: ${chofer.semi || '-'}`}
               >
                 <span>{chofer.semi || '-'}</span>
-                {copiedField === 'semi' ? <Check size={12} color="#059669" /> : <Copy size={11} className="easycopy-icon" />}
+                {copiedField === 'semi' ? <Check size={12} color="currentColor" /> : <Copy size={11} className="easycopy-icon" />}
               </span>
               {chofer.marca_semi && (
                 <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>

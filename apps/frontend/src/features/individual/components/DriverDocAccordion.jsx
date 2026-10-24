@@ -380,23 +380,9 @@ export const DriverDocAccordion = ({ choferId, chofer }) => {
                       {avaladosList.map((av, idx) => (
                         <span
                           key={idx}
-                          style={{
-                            fontSize: '0.72rem',
-                            fontWeight: 700,
-                            backgroundColor: '#ecfdf5',
-                            color: '#065f46',
-                            border: '1px solid #a7f3d0',
-                            padding: '0 0.5rem',
-                            height: '22px',
-                            borderRadius: '4px',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '0.25rem',
-                            boxSizing: 'border-box',
-                            lineHeight: 1
-                          }}
+                          className="doc-avalado-chip"
                         >
-                          <ShieldCheck size={12} color="#059669" />
+                          <ShieldCheck size={12} color="currentColor" />
                           <span>{av}</span>
                         </span>
                       ))}
@@ -456,7 +442,7 @@ export const DriverDocAccordion = ({ choferId, chofer }) => {
 
                 {/* Nota de Documentación */}
                 {(chofer?.obs_documentacion || docData?.obs_documentacion) && (
-                  <div style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '4px', padding: '0.4rem 0.6rem', fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                  <div style={{ backgroundColor: 'var(--bg-surface-muted)', border: '1px solid var(--border-subtle)', borderRadius: '4px', padding: '0.4rem 0.6rem', fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
                     <strong>Nota:</strong> {chofer?.obs_documentacion || docData?.obs_documentacion}
                   </div>
                 )}

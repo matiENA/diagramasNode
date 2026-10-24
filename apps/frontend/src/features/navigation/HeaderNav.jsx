@@ -85,21 +85,12 @@ export const HeaderNav = ({ activeTab, onSelectTab, onToggleMobileFilters, isDar
               <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-main)' }}>
                 {user.usuario}
               </span>
-              <span style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 600 }}>
+              <span style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: 'var(--text-secondary)', fontWeight: 600 }}>
                 ({user.rol})
               </span>
               <button
                 onClick={logout}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: '#ef4444',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  padding: '0.15rem',
-                  marginLeft: '0.2rem',
-                }}
+                className="btn-logout-icon"
                 title="Cerrar Sesión"
               >
                 <LogOut size={13} />
@@ -115,8 +106,8 @@ export const HeaderNav = ({ activeTab, onSelectTab, onToggleMobileFilters, isDar
                 padding: '0.35rem 0.75rem',
                 fontSize: '0.75rem',
                 fontWeight: 800,
-                backgroundColor: 'var(--primary)',
-                color: '#ffffff',
+                backgroundColor: 'var(--primary-solid)',
+                color: 'var(--on-primary-solid)',
                 border: 'none',
                 borderRadius: 'var(--radius-md)',
                 cursor: 'pointer',

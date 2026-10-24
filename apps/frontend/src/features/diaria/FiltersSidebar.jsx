@@ -68,7 +68,7 @@ export const FiltersSidebar = ({ filters, onFilterChange, onResetFilters }) => {
         <button
           type="button"
           onClick={() => onFilterChange('retornan', !filters.retornan)}
-          className={`filter-chip-btn ${filters.retornan ? 'active' : ''}`}
+          className={`filter-chip-btn btn-filter-retorno ${filters.retornan ? 'active' : ''}`}
           style={{
             width: '100%',
             display: 'flex',
@@ -77,9 +77,6 @@ export const FiltersSidebar = ({ filters, onFilterChange, onResetFilters }) => {
             padding: '0.6rem 0.85rem',
             fontWeight: 800,
             fontSize: '0.8rem',
-            backgroundColor: filters.retornan ? '#4338ca' : '#eef2ff',
-            color: filters.retornan ? '#ffffff' : '#3730a3',
-            border: filters.retornan ? '1px solid #3730a3' : '1px solid #c7d2fe',
             borderRadius: 'var(--radius-sm)',
             cursor: 'pointer',
             transition: 'all 0.15s ease',

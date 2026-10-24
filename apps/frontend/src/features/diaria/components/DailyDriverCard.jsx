@@ -46,29 +46,9 @@ export const DailyDriverCard = ({ driver, fechaContexto, kmInfo, onSelectDriver 
     }
   };
 
-  // 4. Semáforo cromático del Badge de Estado
-  const getBadgeStyle = () => {
-    if (dayStatus.type === 'FRANCO') {
-      return { backgroundColor: '#b6d7a8', color: '#14532d', border: '1px solid #86efac' };
-    }
-    if (dayStatus.type === 'VACACIONES') {
-      return { backgroundColor: '#ffe599', color: '#78350f', border: '1px solid #fde047' };
-    }
-    if (dayStatus.type === 'LICENCIA') {
-      return { backgroundColor: '#fee2e2', color: '#991b1b', border: '1px solid #fca5a5' };
-    }
-    if (dayStatus.type === 'OPERATIVO') {
-      const cons = dayStatus.cons;
-      if (cons >= 22) {
-        return { backgroundColor: '#fef2f2', color: '#dc2626', border: '2.5px solid #ef4444', fontWeight: 900 };
-      }
-      if (cons >= 18) {
-        return { backgroundColor: '#fff7ed', color: '#c2410c', border: '2.5px solid #f97316', fontWeight: 900 };
-      }
-      return { backgroundColor: '#eff6ff', color: '#1d4ed8', border: '2px solid #3b82f6', fontWeight: 800 };
-    }
-    return { backgroundColor: 'var(--bg-surface-muted)', color: 'var(--text-muted)', border: '1px solid var(--border-subtle)' };
-  };
+  // 4. Semáforo cromático del Badge de Estado (gobernado por clases CSS en cards.css para soporte Light y html.dark)
+  const badgeTypeClass = `day-badge-${dayStatus.type ? dayStatus.type.toLowerCase() : 'default'}`;
+  const badgeFatigaClass = dayStatus.cons >= 22 ? 'fatiga-crit' : dayStatus.cons >= 18 ? 'fatiga-warn' : '';
 
   // Helper para fechas legibles
   const fmtDate = (d) => {
@@ -122,7 +102,7 @@ export const DailyDriverCard = ({ driver, fechaContexto, kmInfo, onSelectDriver 
                         {driver.nombre}
                       </h3>
                       {copiedField === 'nombre' ? (
-                        <Check size={13} color="#059669" />
+                        <Check size={13} color="currentColor" />
                       ) : (
                         <Copy size={12} className="easycopy-icon" />
                       )}
@@ -163,7 +143,7 @@ export const DailyDriverCard = ({ driver, fechaContexto, kmInfo, onSelectDriver 
                       >
                         <span>DNI: {driver.dni}</span>
                         {copiedField === 'dni' ? (
-                          <Check size={11} color="#059669" />
+                          <Check size={11} color="currentColor" />
                         ) : (
                           <Copy size={10} className="easycopy-icon" />
                         )}
@@ -191,7 +171,7 @@ export const DailyDriverCard = ({ driver, fechaContexto, kmInfo, onSelectDriver 
                       <span className="unit-label">TRAC</span>
                       <span className="unit-val font-mono">{driver.tractor || '—'}</span>
                       {copiedField === 'tractor' ? (
-                        <Check size={11} color="#059669" />
+                        <Check size={11} color="currentColor" />
                       ) : (
                         <Copy size={10} className="easycopy-icon" />
                       )}
@@ -211,7 +191,7 @@ export const DailyDriverCard = ({ driver, fechaContexto, kmInfo, onSelectDriver 
                       <span className="unit-label">SEMI</span>
                       <span className="unit-val font-mono">{driver.semi || '—'}</span>
                       {copiedField === 'semi' ? (
-                        <Check size={11} color="#059669" />
+                        <Check size={11} color="currentColor" />
                       ) : (
                         <Copy size={10} className="easycopy-icon" />
                       )}
@@ -245,7 +225,7 @@ export const DailyDriverCard = ({ driver, fechaContexto, kmInfo, onSelectDriver 
                         <span className="unit-label">UTE:</span>
                         <span className="unit-val font-mono">{driver.n_ute}</span>
                         {copiedField === 'n_ute' ? (
-                          <Check size={11} color="#059669" />
+                          <Check size={11} color="currentColor" />
                         ) : (
                           <Copy size={10} className="easycopy-icon" />
                         )}
@@ -325,8 +305,7 @@ export const DailyDriverCard = ({ driver, fechaContexto, kmInfo, onSelectDriver 
 
                 {/* Badge Principal del Estado del Día (Fatiga / F / V / IND) */}
                 <div
-                  className={`daily-day-badge day-badge-${dayStatus.type ? dayStatus.type.toLowerCase() : 'default'} ${dayStatus.cons >= 22 ? 'fatiga-crit' : dayStatus.cons >= 18 ? 'fatiga-warn' : ''}`}
-                  style={getBadgeStyle()}
+                  className={`daily-day-badge ${badgeTypeClass} ${badgeFatigaClass}`}
                   title={`Estado: ${dayStatus.raw} (${dayStatus.type}) • Fecha: ${displayDate}${driver.diagrama_tipo ? ' • Tipo: ' + driver.diagrama_tipo : ''}`}
                 >
                   <span className="daily-day-badge-val">{dayStatus.raw}</span>

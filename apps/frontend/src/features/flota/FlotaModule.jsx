@@ -146,7 +146,7 @@ export const FlotaModule = ({ onNavigateToIndividual }) => {
           <p style={{ marginTop: '0.5rem', color: 'var(--text-muted)' }}>Consultando flota operativa...</p>
         </div>
       ) : isError ? (
-        <div style={{ padding: '2rem', color: '#dc2626' }}>Error: {error?.message}</div>
+        <div className="module-error-banner">Error: {error?.message}</div>
       ) : (
         <div className="data-table-wrapper">
           <table className="data-table">

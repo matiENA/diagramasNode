@@ -1,13 +1,19 @@
 :root {
+  color-scheme: light;
   --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
   --font-mono: 'Roboto Mono', monospace;
 
   /* Colores Principales */
   --primary: #19407e;
   --primary-hover: #133365;
+  --primary-dark: #133365;
+  --primary-solid: #19407e;
+  --primary-solid-hover: #133365;
+  --on-primary-solid: #ffffff;
   --primary-light: #eef4ff;
   --accent: #4f46e5;
   --accent-light: #e0e7ff;
+  --accent-text: #4338ca;
   
   /* Estados Operativos */
   --status-circulando: #059669;
@@ -88,18 +94,24 @@
 
 /* 🌙 MODO OSCURO */
 html.dark {
+  color-scheme: dark;
   --primary: #60a5fa;
   --primary-hover: #93c5fd;
+  --primary-dark: #1d4ed8;
+  --primary-solid: #2563eb;
+  --primary-solid-hover: #1d4ed8;
+  --on-primary-solid: #ffffff;
   --primary-light: #1e293b;
   --accent: #818cf8;
   --accent-light: #312e81;
+  --accent-text: #c7d2fe;
 
   --bg-app: #0b0f19;
   --bg-surface: #111827;
   --bg-surface-elevated: #1f2937;
   --bg-surface-muted: #162032;
-  --border-subtle: #1f2937;
-  --border-strong: #374151;
+  --border-subtle: #334155;
+  --border-strong: #64748b;
 
   --text-main: #f8fafc;
   --text-secondary: #cbd5e1;
@@ -161,6 +173,7 @@ body {
 
 button {
   font-family: inherit;
+  color: inherit;
   cursor: pointer;
   border: none;
   background: none;

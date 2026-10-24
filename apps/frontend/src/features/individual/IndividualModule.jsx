@@ -102,8 +102,8 @@ export const IndividualModule = () => {
                     padding: '0.45rem 0.65rem',
                     borderRadius: 'var(--radius-sm)',
                     textAlign: 'left',
-                    backgroundColor: isSelected ? 'var(--primary)' : 'var(--bg-surface-muted)',
-                    color: isSelected ? '#ffffff' : 'var(--text-main)',
+                    backgroundColor: isSelected ? 'var(--primary-solid)' : 'var(--bg-surface-muted)',
+                    color: isSelected ? 'var(--on-primary-solid)' : 'var(--text-main)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
@@ -117,7 +117,7 @@ export const IndividualModule = () => {
                     <span style={{ fontSize: '0.8rem', fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {c.nombre}
                     </span>
-                    <span style={{ fontSize: '0.68rem', opacity: 0.85 }}>
+                    <span style={{ fontSize: '0.68rem', opacity: isSelected ? 0.92 : 0.85 }}>
                       DNI: {c.dni || 'S/D'}
                     </span>
                   </div>
@@ -127,7 +127,7 @@ export const IndividualModule = () => {
                     fontWeight: 800,
                     padding: '0.1rem 0.35rem',
                     borderRadius: '4px',
-                    backgroundColor: isSelected ? 'rgba(255,255,255,0.2)' : 'var(--bg-surface)',
+                    backgroundColor: isSelected ? 'rgba(0, 0, 0, 0.25)' : 'var(--bg-surface)',
                     color: isSelected ? '#ffffff' : 'var(--text-secondary)',
                     textTransform: 'uppercase',
                     flexShrink: 0

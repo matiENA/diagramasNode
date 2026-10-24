@@ -128,8 +128,8 @@
 }
 
 .driver-avatar-btn-label {
-  background-color: var(--primary);
-  color: #ffffff;
+  background-color: var(--primary-solid);
+  color: var(--on-primary-solid);
   font-size: 0.72rem;
   font-weight: 800;
   padding: 0.35rem 0.65rem;
@@ -385,6 +385,12 @@ html.dark .driver-unit-service-badge {
   transition: all 0.15s ease-in-out;
 }
 
+html.dark .driver-name-easycopy {
+  background-color: #1e293b;
+  border-color: #64748b;
+  color: #f8fafc;
+}
+
 .driver-name-easycopy:hover {
   border-color: #2563eb;
   background-color: #eff6ff;
@@ -392,10 +398,22 @@ html.dark .driver-unit-service-badge {
   box-shadow: 0 1px 3px rgba(37, 99, 235, 0.12);
 }
 
+html.dark .driver-name-easycopy:hover {
+  border-color: #60a5fa;
+  background-color: rgba(59, 130, 246, 0.2);
+  color: #93c5fd;
+}
+
 .driver-name-easycopy.copied {
   border-color: #10b981 !important;
   background-color: #ecfdf5 !important;
   color: #065f46 !important;
+}
+
+html.dark .driver-name-easycopy.copied {
+  border-color: #10b981 !important;
+  background-color: rgba(16, 185, 129, 0.2) !important;
+  color: #6ee7b7 !important;
 }
 
 .driver-unit-alert-strip {
@@ -409,14 +427,26 @@ html.dark .driver-unit-service-badge {
 
 .driver-unit-alert-strip.vencido {
   background-color: #fef2f2;
-  color: #dc2626;
+  color: #b91c1c;
   border-top: 1px solid #fecaca;
+}
+
+html.dark .driver-unit-alert-strip.vencido {
+  background-color: rgba(239, 68, 68, 0.18);
+  color: #fca5a5;
+  border-top-color: rgba(239, 68, 68, 0.4);
 }
 
 .driver-unit-alert-strip.por_vencer {
   background-color: #fffbeb;
-  color: #d97706;
+  color: #92400e;
   border-top: 1px solid #fde68a;
+}
+
+html.dark .driver-unit-alert-strip.por_vencer {
+  background-color: rgba(245, 158, 11, 0.18);
+  color: #fde68a;
+  border-top-color: rgba(245, 158, 11, 0.4);
 }
 
 /* ==============================================================
@@ -464,8 +494,8 @@ html.dark .driver-unit-service-badge {
 }
 
 .scale-btn.active {
-  background-color: var(--primary);
-  color: #ffffff;
+  background-color: var(--primary-solid);
+  color: var(--on-primary-solid);
 }
 
 .scale-btn:hover:not(.active) {
@@ -475,7 +505,7 @@ html.dark .driver-unit-service-badge {
 .badge-shift-hint {
   font-size: 0.75rem;
   font-weight: 700;
-  color: var(--accent);
+  color: var(--accent-text);
   background-color: var(--accent-light);
   padding: 0.35rem 0.75rem;
   border-radius: var(--radius-md);
@@ -545,7 +575,11 @@ html.dark .badge-km-rango-val {
 .badge-km-rango-unit {
   font-size: 0.7rem;
   font-weight: 700;
-  color: #6366f1;
+  color: #4f46e5;
+}
+
+html.dark .badge-km-rango-unit {
+  color: #a5b4fc;
 }
 
 @keyframes pulseRange {
@@ -645,9 +679,17 @@ html.dark .badge-km-rango-val {
   outline: 3px solid #4f46e5 !important;
   outline-offset: -1px;
   background-color: #eef2ff !important;
+  color: #1e1b4b !important;
   transform: scale(1.08);
   z-index: 15;
   box-shadow: 0 0 10px rgba(79, 70, 229, 0.35);
+}
+
+html.dark .calendar-day-cell.selected {
+  outline: 3px solid #818cf8 !important;
+  background-color: #312e81 !important;
+  color: #eef2ff !important;
+  box-shadow: 0 0 10px rgba(129, 140, 248, 0.4);
 }
 
 .day-corner-number {
@@ -656,8 +698,19 @@ html.dark .badge-km-rango-val {
   left: 3px;
   font-size: 0.58rem;
   font-weight: 700;
-  color: var(--text-muted);
+  color: currentColor;
+  opacity: 0.9;
   line-height: 1;
+}
+
+.calendar-day-cell.status-default .day-corner-number {
+  color: var(--text-muted);
+  opacity: 1;
+}
+
+html.dark .calendar-day-cell.selected .day-corner-number {
+  color: #c7d2fe;
+  opacity: 1;
 }
 
 .day-status-value {
@@ -676,16 +729,34 @@ html.dark .badge-km-rango-val {
   color: #2563eb;
 }
 
+html.dark .calendar-day-cell.fatiga-normal {
+  background-color: rgba(59, 130, 246, 0.16);
+  border-color: rgba(96, 165, 250, 0.55);
+  color: #93c5fd;
+}
+
 .calendar-day-cell.fatiga-warn {
   background-color: #ffffff;
   border: 2px solid #fb923c;
-  color: #ea580c;
+  color: #c2410c;
+}
+
+html.dark .calendar-day-cell.fatiga-warn {
+  background-color: rgba(249, 115, 22, 0.20);
+  border-color: #f97316;
+  color: #fdba74;
 }
 
 .calendar-day-cell.fatiga-crit {
   background-color: #ffffff;
   border: 2px solid #ef4444;
-  color: #dc2626;
+  color: #b91c1c;
+}
+
+html.dark .calendar-day-cell.fatiga-crit {
+  background-color: rgba(239, 68, 68, 0.22);
+  border-color: #ef4444;
+  color: #fca5a5;
 }
 
 .calendar-day-cell.status-activo {
@@ -696,7 +767,7 @@ html.dark .badge-km-rango-val {
 }
 
 html.dark .calendar-day-cell.status-activo {
-  background-color: #1e3a8a33;
+  background-color: rgba(59, 130, 246, 0.18);
   border-color: #60a5fa;
   color: #93c5fd;
 }
@@ -707,16 +778,34 @@ html.dark .calendar-day-cell.status-activo {
   border: 1px solid #93c5fd00;
 }
 
+html.dark .calendar-day-cell.status-franco {
+  background-color: rgba(34, 197, 94, 0.18);
+  color: #86efac;
+  border-color: rgba(34, 197, 94, 0.40);
+}
+
 .calendar-day-cell.status-vacaciones {
   background-color: #ffe599;
   color: #1e293b;
   border: 1px solid #93c5fd00;
 }
 
+html.dark .calendar-day-cell.status-vacaciones {
+  background-color: rgba(234, 179, 8, 0.18);
+  color: #fde047;
+  border-color: rgba(234, 179, 8, 0.40);
+}
+
 .calendar-day-cell.status-ausencia {
   background-color: #e06666;
-  color: #ffffff;
+  color: #450a0a;
   border: 1px solid #93c5fd00;
+}
+
+html.dark .calendar-day-cell.status-ausencia {
+  background-color: rgba(239, 68, 68, 0.20);
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.42);
 }
 
 .calendar-day-cell.status-ind {
@@ -745,6 +834,10 @@ html.dark .calendar-day-cell.status-ind {
   height: 4px;
   border-radius: 50%;
   background-color: #6366f1;
+}
+
+html.dark .day-dot-km {
+  background-color: #818cf8;
 }
 
 /* ==============================================================
@@ -897,7 +990,7 @@ html.dark .range-actions-separator {
 }
 
 .btn-range-apply {
-  background-color: var(--primary, #2563eb);
+  background-color: var(--primary-solid, #19407e);
   color: #ffffff;
   border: none;
   display: inline-flex;
@@ -906,34 +999,34 @@ html.dark .range-actions-separator {
 }
 
 .btn-range-apply:hover:not(:disabled) {
-  background-color: #1d4ed8;
+  background-color: var(--primary-solid-hover, #133365);
 }
 
 html.dark .btn-range-apply {
-  background-color: #3b82f6;
+  background-color: var(--primary-solid, #2563eb);
 }
 
 html.dark .btn-range-apply:hover:not(:disabled) {
-  background-color: #2563eb;
+  background-color: var(--primary-solid-hover, #1d4ed8);
 }
 
 .btn-range-activo {
-  background-color: #2563eb;
+  background-color: var(--primary-solid, #19407e);
   color: #ffffff;
   border: none;
 }
 
 .btn-range-activo:hover:not(:disabled) {
-  background-color: #1d4ed8;
+  background-color: var(--primary-solid-hover, #133365);
 }
 
 html.dark .btn-range-activo {
-  background-color: #3b82f6;
+  background-color: var(--primary-solid, #2563eb);
   color: #ffffff;
 }
 
 html.dark .btn-range-activo:hover:not(:disabled) {
-  background-color: #2563eb;
+  background-color: var(--primary-solid-hover, #1d4ed8);
 }
 
 .btn-range-franco {
@@ -946,6 +1039,16 @@ html.dark .btn-range-activo:hover:not(:disabled) {
   background-color: #a3cc93;
 }
 
+html.dark .btn-range-franco {
+  background-color: rgba(34, 197, 94, 0.18);
+  color: #86efac;
+  border-color: rgba(34, 197, 94, 0.4);
+}
+
+html.dark .btn-range-franco:hover:not(:disabled) {
+  background-color: rgba(34, 197, 94, 0.28);
+}
+
 .btn-range-vacaciones {
   background-color: #ffe599;
   color: #1e293b;
@@ -954,6 +1057,16 @@ html.dark .btn-range-activo:hover:not(:disabled) {
 
 .btn-range-vacaciones:hover:not(:disabled) {
   background-color: #fcd777;
+}
+
+html.dark .btn-range-vacaciones {
+  background-color: rgba(234, 179, 8, 0.18);
+  color: #fde047;
+  border-color: rgba(234, 179, 8, 0.4);
+}
+
+html.dark .btn-range-vacaciones:hover:not(:disabled) {
+  background-color: rgba(234, 179, 8, 0.28);
 }
 
 .btn-range-licencia {
@@ -966,6 +1079,16 @@ html.dark .btn-range-activo:hover:not(:disabled) {
   background-color: #fecaca;
 }
 
+html.dark .btn-range-licencia {
+  background-color: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+  border-color: rgba(248, 113, 113, 0.4);
+}
+
+html.dark .btn-range-licencia:hover:not(:disabled) {
+  background-color: rgba(239, 68, 68, 0.3);
+}
+
 .btn-range-limpiar {
   background-color: var(--bg-surface-muted, #f1f5f9);
   color: var(--text-secondary, #475569);
@@ -974,19 +1097,19 @@ html.dark .btn-range-activo:hover:not(:disabled) {
 
 .btn-range-limpiar:hover:not(:disabled) {
   background-color: #fee2e2;
-  color: #dc2626;
+  color: #b91c1c;
   border-color: #fca5a5;
 }
 
 html.dark .btn-range-limpiar {
   background-color: #1e293b;
   color: #cbd5e1;
-  border-color: #475569;
+  border-color: #64748b;
 }
 
 html.dark .btn-range-limpiar:hover:not(:disabled) {
   background-color: #450a0a;
-  color: #f87171;
+  color: #fca5a5;
   border-color: #991b1b;
 }
 
@@ -994,6 +1117,12 @@ html.dark .btn-range-limpiar:hover:not(:disabled) {
   background-color: var(--bg-surface-muted);
   border: 1px solid var(--border-subtle);
   color: var(--text-muted);
+}
+
+html.dark .btn-range-clear {
+  background-color: #1e293b;
+  border-color: #475569;
+  color: #cbd5e1;
 }
 
 /* ==============================================================
@@ -1203,6 +1332,10 @@ html.dark .doc-status-badge.badge-S_D {
   transition: border-color 0.15s ease;
 }
 
+html.dark .doc-date-input {
+  border-color: var(--border-strong);
+}
+
 .doc-date-input:focus {
   border-color: var(--primary);
 }
@@ -1228,14 +1361,42 @@ html.dark .doc-status-badge.badge-S_D {
 
 .btn-save-individual.saved {
   background-color: #ecfdf5;
-  color: #059669;
+  color: #065f46;
   border-color: #a7f3d0;
+}
+
+html.dark .btn-save-individual.saved {
+  background-color: rgba(16, 185, 129, 0.2);
+  color: #6ee7b7;
+  border-color: rgba(16, 185, 129, 0.4);
+}
+
+.doc-avalado-chip {
+  font-size: 0.72rem;
+  font-weight: 700;
+  background-color: #ecfdf5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+  padding: 0 0.5rem;
+  height: 22px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  box-sizing: border-box;
+  line-height: 1;
+}
+
+html.dark .doc-avalado-chip {
+  background-color: rgba(16, 185, 129, 0.18);
+  color: #6ee7b7;
+  border-color: rgba(16, 185, 129, 0.35);
 }
 
 .btn-guardar-vencimientos-global {
   padding: 0.65rem 1.4rem;
   border-radius: var(--radius-md);
-  background: linear-gradient(135deg, var(--primary) 0%, #2563eb 100%);
+  background: linear-gradient(135deg, var(--primary-solid) 0%, #2563eb 100%);
   color: #ffffff;
   font-size: 0.85rem;
   font-weight: 800;

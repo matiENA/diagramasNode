@@ -150,14 +150,12 @@ export const UnitAssignModal = ({ isOpen, onClose, driver }) => {
                   <button
                     onClick={handleUnassign}
                     disabled={assignMutation.isPending}
+                    className="unit-modal-unassign-btn"
                     style={{
                       padding: '0.35rem 0.75rem',
                       borderRadius: 'var(--radius-sm)',
                       fontSize: '0.75rem',
                       fontWeight: 800,
-                      backgroundColor: '#fee2e2',
-                      color: '#b91c1c',
-                      border: '1px solid #fca5a5',
                       display: 'flex',
                       alignItems: 'center',
                       gap: '0.35rem',
@@ -199,12 +197,11 @@ export const UnitAssignModal = ({ isOpen, onClose, driver }) => {
               {/* Notificación de Feedback */}
               {feedbackMsg && (
                 <div
+                  className={`unit-modal-feedback ${feedbackMsg.type || 'info'}`}
                   style={{
                     padding: '0.6rem 1.5rem',
                     fontSize: '0.8rem',
                     fontWeight: 700,
-                    backgroundColor: feedbackMsg.type === 'error' ? '#fee2e2' : feedbackMsg.type === 'success' ? '#dcfce7' : '#eff6ff',
-                    color: feedbackMsg.type === 'error' ? '#991b1b' : feedbackMsg.type === 'success' ? '#166534' : '#1e40af',
                     borderBottom: '1px solid var(--border-subtle)',
                   }}
                 >
@@ -236,7 +233,7 @@ export const UnitAssignModal = ({ isOpen, onClose, driver }) => {
                           padding: '0.75rem 1rem',
                           borderRadius: 'var(--radius-md)',
                           border: esLaActual ? '2px solid var(--primary)' : '1px solid var(--border-subtle)',
-                          backgroundColor: esLaActual ? '#eff6ff' : 'var(--bg-surface)',
+                          backgroundColor: esLaActual ? 'var(--primary-light)' : 'var(--bg-surface)',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'space-between',
@@ -288,8 +285,8 @@ export const UnitAssignModal = ({ isOpen, onClose, driver }) => {
                                 borderRadius: 'var(--radius-sm)',
                                 fontSize: '0.78rem',
                                 fontWeight: 800,
-                                backgroundColor: 'var(--primary)',
-                                color: '#ffffff',
+                                backgroundColor: 'var(--primary-solid)',
+                                color: 'var(--on-primary-solid)',
                                 border: 'none',
                                 cursor: 'pointer',
                                 display: 'flex',
@@ -317,6 +314,7 @@ export const UnitAssignModal = ({ isOpen, onClose, driver }) => {
                     fontSize: '0.82rem',
                     fontWeight: 700,
                     backgroundColor: 'var(--bg-surface)',
+                    color: 'var(--text-main)',
                     border: '1px solid var(--border-strong)',
                     cursor: 'pointer',
                   }}

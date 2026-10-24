@@ -46,7 +46,7 @@ export const RangeActionBar = ({
 
         {/* Píldora de Kilómetros en Rango */}
         <div className="range-km-pill" title="Kilómetros acumulados en el rango seleccionado">
-          <Route size={14} style={{ color: '#6366f1', flexShrink: 0 }} />
+          <Route size={14} style={{ color: 'currentColor', flexShrink: 0 }} />
           <span>
             <strong>{rangeKm.toLocaleString('es-AR')}</strong> km en rango
           </span>

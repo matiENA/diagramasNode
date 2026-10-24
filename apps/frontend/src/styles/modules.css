@@ -171,9 +171,58 @@ html.dark .badge-flota-diag-btn {
 }
 
 html.dark .badge-flota-diag-btn:hover {
-  background-color: #3b82f6;
+  background-color: var(--primary-solid);
   color: #ffffff;
-  border-color: #3b82f6;
+  border-color: var(--primary-solid);
+}
+
+/* Estados de Error y Modal de Asignación de Unidad */
+.module-error-banner {
+  padding: 2rem;
+  color: var(--novedad-a-text);
+  font-weight: 700;
+}
+
+.unit-modal-unassign-btn {
+  background-color: #fee2e2;
+  color: #b91c1c;
+  border: 1px solid #fca5a5;
+}
+
+html.dark .unit-modal-unassign-btn {
+  background-color: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+  border-color: rgba(248, 113, 113, 0.4);
+}
+
+.unit-modal-feedback.error {
+  background-color: #fee2e2;
+  color: #991b1b;
+}
+
+html.dark .unit-modal-feedback.error {
+  background-color: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+}
+
+.unit-modal-feedback.success {
+  background-color: #dcfce7;
+  color: #166534;
+}
+
+html.dark .unit-modal-feedback.success {
+  background-color: rgba(16, 185, 129, 0.2);
+  color: #6ee7b7;
+}
+
+.unit-modal-feedback.info {
+  background-color: #eff6ff;
+  color: #1e40af;
+}
+
+html.dark .unit-modal-feedback.info {
+  background-color: rgba(59, 130, 246, 0.2);
+  color: #93c5fd;
 }
 
 .badge-flota-diag-btn:focus-visible {

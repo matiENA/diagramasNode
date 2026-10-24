@@ -202,8 +202,8 @@ export const DailyCardModal = ({ isOpen, onClose }) => {
                     disabled={createCard.isPending}
                     style={{
                       padding: '0.55rem 1.25rem',
-                      backgroundColor: 'var(--primary)',
-                      color: '#ffffff',
+                      backgroundColor: 'var(--primary-solid)',
+                      color: 'var(--on-primary-solid)',
                       borderRadius: 'var(--radius-md)',
                       fontWeight: 800,
                       fontSize: '0.85rem',

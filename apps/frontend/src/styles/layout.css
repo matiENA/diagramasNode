@@ -27,7 +27,7 @@
   justify-content: center;
   width: 38px;
   height: 38px;
-  background: linear-gradient(135deg, var(--primary) 0%, #2563eb 100%);
+  background: linear-gradient(135deg, var(--primary-solid) 0%, #2563eb 100%);
   color: #ffffff;
   border-radius: var(--radius-md);
   font-weight: 800;
@@ -95,7 +95,7 @@ html.dark .nav-tab-btn:hover {
 
 .nav-badge-pill {
   padding: 0.1rem 0.45rem;
-  background-color: #ef4444;
+  background-color: #dc2626;
   color: #ffffff;
   border-radius: var(--radius-full);
   font-size: 0.65rem;
@@ -130,13 +130,28 @@ html.dark .nav-tab-btn:hover {
 .btn-mobile-filters {
   display: none;
   padding: 0.45rem 0.8rem;
-  background-color: var(--primary);
-  color: #ffffff;
+  background-color: var(--primary-solid);
+  color: var(--on-primary-solid);
   border-radius: var(--radius-md);
   font-size: 0.8rem;
   font-weight: 700;
   align-items: center;
   gap: 0.4rem;
+}
+
+.btn-logout-icon {
+  background: none;
+  border: none;
+  color: #dc2626;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 0.15rem;
+  margin-left: 0.2rem;
+}
+
+html.dark .btn-logout-icon {
+  color: #f87171;
 }
 
 /* ==============================================================
