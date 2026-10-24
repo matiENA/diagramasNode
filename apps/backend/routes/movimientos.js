@@ -211,59 +211,80 @@ module.exports = function createMovimientosRouter(hotRam = require('../cache/hot
             const activeUnitIds = validPareos.map(p => p.id_unidad);
             const activeChoferIds = validPareos.map(p => p.id_chofer);
 
-            // PASO 3: Ejecutar desuniones (eliminar movimientos y liberar choferes)
+            // PASOS 3, 4 y 5: Ejecución Atómica en Transacción Dedicada (ACID)
+            const client = await db.getClient();
             let desunidosDeleted = 0;
-            if (desunirIds.length > 0) {
-                const delDes = await db.query(`DELETE FROM public.movimientos WHERE id_unidad = ANY($1::uuid[]) RETURNING id`, [desunirIds]);
-                desunidosDeleted = delDes.rowCount;
+            let insertados = 0;
 
-                await db.query(`
-                    UPDATE public.choferes
-                    SET unidad_id = NULL,
-                        estado = CASE WHEN estado = 'circulando' THEN 'inactivo' ELSE estado END,
-                        actualizado_el = NOW()
-                    WHERE unidad_id = ANY($1::uuid[])
-                `, [desunirIds]);
+            try {
+                await client.query('BEGIN');
 
-                // Sincronizar desuniones en Hot RAM inmediatamente
-                if (hotRam) {
+                // PASO 3: Ejecutar desuniones
+                if (desunirIds.length > 0) {
+                    const delDes = await client.query(`DELETE FROM public.movimientos WHERE id_unidad = ANY($1::uuid[]) RETURNING id`, [desunirIds]);
+                    desunidosDeleted = delDes.rowCount;
+
+                    await client.query(`
+                        UPDATE public.choferes
+                        SET unidad_id = NULL,
+                            estado = CASE WHEN estado = 'circulando' THEN 'inactivo' ELSE estado END,
+                            actualizado_el = NOW()
+                        WHERE unidad_id = ANY($1::uuid[])
+                    `, [desunirIds]);
+                }
+
+                // PASO 4: Limpiar conflictos previos antes de insertar
+                if (activeUnitIds.length > 0) {
+                    await client.query(`DELETE FROM public.movimientos WHERE id_unidad = ANY($1::uuid[]) OR id_chofer = ANY($2::uuid[])`, [activeUnitIds, activeChoferIds]);
+                }
+
+                // PASO 5: Insertar pareos activos y reflejar en choferes
+                if (validPareos.length > 0) {
+                    const insRes = await client.query(`
+                        INSERT INTO public.movimientos (id_unidad, id_chofer, actualizado_el)
+                        SELECT id_unidad, id_chofer, NOW()
+                        FROM jsonb_to_recordset($1::jsonb) AS x(id_unidad uuid, id_chofer uuid)
+                        ON CONFLICT (id_unidad) DO UPDATE SET
+                          id_chofer = EXCLUDED.id_chofer,
+                          actualizado_el = NOW()
+                        RETURNING id
+                    `, [JSON.stringify(validPareos)]);
+                    insertados = insRes.rowCount;
+
+                    await client.query(`
+                        UPDATE public.choferes c
+                        SET unidad_id = p.id_unidad,
+                            estado = 'circulando',
+                            actualizado_el = NOW()
+                        FROM jsonb_to_recordset($1::jsonb) AS p(id_unidad uuid, id_chofer uuid)
+                        WHERE c.id = p.id_chofer
+                    `, [JSON.stringify(validPareos)]);
+                }
+
+                await client.query('COMMIT');
+            } catch (txErr) {
+                await client.query('ROLLBACK');
+                throw txErr;
+            } finally {
+                client.release();
+            }
+
+            // Sincronizar en Hot RAM tras confirmar el COMMIT en base de datos
+            if (hotRam) {
+                if (desunirIds.length > 0) {
                     desunirIds.forEach(uId => hotRam.desasignarUnidad(uId));
                 }
+                if (validPareos.length > 0) {
+                    validPareos.forEach(p => hotRam.actualizarPareo(p.id_unidad, p.id_chofer));
+                }
             }
 
-            // PASO 4: Limpiar conflictos previos antes de insertar
-            if (activeUnitIds.length > 0) {
-                await db.query(`DELETE FROM public.movimientos WHERE id_unidad = ANY($1::uuid[]) OR id_chofer = ANY($2::uuid[])`, [activeUnitIds, activeChoferIds]);
-            }
-
-            // PASO 5: Insertar pareos activos
-            let insertados = 0;
-            if (validPareos.length > 0) {
-                const insRes = await db.query(`
-                    INSERT INTO public.movimientos (id_unidad, id_chofer, actualizado_el)
-                    SELECT id_unidad, id_chofer, NOW()
-                    FROM jsonb_to_recordset($1::jsonb) AS x(id_unidad uuid, id_chofer uuid)
-                    ON CONFLICT (id_unidad) DO UPDATE SET
-                      id_chofer = EXCLUDED.id_chofer,
-                      actualizado_el = NOW()
-                    RETURNING id
-                `, [JSON.stringify(validPareos)]);
-                insertados = insRes.rowCount;
-
-                // Sincronizar pareos activos en Hot RAM inmediatamente
-                if (hotRam) {
-                    validPareos.forEach(p => {
-                        hotRam.actualizarPareo(p.id_unidad, p.id_chofer);
-                    });
-                }
-
-                if (io) {
-                    io.emit('datos_actualizados', {
-                        timestamp: new Date().toISOString(),
-                        evento: 'pareos_actualizados',
-                        total_pareos: validPareos.length
-                    });
-                }
+            if (io) {
+                io.emit('datos_actualizados', {
+                    timestamp: new Date().toISOString(),
+                    evento: 'pareos_actualizados',
+                    total_pareos: validPareos.length
+                });
             }
 
             res.json({

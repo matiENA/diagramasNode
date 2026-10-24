@@ -45,51 +45,25 @@ export const useAssignUnit = () => {
 
       const usuarioActivo = localStorage.getItem('usuarioActivo') || 'OPERADOR';
 
-      // 1. Desasignación
+      // 1. Desasignación Atómica (ACID vía RPC en PostgreSQL)
       if (esDesasignar) {
-        const { error: err1 } = await supabase
-          .from('choferes')
-          .update({ unidad_id: null, actualizado_por: usuarioActivo })
-          .eq('id', choferId);
-        if (err1) throw err1;
-
-        await supabase
-          .from('movimientos')
-          .delete()
-          .eq('id_chofer', choferId);
-
-        return { success: true, message: 'Unidad desasignada exitosamente' };
+        const { data, error } = await supabase.rpc('fn_desunir_unidad_chofer', {
+          p_chofer_id: choferId,
+          p_usuario: usuarioActivo
+        });
+        if (error) throw error;
+        return { success: true, message: 'Unidad desasignada exitosamente', data };
       }
 
-      // 2. Asignación directa
-      // Si otro chofer tenía asignada esta unidad, liberarla
-      if (unidadId) {
-        await supabase
-          .from('choferes')
-          .update({ unidad_id: null, actualizado_por: usuarioActivo })
-          .eq('unidad_id', unidadId);
-      }
+      // 2. Asignación Directa Atómica (ACID vía RPC en PostgreSQL)
+      const { data, error } = await supabase.rpc('fn_asignar_unidad_chofer', {
+        p_chofer_id: choferId,
+        p_unidad_id: unidadId,
+        p_usuario: usuarioActivo
+      });
+      if (error) throw error;
 
-      // Asignar unidad al chofer
-      const { error: errAssign } = await supabase
-        .from('choferes')
-        .update({ unidad_id: unidadId, actualizado_por: usuarioActivo })
-        .eq('id', choferId);
-      if (errAssign) throw errAssign;
-
-      // Actualizar tabla movimientos
-      await supabase
-        .from('movimientos')
-        .delete()
-        .eq('id_chofer', choferId);
-
-      if (unidadId) {
-        await supabase
-          .from('movimientos')
-          .insert([{ id_chofer: choferId, id_unidad: unidadId }]);
-      }
-
-      return { success: true, message: 'Unidad asignada exitosamente' };
+      return { success: true, message: 'Unidad asignada exitosamente', data };
     },
 
     // Mutación optimista en RAM para que la UI responda en <16 ms
