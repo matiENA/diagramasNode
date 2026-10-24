@@ -371,8 +371,15 @@ class InjectorService {
             };
 
             if (existing) {
-                payload.id = existing.id;
-                unitsToUpdate.push(payload);
+                const changed = (existing.n_ute || '') !== (payload.n_ute || '') ||
+                                (existing.servicio_id || '') !== (payload.servicio_id || '') ||
+                                (existing.tractor_id || '') !== (payload.tractor_id || '') ||
+                                (existing.semi_id || '') !== (payload.semi_id || '') ||
+                                (existing.estado || '') !== (payload.estado || '');
+                if (changed) {
+                    payload.id = existing.id;
+                    unitsToUpdate.push(payload);
+                }
             } else {
                 unitsToInsert.push(payload);
             }
@@ -491,7 +498,7 @@ class InjectorService {
         (scList || []).forEach(sc => serviciosChoferesMap.set(sc.denominacion.toUpperCase(), sc.id));
 
         // Actualizar Choferes
-        const { data: existingChoferes, error: errFetchC } = await this.supabase.from('choferes').select('id, nombre, dni, foto');
+        const { data: existingChoferes, error: errFetchC } = await this.supabase.from('choferes').select('id, nombre, dni, foto, legajo, c_servicio, servicio_id, diagrama_tipo, estado, contabilizador');
         if (errFetchC) throw new Error(`Error consultando choferes: ${errFetchC.message}`);
 
         const choferKeyMap = new Map();
@@ -523,7 +530,17 @@ class InjectorService {
                 const mergedPayload = { ...payload };
                 if (!mergedPayload.dni && existing.dni) mergedPayload.dni = existing.dni;
                 if (!mergedPayload.foto && existing.foto) mergedPayload.foto = existing.foto;
-                choferesToUpdate.push({ id: existing.id, ...mergedPayload });
+
+                const changed = (existing.dni || '') !== (mergedPayload.dni || '') ||
+                                (existing.legajo || '') !== (mergedPayload.legajo || '') ||
+                                (existing.c_servicio || '') !== (mergedPayload.c_servicio || '') ||
+                                (existing.servicio_id || '') !== (mergedPayload.servicio_id || '') ||
+                                (existing.diagrama_tipo || '') !== (mergedPayload.diagrama_tipo || '') ||
+                                (existing.estado || '') !== (mergedPayload.estado || '') ||
+                                (existing.contabilizador || '') !== (mergedPayload.contabilizador || '');
+                if (changed) {
+                    choferesToUpdate.push({ id: existing.id, ...mergedPayload });
+                }
             } else {
                 choferesToInsert.push(payload);
             }

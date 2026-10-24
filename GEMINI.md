@@ -20,3 +20,4 @@
 - Despliegue (Render: backend free + Static Site): [docs/DEPLOY_RENDER.md](docs/DEPLOY_RENDER.md)
 - Backend único: `apps/backend` (todas las rutas). Frontend: `apps/frontend`. Extracción local (n8n + loader): `extraction/`. SQL: `supabase/`.
 - La v1 no cambia lógica funcional; mejoras pendientes en [docs/ROADMAP_v1.1.md](docs/ROADMAP_v1.1.md).
+- Auditoría de rendimiento/consumo/ACID de la DB: plugin global `db-perf-auditor` (agente `db-perf-auditor`, skill `db-perf-review`, script `tools/diagnostics/db-perf-audit.js`).
