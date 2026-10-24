@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/api/apiClient';
 import { queryKeys } from '@/api/queryKeys';
+import { useNavigation } from '@/context/NavigationContext';
 import { useIndividualChofer } from './hooks/useIndividualChofer';
 import { DriverProfileCard } from './components/DriverProfileCard';
 import { DriverDocAccordion } from './components/DriverDocAccordion';
@@ -9,7 +10,7 @@ import { TrimestralCalendar } from './components/TrimestralCalendar';
 import { Search, User, Users } from 'lucide-react';
 
 export const IndividualModule = () => {
-  const [selectedChoferId, setSelectedChoferId] = useState('');
+  const { selectedChoferId, selectDriver } = useNavigation();
   const [search, setSearch] = useState('');
 
   // 1. Catálogo optimizado de choferes para el selector lateral (desde backend / vista unificada)
@@ -19,31 +20,40 @@ export const IndividualModule = () => {
     staleTime: 1000 * 60 * 30, // 30 min en RAM
   });
 
-  // Soporte de Deep-Linking (?chofer=ID o nombre)
+  // Soporte de Deep-Linking y sincronización con NavigationContext
   useEffect(() => {
     if (!choferes || choferes.length === 0) return;
-    const params = new URLSearchParams(window.location.search);
-    const paramChofer = params.get('chofer');
 
-    if (paramChofer) {
-      const cleanParam = paramChofer.trim().toLowerCase();
+    if (selectedChoferId) {
+      const cleanParam = selectedChoferId.trim().toLowerCase();
       const found = choferes.find(
-        (c) => c.id === paramChofer ||
+        (c) => c.id === selectedChoferId ||
                (c.dni && String(c.dni).toLowerCase() === cleanParam) ||
                c.nombre.toLowerCase().includes(cleanParam)
       );
-      if (found) {
-        setSelectedChoferId(found.id);
+      if (found && found.id !== selectedChoferId) {
+        selectDriver(found.id, { replace: true });
         return;
       }
-    }
-
-    // Si no hay seleccionado, pre-seleccionar el primer chofer con foto o el primer elemento
-    if (!selectedChoferId) {
+    } else {
+      // Si no hay seleccionado, pre-seleccionar el primer chofer con foto o el primer elemento
       const conFoto = choferes.find((c) => c.foto);
-      setSelectedChoferId(conFoto ? conFoto.id : choferes[0].id);
+      const defaultId = conFoto ? conFoto.id : choferes[0]?.id;
+      if (defaultId) {
+        selectDriver(defaultId, { replace: true });
+      }
     }
-  }, [choferes]);
+  }, [choferes, selectedChoferId, selectDriver]);
+
+  // Auto-scroll en la lista lateral hacia el chofer activo
+  useEffect(() => {
+    if (selectedChoferId) {
+      const el = document.getElementById(`driver-item-${selectedChoferId}`);
+      if (el) {
+        el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }
+    }
+  }, [selectedChoferId]);
 
   // 2. Consulta unificada a la vista de chofer + unidad + datos unidad + vencimientos + avalados
   const { data: choferData, isLoading: isLoadingChoferData } = useIndividualChofer(selectedChoferId);
@@ -97,7 +107,8 @@ export const IndividualModule = () => {
               return (
                 <button
                   key={c.id}
-                  onClick={() => setSelectedChoferId(c.id)}
+                  id={`driver-item-${c.id}`}
+                  onClick={() => selectDriver(c.id)}
                   style={{
                     padding: '0.45rem 0.65rem',
                     borderRadius: 'var(--radius-sm)',

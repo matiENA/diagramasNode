@@ -8,7 +8,7 @@ export const UnitAssignModal = ({ isOpen, onClose, driver }) => {
   const [servicio, setServicio] = useState('TODOS');
   const [feedbackMsg, setFeedbackMsg] = useState(null);
 
-  const { data: units, isLoading } = useAvailableUnits(servicio);
+  const { data: units, isLoading } = useAvailableUnits(servicio, { enabled: Boolean(isOpen) });
   const assignMutation = useAssignUnit();
 
   const filteredUnits = useMemo(() => {

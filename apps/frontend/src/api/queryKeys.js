@@ -35,6 +35,7 @@ export const queryKeys = {
 
   // Ficha Individual de Chofer
   individual: {
+    all: ['individual_chofer'],
     catalog: ['catalogo_choferes_lite'],
     detail: (choferId) => ['individual_chofer', String(choferId || '')],
     calendar: (choferId, zoom, targetTabs) => {

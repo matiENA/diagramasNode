@@ -30,7 +30,13 @@ export function useRealtimeSync() {
         (payload) => {
           console.log('🔄 [Realtime] Cambio detectado en public.choferes:', payload.eventType);
           queryClient.invalidateQueries({ queryKey: queryKeys.diaria.all });
-          queryClient.invalidateQueries({ queryKey: queryKeys.individual.all });
+          queryClient.invalidateQueries({ queryKey: queryKeys.individual.catalog });
+          const chId = payload.new?.id || payload.old?.id;
+          if (chId) {
+            queryClient.invalidateQueries({ queryKey: queryKeys.individual.detail(chId) });
+          } else {
+            queryClient.invalidateQueries({ queryKey: queryKeys.individual.all });
+          }
         }
       )
       .on(
@@ -39,7 +45,12 @@ export function useRealtimeSync() {
         (payload) => {
           console.log('🔄 [Realtime] Cambio detectado en public.diagramas:', payload.eventType);
           queryClient.invalidateQueries({ queryKey: queryKeys.diaria.all });
-          queryClient.invalidateQueries({ queryKey: queryKeys.individual.all });
+          const chId = payload.new?.chofer_id || payload.old?.chofer_id;
+          if (chId) {
+            queryClient.invalidateQueries({ queryKey: queryKeys.individual.calendar(chId) });
+          } else {
+            queryClient.invalidateQueries({ queryKey: queryKeys.individual.all });
+          }
         }
       )
       .on(

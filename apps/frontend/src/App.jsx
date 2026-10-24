@@ -5,6 +5,7 @@ import { DailyDashboard } from './features/diaria/DailyDashboard';
 import { supabase } from './api/supabaseClient';
 import { queryKeys } from './api/queryKeys';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { NavigationProvider, useNavigation } from './context/NavigationContext';
 import { LoginWall } from './components/LoginWall';
 import { useRealtimeSync } from './hooks/useRealtimeSync';
 
@@ -25,8 +26,8 @@ const queryClient = new QueryClient({
 
 function AppContent() {
   const { user, isAuthenticated, isLoading } = useAuth();
+  const { activeTab, navigateToTab, navigateToDriver } = useNavigation();
   useRealtimeSync(); // Sincronización en vivo vía WebSockets
-  const [activeTab, setActiveTab] = useState('diaria');
   const [isDarkMode, setIsDarkMode] = useState(() => {
     return localStorage.getItem('theme') === 'dark';
   });
@@ -91,7 +92,7 @@ function AppContent() {
       <HeaderNav
         activeTab={activeTab}
         onSelectTab={(tab) => {
-          setActiveTab(tab);
+          navigateToTab(tab);
           setIsMobileFiltersOpen(false);
         }}
         onToggleMobileFilters={() => setIsMobileFiltersOpen(!isMobileFiltersOpen)}
@@ -116,23 +117,13 @@ function AppContent() {
             <DailyDashboard
               isMobileFiltersOpen={isMobileFiltersOpen}
               onCloseMobileFilters={() => setIsMobileFiltersOpen(false)}
-              onNavigateToIndividual={(choferId) => {
-                const url = new URL(window.location);
-                url.searchParams.set('chofer', choferId);
-                window.history.pushState({}, '', url);
-                setActiveTab('individual');
-              }}
+              onNavigateToIndividual={navigateToDriver}
             />
           )}
 
           {activeTab === 'flota' && (
             <FlotaModule
-              onNavigateToIndividual={(choferId) => {
-                const url = new URL(window.location);
-                url.searchParams.set('chofer', choferId);
-                window.history.pushState({}, '', url);
-                setActiveTab('individual');
-              }}
+              onNavigateToIndividual={navigateToDriver}
             />
           )}
           {activeTab === 'individual' && <IndividualModule />}
@@ -146,7 +137,9 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <AppContent />
+        <NavigationProvider>
+          <AppContent />
+        </NavigationProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

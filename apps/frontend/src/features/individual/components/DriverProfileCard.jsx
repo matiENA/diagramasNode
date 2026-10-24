@@ -32,8 +32,9 @@ export const DriverProfileCard = ({ chofer }) => {
   };
 
   const handleCopyLink = async (e) => {
-    const url = new URL(window.location.href);
-    url.searchParams.set('chofer', chofer.chofer_id || chofer.id);
+    const choferId = chofer.chofer_id || chofer.id;
+    const url = new URL('/individual', window.location.origin);
+    url.searchParams.set('chofer', choferId);
     await handleCopy(url.toString(), 'link', e);
   };
 

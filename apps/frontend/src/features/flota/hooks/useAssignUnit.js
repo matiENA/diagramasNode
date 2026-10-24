@@ -6,7 +6,7 @@ import { queryKeys } from '@/api/queryKeys';
 /**
  * Hook para consultar el catálogo de unidades operativas disponibles para asignación
  */
-export const useAvailableUnits = (servicio = 'TODOS') => {
+export const useAvailableUnits = (servicio = 'TODOS', options = {}) => {
   return useQuery({
     queryKey: queryKeys.flota.disponibles(servicio),
     queryFn: async () => {
@@ -16,6 +16,7 @@ export const useAvailableUnits = (servicio = 'TODOS') => {
       }
       return data || [];
     },
+    enabled: options.enabled !== undefined ? Boolean(options.enabled) : true,
     staleTime: 1000 * 60 * 3, // 3 min en RAM
   });
 };

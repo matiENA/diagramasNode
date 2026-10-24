@@ -11,6 +11,10 @@ const BASE_API_URL = import.meta.env.VITE_API_URL || '';
 class ApiClient {
   async fetchJson(endpoint, options = {}) {
     const url = `${BASE_API_URL}${endpoint}`;
+    const timeoutMs = options.timeoutMs || 6000;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
     try {
       const res = await fetch(url, {
         headers: {
@@ -18,8 +22,11 @@ class ApiClient {
           'Content-Type': 'application/json',
           ...options.headers,
         },
+        signal: options.signal || controller.signal,
         ...options,
       });
+
+      clearTimeout(timeoutId);
 
       if (!res.ok) {
         throw new Error(`HTTP error ${res.status}: ${res.statusText}`);
@@ -28,6 +35,7 @@ class ApiClient {
       const json = await res.json();
       return json;
     } catch (err) {
+      clearTimeout(timeoutId);
       throw err;
     }
   }

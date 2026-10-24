@@ -115,7 +115,9 @@ export function calculateDriverReturn(driver, fechaIso) {
 /**
  * Hook de consulta paginada para la vista Diaria
  */
-export const useDailyDrivers = (filters = {}, fechaContexto = null) => {
+export const useDailyDrivers = (filters = {}, fechaContexto = null, options = {}) => {
+  const isEnabled = options.enabled !== undefined ? Boolean(options.enabled) : true;
+
   return useInfiniteQuery({
     queryKey: queryKeys.diaria.list(filters, fechaContexto),
     queryFn: async ({ pageParam = 0 }) => {
@@ -222,9 +224,10 @@ export const useDailyDrivers = (filters = {}, fechaContexto = null) => {
     },
     getNextPageParam: (lastPage) => lastPage.nextPage,
     placeholderData: (previousData) => previousData,
+    enabled: isEnabled,
     staleTime: 1000 * 10,       // 10 seg en RAM para máxima reactividad
     gcTime: 1000 * 60 * 30,     // 30 min persistido en memoria
-    refetchInterval: 15000,     // Sondeo reactivo en segundo plano cada 15s
+    refetchInterval: isEnabled ? 15000 : false, // Sondeo reactivo en segundo plano solo si está activo
     refetchOnWindowFocus: true, // Recargar inmediatamente al volver a la ventana
     refetchOnReconnect: true,
   });

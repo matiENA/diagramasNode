@@ -428,7 +428,7 @@ class HotRamManager {
     actualizarPareo(unidadId, choferId, { choferNombre, tractor, semi, n_ute } = {}) {
         if (!unidadId && !choferId) return;
 
-        // 1. Desasignar chofer previo de la unidad en Diaria y Flota
+        // 1. Desasignar chofer previo de la unidad en Diaria, Flota e Individual
         this.diaria.forEach(d => {
             if (d.unidad_id === unidadId && d.chofer_id !== choferId) {
                 d.unidad_id = null;
@@ -436,10 +436,19 @@ class HotRamManager {
                 d.tractor = null;
                 d.semi = null;
                 d.estado_chofer = 'inactivo';
+
+                const prevInd = this.individualPorId.get(String(d.chofer_id));
+                if (prevInd) {
+                    prevInd.unidad_id = null;
+                    prevInd.n_ute = null;
+                    prevInd.tractor = null;
+                    prevInd.semi = null;
+                    prevInd.estado_unidad = 'disponible';
+                }
             }
         });
 
-        // 2. Asignar nuevo chofer a la unidad
+        // 2. Asignar nuevo chofer a la unidad en Diaria
         const targetChofer = this.diaria.find(d => d.chofer_id === choferId);
         if (targetChofer) {
             targetChofer.unidad_id = unidadId;
@@ -449,7 +458,18 @@ class HotRamManager {
             targetChofer.estado_chofer = 'circulando';
         }
 
-        // 3. Reflejar en Flota
+        // 3. Reflejar en Individual
+        const targetInd = this.individualPorId.get(String(choferId));
+        if (targetInd) {
+            targetInd.unidad_id = unidadId;
+            if (tractor) targetInd.tractor = tractor;
+            if (semi) targetInd.semi = semi;
+            if (n_ute) targetInd.n_ute = n_ute;
+            targetInd.estado_chofer = 'circulando';
+            targetInd.estado_unidad = 'circulando';
+        }
+
+        // 4. Reflejar en Flota
         const targetFlota = this.flota.find(f => f.unidad_id === unidadId);
         if (targetFlota) {
             targetFlota.chofer_id = choferId;
@@ -472,6 +492,15 @@ class HotRamManager {
                 d.tractor = null;
                 d.semi = null;
                 d.estado_chofer = 'inactivo';
+
+                const ind = this.individualPorId.get(String(d.chofer_id));
+                if (ind) {
+                    ind.unidad_id = null;
+                    ind.n_ute = null;
+                    ind.tractor = null;
+                    ind.semi = null;
+                    ind.estado_unidad = 'disponible';
+                }
             }
         });
 
