@@ -7,11 +7,28 @@ import { useIndividualChofer } from './hooks/useIndividualChofer';
 import { DriverProfileCard } from './components/DriverProfileCard';
 import { DriverDocAccordion } from './components/DriverDocAccordion';
 import { TrimestralCalendar } from './components/TrimestralCalendar';
-import { Search, User, Users } from 'lucide-react';
+import { Search, User, Users, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 
 export const IndividualModule = () => {
   const { selectedChoferId, selectDriver } = useNavigation();
   const [search, setSearch] = useState('');
+  const [isSidebarHidden, setIsSidebarHidden] = useState(() => {
+    try {
+      return localStorage.getItem('eor_individual_sidebar_hidden') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleSidebar = () => {
+    setIsSidebarHidden((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('eor_individual_sidebar_hidden', String(next));
+      } catch {}
+      return next;
+    });
+  };
 
   // 1. Catálogo optimizado de choferes para el selector lateral (desde backend / vista unificada)
   const { data: choferes, isLoading: isLoadingChoferes } = useQuery({
@@ -47,13 +64,13 @@ export const IndividualModule = () => {
 
   // Auto-scroll en la lista lateral hacia el chofer activo
   useEffect(() => {
-    if (selectedChoferId) {
+    if (selectedChoferId && !isSidebarHidden) {
       const el = document.getElementById(`driver-item-${selectedChoferId}`);
       if (el) {
         el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       }
     }
-  }, [selectedChoferId]);
+  }, [selectedChoferId, isSidebarHidden]);
 
   // 2. Consulta unificada a la vista de chofer + unidad + datos unidad + vencimientos + avalados
   const { data: choferData, isLoading: isLoadingChoferData } = useIndividualChofer(selectedChoferId);
@@ -68,20 +85,32 @@ export const IndividualModule = () => {
     <div className="module-container" style={{ maxWidth: '100%', padding: '1rem 1.5rem' }}>
       
       {/* BOXGRID REESTRUCTURADO (Wireframe Canónico) */}
-      <div className="individual-layout-grid">
+      <div className={`individual-layout-grid ${isSidebarHidden ? 'sidebar-hidden' : ''}`}>
         
         {/* ==============================================================
            COLUMNA IZQUIERDA: LISTA CHOFERES (Sidebar de Altura Completa)
            ============================================================== */}
-        <aside className="individual-left-col data-table-wrapper" style={{ padding: '0.85rem', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+        {!isSidebarHidden && (
+          <aside className="individual-left-col data-table-wrapper" style={{ padding: '0.85rem', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span style={{ fontSize: '0.8rem', fontWeight: 900, textTransform: 'uppercase', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
               <Users size={15} style={{ color: 'var(--primary)' }} />
               <span>Lista Choferes</span>
             </span>
-            <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)' }}>
-              {choferesFiltrados.length} conductores
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                {choferesFiltrados.length} conductores
+              </span>
+              <button
+                type="button"
+                onClick={toggleSidebar}
+                className="btn-collapse-sidebar"
+                title="Ocultar lista a la izquierda"
+                aria-label="Ocultar lista a la izquierda"
+              >
+                <PanelLeftClose size={15} />
+              </button>
+            </div>
           </div>
 
           <div className="filter-search-box" style={{ width: '100%' }}>
@@ -96,8 +125,8 @@ export const IndividualModule = () => {
             />
           </div>
 
-          {/* Lista scrollable de altura completa */}
-          <div style={{ flex: 1, maxHeight: 'calc(100vh - 200px)', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.25rem', paddingRight: '0.2rem' }}>
+          {/* Lista scrollable de altura completa con diseño pill sin flechas */}
+          <div className="individual-drivers-scroll">
             {isLoadingChoferes ? (
               <div style={{ padding: '2rem', textAlign: 'center' }}>
                 <span className="spinner-pulse" style={{ width: '20px', height: '20px' }} />
@@ -150,6 +179,7 @@ export const IndividualModule = () => {
             })}
           </div>
         </aside>
+        )}
 
         {/* ==============================================================
            COLUMNA DERECHA: MAIN CONTENT EN 3 BLOQUES APILADOS
@@ -158,6 +188,22 @@ export const IndividualModule = () => {
            3. Bloque Inferior: Vencimientos Chofer (No Colapsado), Observaciones, Aptos
            ============================================================== */}
         <main className="individual-right-col" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', minWidth: 0 }}>
+          
+          {isSidebarHidden && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '-0.35rem' }}>
+              <button
+                type="button"
+                onClick={toggleSidebar}
+                className="btn-expand-sidebar"
+                title="Mostrar lista de choferes (Panel izquierdo)"
+                aria-label="Mostrar lista de choferes"
+              >
+                <PanelLeftOpen size={15} style={{ color: 'var(--primary)' }} />
+                <span>Mostrar Lista Choferes</span>
+                <span className="badge-count-sidebar">{choferesFiltrados.length}</span>
+              </button>
+            </div>
+          )}
           
           {selectedChoferId ? (
             <>

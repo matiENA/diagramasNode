@@ -85,7 +85,7 @@ export const DailyDriverCard = ({ driver, fechaContexto, kmInfo, onSelectDriver 
 
                 <div className="daily-card-meta">
                   {/* Nombre con EasyCopy estilo legacy (badge dashed 0.5px) */}
-                  {/* Nombre con EasyCopy estilo legacy (badge dashed 1px) y WhatsApp */}
+                  {/* Nombre con EasyCopy estilo legacy (badge dashed 1px) */}
                   <div className="daily-card-name-row">
                     <div
                       role="button"
@@ -107,21 +107,6 @@ export const DailyDriverCard = ({ driver, fechaContexto, kmInfo, onSelectDriver 
                         <Copy size={12} className="easycopy-icon" />
                       )}
                     </div>
-
-                    {wspLink && (
-                      <a
-                        href={wspLink}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="btn-whatsapp-mini"
-                        title={`WhatsApp: ${driver.telefono}`}
-                        aria-label={`Enviar WhatsApp a ${driver.nombre}`}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <MessageCircle size={12} />
-                        <span>Chat</span>
-                      </a>
-                    )}
                   </div>
 
                   {/* Chips: Servicio, DNI (EasyCopy) */}
@@ -153,7 +138,25 @@ export const DailyDriverCard = ({ driver, fechaContexto, kmInfo, onSelectDriver 
                 </div>
               </div>
 
-              {/* Bloque Central: Unidad Asignada (Tractor y Semi con EasyCopy + Reasignador + UTE) */}
+              {/* Slot de Comunicación: Botón Chat WhatsApp (separado del bloque de unidad) */}
+              <div className="daily-card-chat-slot">
+                {wspLink && (
+                  <a
+                    href={wspLink}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn-whatsapp-mini"
+                    title={`WhatsApp: ${driver.telefono}`}
+                    aria-label={`Enviar WhatsApp a ${driver.nombre}`}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <MessageCircle size={12} />
+                    <span>Chat</span>
+                  </a>
+                )}
+              </div>
+
+              {/* Bloque Central: Unidad Asignada (Tractor, Semi, Reasignador y UTE) alineados a la izquierda */}
               <div className="daily-card-unit-box">
                 {driver.tractor || driver.semi || driver.n_ute ? (
                   <>
