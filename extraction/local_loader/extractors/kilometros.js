@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { getAuthClient, normalizar, parseFechaISO, getFechaArgentina } = require('../utils/sheets');
 
-const ID_SHEET_KILOMETROS = process.env.ID_SHEET_KILOMETROS || '1Wr-_P4mDvldif_cAx08sp7yT8uTUrajI2HQAJF6tnGM';
+const ID_SHEET_KILOMETROS = process.env.ID_SHEET_KILOMETROS || process.env.SHEET_KM_ID || '1d5dIS1rbOg3q7D0A4eDA_mcdSy1Yfwfx6M6sZ8Aenzw';
 const CACHE_DIR = path.join(__dirname, '..', 'cache');
 const CACHE_FILE = path.join(CACHE_DIR, 'kilometros_2meses.json');
 
@@ -20,13 +20,19 @@ function parseFechaRow(val) {
     if (parts.length === 3) {
         let y = parseInt(parts[2], 10);
         if (y < 100) y += 2000;
+        if (y < 2020 || y > 2030) return null;
         const m = String(parseInt(parts[1], 10)).padStart(2, '0');
         const d = String(parseInt(parts[0], 10)).padStart(2, '0');
         if (!isNaN(y) && !isNaN(parseInt(m, 10)) && !isNaN(parseInt(d, 10))) {
             return `${y}-${m}-${d}`;
         }
     }
-    return parseFechaISO(clean);
+    const iso = parseFechaISO(clean);
+    if (iso) {
+        const y = parseInt(iso.substring(0, 4), 10);
+        if (y >= 2020 && y <= 2030) return iso;
+    }
+    return null;
 }
 
 /**
@@ -336,6 +342,28 @@ async function extractKilometros(unidades = [], choferes = [], pool = null) {
     console.log(`   📅 Rango completo: >= ${cutoff6m} | Ventana Hot RAM: >= ${cutoff2m}`);
 
     const auth = getAuthClient();
+    // Detectar cabeceras dinámicamente en fila 1 para soportar planilla 2026 y 2025
+    let colFecha = 1, colChofer = 2, colDominio = 0, colKm = 17, colHr = 20, colSemi = 19;
+    try {
+        const hRes = await auth.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_KILOMETROS}/values/'KM'!A1:V1` });
+        const headers = hRes.data.values?.[0] || [];
+        const normHeader = (h) => String(h || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+        const colMap = {};
+        headers.forEach((h, idx) => {
+            const k = normHeader(h);
+            if (k && colMap[k] === undefined) colMap[k] = idx;
+        });
+        if (colMap['fecha'] !== undefined) colFecha = colMap['fecha'];
+        if (colMap['chofer'] !== undefined) colChofer = colMap['chofer'];
+        if (colMap['dominio'] !== undefined || colMap['tractor'] !== undefined) colDominio = colMap['dominio'] ?? colMap['tractor'];
+        if (colMap['kmtotales'] !== undefined || colMap['kilometros'] !== undefined) colKm = colMap['kmtotales'] ?? colMap['kilometros'];
+        if (colMap['nhojaderuta'] !== undefined || colMap['hojaderuta'] !== undefined) colHr = colMap['nhojaderuta'] ?? colMap['hojaderuta'];
+        if (colMap['semi'] !== undefined) colSemi = colMap['semi'];
+        console.log(`   📊 [KM Extractor] Columnas mapeadas: Fecha=${colFecha}, Chofer=${colChofer}, Dominio=${colDominio}, Km=${colKm}, HR=${colHr}, Semi=${colSemi}`);
+    } catch (eH) {
+        console.warn(`   ⚠️ No se pudieron leer cabeceras dinámicas, usando índices por defecto:`, eH.message);
+    }
+
     const batchSize = 30000;
     let startRow = 2;
     const all6mTrips = [];
@@ -343,7 +371,7 @@ async function extractKilometros(unidades = [], choferes = [], pool = null) {
 
     while (true) {
         const endRow = startRow + batchSize - 1;
-        const range = `'KM'!A${startRow}:T${endRow}`;
+        const range = `'KM'!A${startRow}:V${endRow}`;
         const url = `https://sheets.googleapis.com/v4/spreadsheets/${ID_SHEET_KILOMETROS}/values/${encodeURIComponent(range)}`;
 
         try {
@@ -352,47 +380,49 @@ async function extractKilometros(unidades = [], choferes = [], pool = null) {
             if (rows.length === 0) break;
 
             for (const r of rows) {
-                const fRaw = r[1];
+                const fRaw = r[colFecha];
                 if (!fRaw) continue;
                 const iso = parseFechaRow(fRaw);
-                if (iso && iso >= cutoff6m && iso <= '2029-12-31') {
-                    const domRaw = (r[0] || '').trim().toUpperCase();
-                    const domClean = domRaw.replace(/[^A-Z0-9]/g, '');
-                    const chRaw = (r[2] || '').trim();
+                if (!iso || iso < cutoff6m || iso > '2030-12-31') continue;
 
-                    const idUnidad = tractorMap.get(domClean) || semiMap.get(domClean) || uteMap.get(domClean) || null;
+                const chRaw = (r[colChofer] || '').trim();
+                if (!chRaw || ['1', '0', '-', 'S/A', 'VACANTE', 'SIN CHOFER'].includes(chRaw.toUpperCase())) continue;
 
-                    let idChofer = null;
-                    let choferNombre = chRaw;
-                    if (chRaw && chRaw !== '1') {
-                        const norm = normalizar(chRaw);
-                        if (choferMap.has(norm)) {
-                            idChofer = choferMap.get(norm);
-                        }
-                    } else if (!chRaw || chRaw === '1') {
-                        choferNombre = 'Sin Chofer Asignado';
-                    }
+                const domRaw = (r[colDominio] || '').trim().toUpperCase();
+                const domClean = domRaw.replace(/[^A-Z0-9]/g, '');
+                const semiRaw = (r[colSemi] || '').trim().toUpperCase();
+                const semiClean = semiRaw.replace(/[^A-Z0-9]/g, '');
 
-                    const kmTotales = parseNum(r[16]) || parseNum(r[10]);
-                    const hojaRuta = (r[19] || '').trim();
+                const idUnidad = tractorMap.get(domClean) || semiMap.get(semiClean) || semiMap.get(domClean) || uteMap.get(domClean) || null;
 
-                    if (kmTotales > 0 || hojaRuta) {
-                        const tripObj = {
-                            fecha: iso,
-                            id_unidad: idUnidad,
-                            id_chofer: idChofer,
-                            dominio: domRaw || null,
-                            chofer_nombre: choferNombre || null,
-                            km_totales: +kmTotales.toFixed(2),
-                            hoja_ruta: hojaRuta || null
-                        };
+                let idChofer = null;
+                let choferNombre = chRaw;
+                const norm = normalizar(chRaw);
+                if (choferMap.has(norm)) {
+                    idChofer = choferMap.get(norm);
+                }
 
-                        all6mTrips.push(tripObj);
-                        if (iso >= cutoff2m) {
-                            hotRamTrips.push(tripObj);
-                        }
+                const kmTotales = parseNum(r[colKm]);
+                const hojaRuta = (r[colHr] || '').trim();
+
+                if (kmTotales > 0 || hojaRuta) {
+                    const tripObj = {
+                        fecha: iso,
+                        id_unidad: idUnidad,
+                        id_chofer: idChofer,
+                        dominio: domRaw || null,
+                        semi: semiRaw || null,
+                        chofer_nombre: choferNombre || null,
+                        km_totales: +kmTotales.toFixed(2),
+                        hoja_ruta: hojaRuta || null
+                    };
+
+                    all6mTrips.push(tripObj);
+                    if (iso >= cutoff2m) {
+                        hotRamTrips.push(tripObj);
                     }
                 }
+            }
             }
 
             if (rows.length < batchSize) break;

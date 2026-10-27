@@ -1,6 +1,14 @@
 import { supabase } from './supabaseClient';
 
-const BASE_API_URL = import.meta.env.VITE_API_URL || '';
+const IS_RENDER_HOST =
+  typeof window !== 'undefined' &&
+  window.location &&
+  window.location.hostname.endsWith('.onrender.com');
+
+const BASE_API_URL = (
+  import.meta.env.VITE_API_URL ||
+  (IS_RENDER_HOST ? 'https://eor-backend.onrender.com' : '')
+).replace(/\/+$/, '');
 
 /**
  * Cliente de transporte HTTP unificado.
@@ -9,9 +17,14 @@ const BASE_API_URL = import.meta.env.VITE_API_URL || '';
  * a Supabase client si el backend local no está disponible.
  */
 class ApiClient {
+  constructor() {
+    this.backendWarm = false;
+  }
+
   async fetchJson(endpoint, options = {}) {
     const url = `${BASE_API_URL}${endpoint}`;
-    const timeoutMs = options.timeoutMs || 6000;
+    const defaultTimeout = this.backendWarm ? 8000 : (IS_RENDER_HOST ? 24000 : 8000);
+    const timeoutMs = options.timeoutMs || defaultTimeout;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -32,7 +45,13 @@ class ApiClient {
         throw new Error(`HTTP error ${res.status}: ${res.statusText}`);
       }
 
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error(`Unexpected content-type: ${contentType || 'none'}`);
+      }
+
       const json = await res.json();
+      this.backendWarm = true;
       return json;
     } catch (err) {
       clearTimeout(timeoutId);
@@ -85,6 +104,28 @@ class ApiClient {
       totalCount: count || 0,
       hayMas: (data && data.length === limit),
     };
+  }
+
+  // 1.5. Kilómetros diarios para Vista Diaria (Hot RAM O(1) < 1ms con fallback RPC fn_km_por_fecha)
+  async getDiariaKm(fecha) {
+    const fIso = (fecha || new Date().toISOString().split('T')[0]).split('T')[0];
+    try {
+      const res = await this.fetchJson(`/api/views/diaria-km?fecha=${encodeURIComponent(fIso)}`);
+      if (res && res.success && Array.isArray(res.data)) {
+        return res.data;
+      }
+    } catch (err) {
+      console.warn('⚠️ [ApiClient] Fallback a RPC fn_km_por_fecha en Supabase:', err.message);
+    }
+
+    // Fallback Supabase O(1) indexado por (anio, mes_numero)
+    const { data, error } = await supabase.rpc('fn_km_por_fecha', { p_fecha: fIso });
+
+    if (error) {
+      console.warn('⚠️ [ApiClient] Error ejecutando fn_km_por_fecha en Supabase:', error.message);
+      return [];
+    }
+    return data || [];
   }
 
   // 2. Personal que Retorna
@@ -186,7 +227,7 @@ class ApiClient {
       .select('diagrama_id, chofer_id, mes_tab, anio, mes_numero, tira_dias, contabilizador, km_mes_total, cant_viajes_mes, dias_km')
       .eq('chofer_id', choferId);
 
-    if (zoom === 3 && targetTabs.length > 0) {
+    if (targetTabs.length > 0) {
       query = query.in('mes_tab', targetTabs);
     }
 
@@ -314,6 +355,77 @@ class ApiClient {
       total: count || 0,
       hayMas: data && data.length === limit,
     };
+  }
+
+  // 10. Badge de Novedades Pendientes (Hot RAM TTL 30s)
+  async getBadgePendientes() {
+    try {
+      const res = await this.fetchJson('/api/views/badge');
+      if (res && res.success) {
+        return { novedades_pendientes: res.novedades_pendientes || 0 };
+      }
+    } catch (err) {
+      console.warn('⚠️ [ApiClient] Fallback a Supabase para badge novedades:', err.message);
+    }
+
+    const { count, error } = await supabase
+      .from('novedades')
+      .select('id', { count: 'exact', head: true })
+      .eq('resuelto', false);
+    if (error) return { novedades_pendientes: 0 };
+    return { novedades_pendientes: count || 0 };
+  }
+
+  // 11. Documentación de Chofer (Hot RAM C1 + refresco canónico post-mutación)
+  async getChoferDocs(choferId, fresh = false) {
+    if (!choferId) return null;
+    try {
+      const qs = fresh ? '?fresh=1' : '';
+      const res = await this.fetchJson(`/api/views/chofer-docs/${encodeURIComponent(choferId)}${qs}`);
+      if (res && res.success) {
+        return res.dato || null;
+      }
+    } catch (err) {
+      console.warn('⚠️ [ApiClient] Fallback a Supabase para chofer_documentacion:', err.message);
+    }
+
+    const { data, error } = await supabase
+      .from('chofer_documentacion')
+      .select('*')
+      .eq('chofer_id', choferId)
+      .maybeSingle();
+
+    if (error) {
+      console.warn('⚠️ [ApiClient] Error consultando chofer_documentacion:', error.message);
+      return null;
+    }
+    return data;
+  }
+
+  // 12. Observaciones de Chofer (LRU C2 TTL 5 min)
+  async getChoferObservaciones(choferId, fresh = false) {
+    if (!choferId) return [];
+    try {
+      const qs = fresh ? '?fresh=1' : '';
+      const res = await this.fetchJson(`/api/views/chofer-observaciones/${encodeURIComponent(choferId)}${qs}`);
+      if (res && res.success) {
+        return res.datos || [];
+      }
+    } catch (err) {
+      console.warn('⚠️ [ApiClient] Fallback a Supabase para chofer_observaciones:', err.message);
+    }
+
+    const { data, error } = await supabase
+      .from('chofer_observaciones')
+      .select('*')
+      .eq('chofer_id', choferId)
+      .order('fecha', { ascending: false });
+
+    if (error) {
+      console.warn('⚠️ [ApiClient] Error consultando chofer_observaciones:', error.message);
+      return [];
+    }
+    return data || [];
   }
 }
 

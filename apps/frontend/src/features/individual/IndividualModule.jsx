@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/api/apiClient';
 import { queryKeys } from '@/api/queryKeys';
 import { useNavigation } from '@/context/NavigationContext';
 import { useIndividualChofer } from './hooks/useIndividualChofer';
+import { useCalendarDiagramaKm } from './hooks/useCalendarDiagramaKm';
 import { DriverProfileCard } from './components/DriverProfileCard';
 import { DriverDocAccordion } from './components/DriverDocAccordion';
 import { TrimestralCalendar } from './components/TrimestralCalendar';
@@ -30,17 +31,16 @@ export const IndividualModule = () => {
     });
   };
 
-  // 1. Catálogo optimizado de choferes para el selector lateral (desde backend / vista unificada)
+  // 1. Catálogo optimizado de choferes para el selector lateral
   const { data: choferes, isLoading: isLoadingChoferes } = useQuery({
     queryKey: queryKeys.individual.catalog,
     queryFn: () => apiClient.getCatalogoChoferesLite(),
     staleTime: 1000 * 60 * 30, // 30 min en RAM
   });
 
-  // Soporte de Deep-Linking y sincronización con NavigationContext
-  useEffect(() => {
-    if (!choferes || choferes.length === 0) return;
-
+  // Selección declarativa pura de chofer sin useEffect
+  const effectiveChoferId = useMemo(() => {
+    if (!choferes || choferes.length === 0) return selectedChoferId || null;
     if (selectedChoferId) {
       const cleanParam = selectedChoferId.trim().toLowerCase();
       const found = choferes.find(
@@ -48,32 +48,16 @@ export const IndividualModule = () => {
                (c.dni && String(c.dni).toLowerCase() === cleanParam) ||
                c.nombre.toLowerCase().includes(cleanParam)
       );
-      if (found && found.id !== selectedChoferId) {
-        selectDriver(found.id, { replace: true });
-        return;
-      }
-    } else {
-      // Si no hay seleccionado, pre-seleccionar el primer chofer con foto o el primer elemento
-      const conFoto = choferes.find((c) => c.foto);
-      const defaultId = conFoto ? conFoto.id : choferes[0]?.id;
-      if (defaultId) {
-        selectDriver(defaultId, { replace: true });
-      }
+      return found ? found.id : selectedChoferId;
     }
-  }, [choferes, selectedChoferId, selectDriver]);
-
-  // Auto-scroll en la lista lateral hacia el chofer activo
-  useEffect(() => {
-    if (selectedChoferId && !isSidebarHidden) {
-      const el = document.getElementById(`driver-item-${selectedChoferId}`);
-      if (el) {
-        el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-      }
-    }
-  }, [selectedChoferId, isSidebarHidden]);
+    // Preselección por defecto: primer chofer con foto o primer elemento
+    const conFoto = choferes.find((c) => c.foto);
+    return conFoto ? conFoto.id : choferes[0]?.id || null;
+  }, [choferes, selectedChoferId]);
 
   // 2. Consulta unificada a la vista de chofer + unidad + datos unidad + vencimientos + avalados
-  const { data: choferData, isLoading: isLoadingChoferData } = useIndividualChofer(selectedChoferId);
+  const { data: choferData, isLoading: isLoadingChoferData } = useIndividualChofer(effectiveChoferId);
+  const { data: calData } = useCalendarDiagramaKm(effectiveChoferId, 3);
 
   const cleanSearch = search.trim().toLowerCase();
   const choferesFiltrados = (choferes || []).filter((c) =>
@@ -132,7 +116,7 @@ export const IndividualModule = () => {
                 <span className="spinner-pulse" style={{ width: '20px', height: '20px' }} />
               </div>
             ) : choferesFiltrados.map((c) => {
-              const isSelected = c.id === selectedChoferId;
+              const isSelected = c.id === effectiveChoferId;
               return (
                 <button
                   key={c.id}
@@ -205,7 +189,7 @@ export const IndividualModule = () => {
             </div>
           )}
           
-          {selectedChoferId ? (
+          {effectiveChoferId ? (
             <>
               {/* BLOQUE 1: DATOS UNI CHOFER */}
               {isLoadingChoferData ? (
@@ -214,18 +198,20 @@ export const IndividualModule = () => {
                   <p style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>Cargando datos del chofer y unidad...</p>
                 </div>
               ) : choferData ? (
-                <DriverProfileCard chofer={choferData} />
+                <DriverProfileCard key={`driver-profile-${effectiveChoferId}`} chofer={choferData} tripsMap={calData?.tripsMap} />
               ) : null}
 
               {/* BLOQUE 2: CALENDARIO DIAGRAMA KMS */}
               <TrimestralCalendar
-                choferId={selectedChoferId}
+                key={`driver-calendar-${effectiveChoferId}`}
+                choferId={effectiveChoferId}
                 choferNombre={choferData?.nombre || ''}
               />
 
               {/* BLOQUE 3: VENCIMIENTOS (ESTADO INICIAL NO COLAPSADO), OBSERVACIONES, APTOS */}
               <DriverDocAccordion
-                choferId={selectedChoferId}
+                key={`driver-docs-${effectiveChoferId}`}
+                choferId={effectiveChoferId}
                 chofer={choferData}
               />
             </>

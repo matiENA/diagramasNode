@@ -7,6 +7,8 @@ export const CalendarDayCell = ({
   isSelected,
   isToday,
   hasKm,
+  km = 0,
+  hr = '',
   kmTooltip,
   onClick,
 }) => {
@@ -52,7 +54,7 @@ export const CalendarDayCell = ({
         {rawStatus || ''}
       </span>
 
-      {/* Dot azul para indicar Kilómetros / Viaje */}
+      {/* Indicador de Kilómetros / Viaje: Dot sutil */}
       {hasKm && <span className="day-dot-km" title={kmTooltip || "Tiene viajes registrados en esta fecha"} />}
     </div>
   );

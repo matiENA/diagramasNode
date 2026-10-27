@@ -1,21 +1,17 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { Camera, Check, Copy, Link as LinkIcon, MessageCircle, User } from 'lucide-react';
 import { supabase } from '@/api/supabaseClient';
 import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/api/queryKeys';
 import { copyToClipboard } from '@/utils/clipboard';
 import { convertImageToWebP } from '@/utils/imageToWebp';
+import { calcularKmCiclo } from '@/utils/dateCycleUtils';
 
-export const DriverProfileCard = ({ chofer }) => {
+export const DriverProfileCard = ({ chofer, tripsMap }) => {
   const [copiedField, setCopiedField] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
-  const [optimisticPhotoUrl, setOptimisticPhotoUrl] = useState(null);
   const fileInputRef = useRef(null);
   const queryClient = useQueryClient();
-
-  useEffect(() => {
-    setOptimisticPhotoUrl(null);
-  }, [chofer?.chofer_id, chofer?.id]);
 
   if (!chofer) return null;
 
@@ -53,12 +49,13 @@ export const DriverProfileCard = ({ chofer }) => {
         quality: 0.82
       });
 
-      // Reflejo optimista inmediato en la UI
-      setOptimisticPhotoUrl(previewUrl);
-
-      // 2. Definir nombre canónico: <DNI>.webp (o <chofer_id>.webp si no tiene DNI)
       const rawDni = chofer.dni ? String(chofer.dni).replace(/\D/g, '') : '';
       const choferId = chofer.chofer_id || chofer.id;
+
+      // Reflejo optimista directo en TanStack Query sin useState
+      queryClient.setQueryData(queryKeys.individual.detail(choferId), (old) => old ? { ...old, foto: previewUrl } : old);
+
+      // 2. Definir nombre canónico: <DNI>.webp (o <chofer_id>.webp si no tiene DNI)
       const fileName = rawDni ? `${rawDni}.webp` : `${choferId}.webp`;
 
       // 3. Subir a Supabase Storage (Bucket: choferes-fotos)
@@ -120,7 +117,8 @@ export const DriverProfileCard = ({ chofer }) => {
     } catch (err) {
       console.error('❌ Error al procesar o subir foto:', err);
       alert(`No se pudo actualizar la foto: ${err.message || err}`);
-      setOptimisticPhotoUrl(null);
+      const choferId = chofer.chofer_id || chofer.id;
+      queryClient.invalidateQueries({ queryKey: queryKeys.individual.detail(choferId) });
     } finally {
       setIsUploading(false);
     }
@@ -131,6 +129,21 @@ export const DriverProfileCard = ({ chofer }) => {
   const numLimpio = rawTel.replace(/\D/g, '');
   const wspNum = numLimpio.startsWith('54') ? numLimpio : `549${numLimpio}`;
   const wspLink = numLimpio.length >= 8 ? `https://wa.me/${wspNum}` : null;
+  const totalKm = parseFloat(chofer.total_km) || 0;
+
+  // Cálculo reactivo del ciclo de liquidación (día 26 al día 25)
+  const cicloStats = useMemo(() => {
+    if (tripsMap && Object.keys(tripsMap).length > 0) {
+      return calcularKmCiclo(tripsMap);
+    }
+    if (chofer.km_ciclo !== undefined && chofer.km_ciclo !== null) {
+      return {
+        km: Number(chofer.km_ciclo) || 0,
+        label: chofer.ciclo_label || 'período activo',
+      };
+    }
+    return { km: 0, label: 'período activo' };
+  }, [tripsMap, chofer.km_ciclo, chofer.ciclo_label]);
 
   // Formato de Alta (ej: "3 DEC 2024")
   const formatAltaDate = (dateVal) => {
@@ -169,9 +182,9 @@ export const DriverProfileCard = ({ chofer }) => {
           onClick={() => fileInputRef.current?.click()}
           title="Clic para cambiar foto de perfil"
         >
-          {optimisticPhotoUrl || chofer.foto ? (
+          {chofer.foto ? (
             <img
-              src={optimisticPhotoUrl || chofer.foto}
+              src={chofer.foto}
               alt={chofer.nombre}
               className="driver-avatar-img"
               onError={(e) => {
@@ -208,40 +221,55 @@ export const DriverProfileCard = ({ chofer }) => {
         {/* B. INFORMACIÓN IDENTIFICATORIA Y OPERATIVA */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.75rem', minWidth: '320px' }}>
           
-          {/* LÍNEA 1: NOMBRE COMPLETO + ICONO LINK COPIAR */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
-            <h1
-              className="driver-full-name"
-              onClick={(e) => handleCopy(chofer.nombre, 'nombre', e)}
-              title="Clic para copiar nombre"
-              style={{
-                fontSize: '1.45rem',
-                fontWeight: 900,
-                color: 'var(--text-main)',
-                margin: 0,
-                letterSpacing: '-0.02em',
-                cursor: 'pointer'
-              }}
-            >
-              {chofer.nombre}
-            </h1>
+          {/* LÍNEA 1: NOMBRE COMPLETO + ICONO LINK COPIAR + BADGE ÚNICO CICLO (26 al 25) */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+              <h1
+                className="driver-full-name"
+                onClick={(e) => handleCopy(chofer.nombre, 'nombre', e)}
+                title="Clic para copiar nombre"
+                style={{
+                  fontSize: '1.45rem',
+                  fontWeight: 900,
+                  color: 'var(--text-main)',
+                  margin: 0,
+                  letterSpacing: '-0.02em',
+                  cursor: 'pointer'
+                }}
+              >
+                {chofer.nombre}
+              </h1>
 
-            <button
-              onClick={handleCopyLink}
-              title="Copiar enlace permanente del conductor"
-              style={{
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                color: copiedField === 'link' ? 'var(--novedad-v-text)' : 'var(--text-muted)',
-                display: 'inline-flex',
-                alignItems: 'center',
-                padding: '0.2rem',
-                transition: 'color 0.15s ease'
-              }}
+              <button
+                onClick={handleCopyLink}
+                title="Copiar enlace permanente del conductor"
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: copiedField === 'link' ? 'var(--novedad-v-text)' : 'var(--text-muted)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  padding: '0.2rem',
+                  transition: 'color 0.15s ease'
+                }}
+              >
+                {copiedField === 'link' ? <Check size={18} color="currentColor" /> : <LinkIcon size={18} />}
+              </button>
+            </div>
+
+            {/* BADGE ÚNICO CONSOLIDADO: PERÍODO DE 26 A 25 */}
+            <div
+              className="badge-diagrama-ciclo-header"
+              title={`Kilómetros acumulados en el ciclo de liquidación: ${cicloStats.label}`}
             >
-              {copiedField === 'link' ? <Check size={18} color="currentColor" /> : <LinkIcon size={18} />}
-            </button>
+              <span className="badge-diagrama-km">
+                {cicloStats.km > 0
+                  ? `${cicloStats.km.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} km`
+                  : '0,00 km'}
+              </span>
+              <span className="badge-diagrama-periodo">· {cicloStats.label}</span>
+            </div>
           </div>
 
           {/* LÍNEA 2: ALTA • DNI • EMAIL • TEL • CHAT */}

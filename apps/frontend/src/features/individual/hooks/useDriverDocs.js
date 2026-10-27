@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/api/supabaseClient';
+import { apiClient } from '@/api/apiClient';
 import { queryKeys } from '@/api/queryKeys';
 
 export const useDriverDocs = (choferId, enabled = true) => {
@@ -7,17 +8,7 @@ export const useDriverDocs = (choferId, enabled = true) => {
     queryKey: queryKeys.individual.docs(choferId),
     queryFn: async () => {
       if (!choferId) return null;
-      const { data, error } = await supabase
-        .from('chofer_documentacion')
-        .select('*')
-        .eq('chofer_id', choferId)
-        .maybeSingle();
-
-      if (error) {
-        console.warn('Error consultando chofer_documentacion:', error.message);
-        return null;
-      }
-      return data;
+      return apiClient.getChoferDocs(choferId);
     },
     enabled: Boolean(choferId) && Boolean(enabled),
     staleTime: 1000 * 60 * 10, // 10 min en RAM
@@ -29,17 +20,7 @@ export const useDriverObservations = (choferId, enabled = true) => {
     queryKey: queryKeys.individual.observations(choferId),
     queryFn: async () => {
       if (!choferId) return [];
-      const { data, error } = await supabase
-        .from('chofer_observaciones')
-        .select('*')
-        .eq('chofer_id', choferId)
-        .order('fecha', { ascending: false });
-
-      if (error) {
-        console.warn('Error consultando chofer_observaciones:', error.message);
-        return [];
-      }
-      return data || [];
+      return apiClient.getChoferObservaciones(choferId);
     },
     enabled: Boolean(choferId) && Boolean(enabled),
     staleTime: 1000 * 60 * 10,
@@ -148,10 +129,13 @@ export const useUpdateDocField = (choferParam) => {
       }
     },
 
-    // Sincronización canónica posterior contra las Views de Supabase
-    onSettled: () => {
+    // Sincronización canónica posterior contra Hot RAM C1 y las Views de Supabase
+    onSettled: async () => {
       if (choferId) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.individual.docs(choferId) });
+        const fresh = await apiClient.getChoferDocs(choferId, true).catch(() => null);
+        if (fresh) {
+          queryClient.setQueryData(queryKeys.individual.docs(choferId), fresh);
+        }
         queryClient.invalidateQueries({ queryKey: queryKeys.individual.detail(choferId) });
       }
       queryClient.invalidateQueries({ queryKey: queryKeys.diaria.all });
@@ -232,9 +216,12 @@ export const useSaveAllDocs = (choferParam) => {
       }
     },
 
-    onSettled: () => {
+    onSettled: async () => {
       if (choferId) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.individual.docs(choferId) });
+        const fresh = await apiClient.getChoferDocs(choferId, true).catch(() => null);
+        if (fresh) {
+          queryClient.setQueryData(queryKeys.individual.docs(choferId), fresh);
+        }
         queryClient.invalidateQueries({ queryKey: queryKeys.individual.detail(choferId) });
       }
       queryClient.invalidateQueries({ queryKey: queryKeys.diaria.all });

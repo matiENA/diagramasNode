@@ -218,34 +218,55 @@ app.get(['/api/viajes/historial', '/api/km/historial'], async (req, res) => {
 
         // 4. Fallback de resiliencia final: Si no hay Postgres ni microservicio, consultar Sheets directamente
         console.warn("⚠️ [Server] Consultando Cold Storage directamente en Google Sheets (fallback)...");
-        const rows = await fetchRango(ID_SHEET_KILOMETROS, "'KM'!A2:T");
+        const rows = await fetchRango(ID_SHEET_KILOMETROS, "'KM'!A1:V");
         const parseNum = (val) => parseFloat(String(val || '').replace(/,/g, '.').replace(/[^0-9.-]/g, '')) || 0;
         let resultado = {};
 
-        rows.forEach(row => {
-            let fRaw = row[1], nRaw = row[2]; if (!fRaw || !nRaw) return;
-            let norm = normalizar(nRaw);
-            if (norm !== nBuscado && norm.replace(/ñ/g, 'n') !== nBuscado.replace(/ñ/g, 'n')) return;
+        if (rows && rows.length > 1) {
+            const headers = rows[0] || [];
+            const normHeader = (h) => String(h || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+            const colMap = {};
+            headers.forEach((h, idx) => {
+                const k = normHeader(h);
+                if (k && colMap[k] === undefined) colMap[k] = idx;
+            });
+            const colFecha = colMap['fecha'] ?? 1;
+            const colChofer = colMap['chofer'] ?? 2;
+            const colDominio = colMap['dominio'] ?? colMap['tractor'] ?? 0;
+            const colKm = colMap['kmtotales'] ?? colMap['kilometros'] ?? colMap['km'] ?? (colMap['cargas'] !== undefined && colMap['cargas'] === 16 ? 17 : 16);
+            const colHr = colMap['nhojaderuta'] ?? colMap['hojaderuta'] ?? colMap['hr'] ?? 20;
 
-            let dObj, parts = String(fRaw).split(' ')[0].split(/[\/\-]/);
-            if (parts.length >= 3) { let aa = parts[2].length === 2 ? "20" + parts[2] : parts[2]; dObj = new Date(aa, parseInt(parts[1], 10) - 1, parts[0]); } else { dObj = new Date(fRaw); }
-            if (isNaN(dObj.getTime())) return;
-            let isoDate = dObj.toISOString().split('T')[0];
+            for (let i = 1; i < rows.length; i++) {
+                const row = rows[i];
+                let fRaw = row[colFecha], nRaw = row[colChofer]; if (!fRaw || !nRaw) continue;
+                let norm = normalizar(nRaw);
+                if (norm !== nBuscado && norm.replace(/ñ/g, 'n') !== nBuscado.replace(/ñ/g, 'n')) continue;
 
-            if ((!desde || isoDate >= desde) && (!hasta || isoDate <= hasta)) {
-                let km = parseNum(row[16]) > 0 ? parseNum(row[16]) : parseNum(row[8]);
-                let campo = parseNum(row[5]);
-                let hojaStr = String(row[19] || "").trim();
-                if (!resultado[isoDate]) resultado[isoDate] = { dominio: String(row[0] || '').trim(), km: 0, campo: 0, hoja_ruta: [] };
-                resultado[isoDate].km += km;
-                resultado[isoDate].campo += campo;
-                if (hojaStr) {
-                    hojaStr.split(',').map(s => s.trim()).filter(Boolean).forEach(h => {
-                        if (!resultado[isoDate].hoja_ruta.includes(h)) resultado[isoDate].hoja_ruta.push(h);
-                    });
+                let dObj, parts = String(fRaw).split(' ')[0].split(/[\/\-]/);
+                if (parts.length >= 3) {
+                    let aa = parts[2].length === 2 ? "20" + parts[2] : parts[2];
+                    dObj = new Date(parseInt(aa, 10), parseInt(parts[1], 10) - 1, parts[0]);
+                } else {
+                    dObj = new Date(fRaw);
+                }
+                if (isNaN(dObj.getTime())) continue;
+                let isoDate = dObj.toISOString().split('T')[0];
+
+                if ((!desde || isoDate >= desde) && (!hasta || isoDate <= hasta)) {
+                    let km = parseNum(row[colKm]);
+                    let campo = parseNum(row[5]);
+                    let hojaStr = String(row[colHr] || "").trim();
+                    if (!resultado[isoDate]) resultado[isoDate] = { dominio: String(row[colDominio] || '').trim(), km: 0, campo: 0, hoja_ruta: [] };
+                    resultado[isoDate].km += km;
+                    resultado[isoDate].campo += campo;
+                    if (hojaStr) {
+                        hojaStr.split(',').map(s => s.trim()).filter(Boolean).forEach(h => {
+                            if (!resultado[isoDate].hoja_ruta.includes(h)) resultado[isoDate].hoja_ruta.push(h);
+                        });
+                    }
                 }
             }
-        });
+        }
 
         res.json({ success: true, fuente: "COLD_STORAGE", data: resultado });
     } catch (e) {
@@ -277,10 +298,10 @@ app.get('/api/km/status', async (req, res) => {
         if (db.isConfigured()) {
             try {
                 const countRes = await db.query(`
-                    SELECT COUNT(*)::int as total_registros,
-                           MIN(fecha)::text as fecha_minima,
-                           MAX(fecha)::text as fecha_maxima
-                    FROM view_calendario_km
+                    SELECT COALESCE(SUM(cant_viajes), 0)::int AS total_registros,
+                           MIN(MAKE_DATE(anio, mes_numero, 1))::text AS fecha_minima,
+                           (MAX(MAKE_DATE(anio, mes_numero, 1)) + INTERVAL '1 month - 1 day')::date::text AS fecha_maxima
+                    FROM public.choferes_km_mensual
                 `);
                 dbMetrics = countRes.rows[0];
             } catch (e) {
@@ -355,6 +376,21 @@ app.use('/api', createActivosRouter(cacheDatosGlobales, io, hotRamManager));
 
 // Hot RAM — Endpoints dedicados (/ram, /ram/diagramas, /diagramas/consulta, /api/km/unidades, /api/km/choferes)
 app.use('/', createHotRamRouter(hotRamManager, cacheDatosGlobales));
+
+// Sync Workers — Partición 7 (KM) y Partición 5 (Diagramas)
+try {
+    const createKmSyncRouter = require('./routes/kmSync');
+    app.use('/api/sync/km', createKmSyncRouter(cacheDatosGlobales, io, ioDash));
+} catch (e) {
+    console.warn("⚠️ No se pudo inicializar routes/kmSync:", e.message);
+}
+
+try {
+    const createDiagramasSyncRouter = require('./routes/diagramasSync');
+    app.use('/api/sync/diagramas', createDiagramasSyncRouter(cacheDatosGlobales, io, ioDash));
+} catch (e) {
+    console.warn("⚠️ No se pudo inicializar routes/diagramasSync:", e.message);
+}
 
 // DASH — API ligera (solo flota + usuarios, sin días) + Legajo bajo demanda
 const dashRouter = createDashRouter(cacheDatosGlobales, io);
@@ -516,22 +552,30 @@ app.get(['/api/km/calendario', '/api/viajes/calendario'], async (req, res) => {
             return res.status(503).json({ success: false, error: "Base de datos PostgreSQL no configurada" });
         }
 
-        // Si se pide por mes exacto (ej: 2026-09), usar la vista JSON optimizada view_calendario_mes_km
+        // Si se pide por mes exacto (ej: 2026-09 o Sep-26), usar choferes_km_mensual
         if (mes) {
-            let sql = `SELECT mes, id_chofer, chofer_nombre, legajo, total_km_mes, dias_activos, viajes_dia FROM view_calendario_mes_km WHERE mes = $1`;
+            let sql = `
+                SELECT 
+                  ck.mes_tab, ck.anio, ck.mes_numero, 
+                  ck.chofer_id AS id_chofer, c.nombre AS chofer_nombre, c.legajo,
+                  ck.km_mes_total, ck.cant_viajes, ck.dias_km, ck.rangos
+                FROM public.choferes_km_mensual ck
+                JOIN public.choferes c ON ck.chofer_id = c.id
+                WHERE (ck.mes_tab = $1 OR TO_CHAR(MAKE_DATE(ck.anio, ck.mes_numero, 1), 'YYYY-MM') = $1)
+            `;
             const params = [mes];
             if (chofer) {
                 params.push('%' + String(chofer).trim() + '%');
-                sql += ` AND (chofer_nombre ILIKE $${params.length} OR id_chofer::text = $${params.length})`;
+                sql += ` AND (c.nombre ILIKE $${params.length} OR ck.chofer_id::text = $${params.length})`;
             }
-            sql += ` ORDER BY chofer_nombre ASC`;
+            sql += ` ORDER BY c.nombre ASC`;
             const resView = await db.query(sql, params);
-            return res.json({ success: true, fuente: "VIEW_CALENDARIO_MES_KM", count: resView.rows.length, data: resView.rows });
+            return res.json({ success: true, fuente: "CHOFERES_KM_MENSUAL", count: resView.rows.length, data: resView.rows });
         }
 
         // Si se pide por rango de fechas flexible (desde/hasta), usar view_calendario_km
         let sql = `
-            SELECT TO_CHAR(fecha, 'YYYY-MM-DD') AS fecha, id_chofer, chofer_nombre, legajo, id_unidad, n_ute, dominio, km, cant_viajes, hoja_ruta
+            SELECT TO_CHAR(fecha, 'YYYY-MM-DD') AS fecha, id_chofer, chofer_nombre, id_unidad, n_ute, dominio, km, cant_viajes, hoja_ruta
             FROM view_calendario_km
             WHERE 1=1
         `;
@@ -624,10 +668,10 @@ app.get('/api/km/resumen', async (req, res) => {
             try {
                 const rDb = await db.query(`
                     SELECT 
-                        COUNT(*)::int as total_viajes,
-                        ROUND(SUM(km_totales))::float as total_kms_flota,
-                        COUNT(DISTINCT chofer_nombre)::int as total_choferes
-                    FROM public.view_calendario_km;
+                        COALESCE(SUM(cant_viajes), 0)::int AS total_viajes,
+                        ROUND(COALESCE(SUM(km_mes_total), 0))::float AS total_kms_flota,
+                        COUNT(DISTINCT chofer_id)::int AS total_choferes
+                    FROM public.choferes_km_mensual;
                 `);
                 totalesDb = rDb.rows[0];
             } catch (eDb) {

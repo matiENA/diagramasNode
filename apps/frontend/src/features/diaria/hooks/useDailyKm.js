@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/api/supabaseClient';
+import { apiClient } from '@/api/apiClient';
 import { queryKeys } from '@/api/queryKeys';
 
 /**
@@ -11,23 +11,29 @@ export const useDailyKm = (fechaContexto) => {
     queryFn: async () => {
       if (!fechaContexto) return {};
 
-      const { data, error } = await supabase
-        .from('view_calendario_km')
-        .select('id_chofer, km_totales, hoja_ruta, dominio')
-        .eq('fecha', fechaContexto);
-
-      if (error) {
-        console.warn('Error fetching daily km:', error);
-        return {};
-      }
+      const data = await apiClient.getDiariaKm(fechaContexto);
 
       const map = {};
       (data || []).forEach((row) => {
-        if (row.id_chofer) {
-          map[row.id_chofer] = {
-            km_totales: parseFloat(row.km_totales) || 0,
-            hoja_ruta: Array.isArray(row.hoja_ruta) ? row.hoja_ruta.join(', ') : (row.hoja_ruta || ''),
+        const chId = row.id_chofer || row.chofer_id;
+        const kmVal = parseFloat(row.km_totales !== undefined ? row.km_totales : row.km) || 0;
+        const hrStr = Array.isArray(row.hoja_ruta) ? row.hoja_ruta.join(', ') : (row.hoja_ruta || '');
+
+        if (chId) {
+          map[chId] = {
+            km_totales: kmVal,
+            hoja_ruta: hrStr,
             dominio: row.dominio || '',
+            id_unidad: row.id_unidad || null,
+            n_ute: row.n_ute || null,
+          };
+        }
+        if (row.id_unidad) {
+          map[`ut_${row.id_unidad}`] = {
+            km_totales: kmVal,
+            hoja_ruta: hrStr,
+            dominio: row.dominio || '',
+            id_chofer: chId,
           };
         }
       });

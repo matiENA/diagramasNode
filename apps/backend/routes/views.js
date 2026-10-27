@@ -20,6 +20,51 @@ const db = require('../utils/db');
 module.exports = function createViewsRouter(hotRam = require('../cache/hotRamManager')) {
     const router = express.Router();
 
+    // 0. GET /api/views/diaria-km — Kilómetros del día para la Vista Diaria (Hot RAM O(1) < 1ms)
+    router.get('/diaria-km', async (req, res) => {
+        const t0 = Date.now();
+        try {
+            const fecha = req.query.fecha || new Date().toISOString().split('T')[0];
+
+            // ⚡ 1. Servicio Hot RAM (< 1ms, 0 Egress)
+            if (hotRam && hotRam.isReady) {
+                res.set('Cache-Control', 'public, max-age=15, stale-while-revalidate=60');
+                const etag = hotRam.getEtag();
+                res.set('ETag', etag);
+
+                const data = hotRam.getDiariaKm(fecha);
+                if (data) {
+                    return res.json({
+                        success: true,
+                        fuente: "HOT_RAM",
+                        latenciaMs: Date.now() - t0,
+                        fecha,
+                        count: data.length,
+                        data
+                    });
+                }
+            }
+
+            if (!db.isConfigured()) {
+                return res.status(503).json({ success: false, error: "PostgreSQL no configurado" });
+            }
+
+            // 2. Fallback SQL O(1) indexado por (anio, mes_numero) + JSONB key lookup
+            const r = await db.query('SELECT * FROM public.fn_km_por_fecha($1::date)', [fecha]);
+            return res.json({
+                success: true,
+                fuente: "POSTGRES",
+                latenciaMs: Date.now() - t0,
+                fecha,
+                count: r.rows.length,
+                data: r.rows
+            });
+        } catch (err) {
+            console.error("❌ Error en /api/views/diaria-km:", err.message);
+            res.status(500).json({ success: false, error: err.message });
+        }
+    });
+
     // 1. GET /api/views/diaria — Vista Diaria Operativa de Choferes
     router.get('/diaria', async (req, res) => {
         const t0 = Date.now();
@@ -637,11 +682,27 @@ module.exports = function createViewsRouter(hotRam = require('../cache/hotRamMan
                 return res.status(404).json({ success: false, error: `Chofer ${choferId} no encontrado` });
             }
 
+            const choferRow = dataRes.rows[0];
+            try {
+                const hoy = new Date();
+                const y = hoy.getFullYear(), m = hoy.getMonth(), d = hoy.getDate();
+                const dDesde = d >= 26 ? new Date(y, m, 26) : new Date(y, m - 1, 26);
+                const dHasta = d >= 26 ? new Date(y, m + 1, 25) : new Date(y, m, 25);
+                const fIni = `${dDesde.getFullYear()}-${String(dDesde.getMonth() + 1).padStart(2, '0')}-26`;
+                const fFin = `${dHasta.getFullYear()}-${String(dHasta.getMonth() + 1).padStart(2, '0')}-25`;
+                const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+                choferRow.ciclo_label = `${MESES[dDesde.getMonth()]} 26 - ${MESES[dHasta.getMonth()]} 25`;
+                choferRow.ciclo_desde = fIni;
+                choferRow.ciclo_hasta = fFin;
+            } catch (eCiclo) {
+                choferRow.km_ciclo = 0;
+            }
+
             res.json({
                 success: true,
                 vista: "public.view_individual_chofer",
                 latenciaMs: Date.now() - t0,
-                dato: dataRes.rows[0]
+                dato: choferRow
             });
         } catch (err) {
             console.error("❌ Error en GET /api/views/individual:", err.message);
@@ -656,16 +717,29 @@ module.exports = function createViewsRouter(hotRam = require('../cache/hotRamMan
             const { choferId } = req.params;
             const { zoom = '3', anio, tabs } = req.query;
 
-            // ⚡ 1. Servicio Hot RAM (< 2ms)
-            if (hotRam && hotRam.isReady) {
+            // ⚡ 1. Servicio Hot RAM C1 (< 2ms) cuando el rango consultado cae en la ventana activa
+            if (hotRam && hotRam.isReady && hotRam.isCalendarioInWindow({ anio, tabs })) {
                 const datos = hotRam.queryCalendario(choferId, { anio, tabs });
-                if (datos.length > 0) {
+                return res.json({
+                    success: true,
+                    vista: "public.view_calendario_diagrama_km (HOT_RAM_C1)",
+                    latenciaMs: Date.now() - t0,
+                    total: datos.length,
+                    datos
+                });
+            }
+
+            // ⚡ 2. Caché LRU C2 bajo demanda (10 min TTL) para zooms históricos 6M / 12M
+            const c2Key = `${choferId}|${anio || ''}|${tabs || ''}`;
+            if (hotRam) {
+                const cachedC2 = hotRam.getCalendarioC2(c2Key);
+                if (cachedC2) {
                     return res.json({
                         success: true,
-                        vista: "public.view_calendario_diagrama_km (HOT_RAM)",
+                        vista: "public.view_calendario_diagrama_km (LRU_C2)",
                         latenciaMs: Date.now() - t0,
-                        total: datos.length,
-                        datos
+                        total: cachedC2.length,
+                        datos: cachedC2
                     });
                 }
             }
@@ -693,6 +767,9 @@ module.exports = function createViewsRouter(hotRam = require('../cache/hotRamMan
             sql += ` ORDER BY anio ASC, mes_numero ASC`;
 
             const dataRes = await db.query(sql, params);
+            if (hotRam) {
+                hotRam.setCalendarioC2(c2Key, dataRes.rows);
+            }
 
             res.json({
                 success: true,
@@ -785,6 +862,133 @@ module.exports = function createViewsRouter(hotRam = require('../cache/hotRamMan
             });
         } catch (err) {
             console.error("❌ Error en GET /api/views/movimientos:", err.message);
+            res.status(500).json({ success: false, error: err.message });
+        }
+    });
+
+    // 11. GET /api/views/badge — Conteo liviano de novedades pendientes (reemplaza HEAD PostgREST anon)
+    router.get('/badge', async (req, res) => {
+        const t0 = Date.now();
+        try {
+            const now = Date.now();
+            if (hotRam && hotRam.badgeCache && (now - hotRam.badgeCache.ts) < 30000) {
+                return res.json({
+                    success: true,
+                    fuente: "HOT_RAM",
+                    latenciaMs: now - t0,
+                    novedades_pendientes: hotRam.badgeCache.count
+                });
+            }
+
+            if (!db.isConfigured()) {
+                return res.json({ success: true, novedades_pendientes: 0 });
+            }
+
+            const r = await db.query('SELECT COUNT(*)::int AS cnt FROM public.novedades WHERE resuelto = false');
+            const cnt = r.rows[0]?.cnt || 0;
+            if (hotRam) {
+                hotRam.badgeCache = { count: cnt, ts: now };
+            }
+
+            res.json({
+                success: true,
+                fuente: "POSTGRES",
+                latenciaMs: Date.now() - t0,
+                novedades_pendientes: cnt
+            });
+        } catch (err) {
+            console.error("❌ Error en GET /api/views/badge:", err.message);
+            res.status(500).json({ success: false, error: err.message, novedades_pendientes: 0 });
+        }
+    });
+
+    // 12. GET /api/views/chofer-docs/:choferId — Documentación de chofer (Hot RAM C1 + refresco bajo demanda)
+    router.get('/chofer-docs/:choferId', async (req, res) => {
+        const t0 = Date.now();
+        try {
+            const chKey = String(req.params.choferId || '').trim();
+            const forceFresh = req.query.fresh === '1';
+
+            if (!forceFresh && hotRam && hotRam.docsPorChofer && hotRam.docsPorChofer.has(chKey)) {
+                return res.json({
+                    success: true,
+                    fuente: "HOT_RAM_C1",
+                    latenciaMs: Date.now() - t0,
+                    dato: hotRam.docsPorChofer.get(chKey)
+                });
+            }
+
+            if (!db.isConfigured()) {
+                return res.status(503).json({ success: false, error: "PostgreSQL no configurado" });
+            }
+
+            const r = await db.query(
+                'SELECT * FROM public.chofer_documentacion WHERE chofer_id::text = $1 LIMIT 1',
+                [chKey]
+            );
+            const dato = r.rows[0] || null;
+            if (hotRam && hotRam.docsPorChofer) {
+                hotRam.docsPorChofer.set(chKey, dato);
+            }
+
+            res.json({
+                success: true,
+                fuente: "POSTGRES",
+                latenciaMs: Date.now() - t0,
+                dato
+            });
+        } catch (err) {
+            console.error("❌ Error en GET /api/views/chofer-docs:", err.message);
+            res.status(500).json({ success: false, error: err.message });
+        }
+    });
+
+    // 13. GET /api/views/chofer-observaciones/:choferId — Observaciones de chofer con caché LRU C2 (TTL 5 min)
+    router.get('/chofer-observaciones/:choferId', async (req, res) => {
+        const t0 = Date.now();
+        try {
+            const chKey = String(req.params.choferId || '').trim();
+            const forceFresh = req.query.fresh === '1';
+            const now = Date.now();
+
+            if (!forceFresh && hotRam && hotRam.obsLru) {
+                const cached = hotRam.obsLru.get(chKey);
+                if (cached && (now - cached.ts) < 5 * 60 * 1000) {
+                    return res.json({
+                        success: true,
+                        fuente: "LRU_C2",
+                        latenciaMs: now - t0,
+                        datos: cached.datos
+                    });
+                }
+            }
+
+            if (!db.isConfigured()) {
+                return res.status(503).json({ success: false, error: "PostgreSQL no configurado" });
+            }
+
+            const r = await db.query(
+                'SELECT * FROM public.chofer_observaciones WHERE chofer_id::text = $1 ORDER BY fecha DESC',
+                [chKey]
+            );
+            const datos = r.rows || [];
+
+            if (hotRam && hotRam.obsLru) {
+                if (hotRam.obsLru.size >= 60 && !hotRam.obsLru.has(chKey)) {
+                    const oldest = hotRam.obsLru.keys().next().value;
+                    if (oldest !== undefined) hotRam.obsLru.delete(oldest);
+                }
+                hotRam.obsLru.set(chKey, { ts: now, datos });
+            }
+
+            res.json({
+                success: true,
+                fuente: "POSTGRES",
+                latenciaMs: Date.now() - t0,
+                datos
+            });
+        } catch (err) {
+            console.error("❌ Error en GET /api/views/chofer-observaciones:", err.message);
             res.status(500).json({ success: false, error: err.message });
         }
     });

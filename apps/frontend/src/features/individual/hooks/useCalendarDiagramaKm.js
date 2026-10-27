@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/api/apiClient';
 import { queryKeys } from '@/api/queryKeys';
@@ -75,7 +74,7 @@ export function calcularContabilizador(diasArr = []) {
  * Hook para consultar el calendario con diagramas y KMs pre-agregados
  * desde public.view_calendario_diagrama_km vía Node.js backend
  */
-export const useCalendarDiagramaKm = (choferId, zoomLevel = 3, baseDate = new Date(2026, 8, 1)) => {
+export const useCalendarDiagramaKm = (choferId, zoomLevel = 3, baseDate = new Date()) => {
   const queryClient = useQueryClient();
 
   // Construir las claves de pestañas objetivo
@@ -96,33 +95,6 @@ export const useCalendarDiagramaKm = (choferId, zoomLevel = 3, baseDate = new Da
       targetTabs.push(`${mesesAbrev[m]}-${yShort}`);
     }
   }
-
-  // Sincronización Realtime con Supabase: ante cualquier cambio en diagramas para este chofer
-  useEffect(() => {
-    if (!choferId) return;
-
-    const channel = supabase
-      .channel(`diagramas-realtime-${choferId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'diagramas',
-          filter: `chofer_id=eq.${choferId}`,
-        },
-        () => {
-          queryClient.invalidateQueries({ queryKey: queryKeys.individual.calendar(choferId) });
-          queryClient.invalidateQueries({ queryKey: queryKeys.diaria.all });
-          queryClient.invalidateQueries({ queryKey: queryKeys.flota.all });
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [choferId, queryClient]);
 
   return useQuery({
     queryKey: queryKeys.individual.calendar(choferId, zoomLevel, targetTabs.join(',')),

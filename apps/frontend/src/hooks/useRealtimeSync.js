@@ -13,29 +13,44 @@ export function useRealtimeSync() {
   const queryClient = useQueryClient();
 
   useEffect(() => {
+    const pendingInvalidations = new Map();
+    let flushTimer = null;
+
+    const scheduleInvalidate = (queryKey) => {
+      if (!queryKey) return;
+      pendingInvalidations.set(JSON.stringify(queryKey), queryKey);
+      if (flushTimer) return;
+      flushTimer = setTimeout(() => {
+        flushTimer = null;
+        const keysToFlush = Array.from(pendingInvalidations.values());
+        pendingInvalidations.clear();
+        keysToFlush.forEach((key) => {
+          queryClient.invalidateQueries({ queryKey: key });
+        });
+      }, 500);
+    };
+
     const channel = supabase
       .channel('schema-db-changes')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'movimientos' },
-        (payload) => {
-          console.log('🔄 [Realtime] Cambio detectado en public.movimientos:', payload.eventType);
-          queryClient.invalidateQueries({ queryKey: queryKeys.diaria.all });
-          queryClient.invalidateQueries({ queryKey: queryKeys.flota.all });
+        () => {
+          scheduleInvalidate(queryKeys.diaria.all);
+          scheduleInvalidate(queryKeys.flota.all);
         }
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'choferes' },
         (payload) => {
-          console.log('🔄 [Realtime] Cambio detectado en public.choferes:', payload.eventType);
-          queryClient.invalidateQueries({ queryKey: queryKeys.diaria.all });
-          queryClient.invalidateQueries({ queryKey: queryKeys.individual.catalog });
+          scheduleInvalidate(queryKeys.diaria.all);
+          scheduleInvalidate(queryKeys.individual.catalog);
           const chId = payload.new?.id || payload.old?.id;
           if (chId) {
-            queryClient.invalidateQueries({ queryKey: queryKeys.individual.detail(chId) });
+            scheduleInvalidate(queryKeys.individual.detail(chId));
           } else {
-            queryClient.invalidateQueries({ queryKey: queryKeys.individual.all });
+            scheduleInvalidate(queryKeys.individual.all);
           }
         }
       )
@@ -43,32 +58,53 @@ export function useRealtimeSync() {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'diagramas' },
         (payload) => {
-          console.log('🔄 [Realtime] Cambio detectado en public.diagramas:', payload.eventType);
-          queryClient.invalidateQueries({ queryKey: queryKeys.diaria.all });
+          scheduleInvalidate(queryKeys.diaria.all);
           const chId = payload.new?.chofer_id || payload.old?.chofer_id;
           if (chId) {
-            queryClient.invalidateQueries({ queryKey: queryKeys.individual.calendar(chId) });
+            scheduleInvalidate(queryKeys.individual.calendar(chId));
           } else {
-            queryClient.invalidateQueries({ queryKey: queryKeys.individual.all });
+            scheduleInvalidate(queryKeys.individual.all);
           }
         }
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'unidades' },
-        (payload) => {
-          console.log('🔄 [Realtime] Cambio detectado en public.unidades:', payload.eventType);
-          queryClient.invalidateQueries({ queryKey: queryKeys.diaria.all });
-          queryClient.invalidateQueries({ queryKey: queryKeys.flota.all });
+        () => {
+          scheduleInvalidate(queryKeys.diaria.all);
+          scheduleInvalidate(queryKeys.flota.all);
         }
       )
-      .subscribe((status) => {
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'choferes_km_mensual' },
+        (payload) => {
+          scheduleInvalidate(queryKeys.diaria.all);
+          const chId = payload.new?.chofer_id || payload.old?.chofer_id;
+          if (chId) {
+            scheduleInvalidate(queryKeys.individual.calendar(chId));
+            scheduleInvalidate(queryKeys.individual.detail(chId));
+          } else {
+            scheduleInvalidate(queryKeys.individual.all);
+          }
+        }
+      )
+      .subscribe((status, err) => {
         if (status === 'SUBSCRIBED') {
           console.log('⚡ [Realtime] Conectado exitosamente al canal en vivo de Supabase');
+        } else if (status === 'CHANNEL_ERROR') {
+          console.warn('⚠️ [Realtime] Advertencia en canal Supabase (cuota o egress excedido):', err?.message || err);
+        } else if (status === 'TIMED_OUT') {
+          console.warn('⚠️ [Realtime] Timeout de suscripción en canal Supabase');
         }
       });
 
     return () => {
+      if (flushTimer) {
+        clearTimeout(flushTimer);
+        flushTimer = null;
+      }
+      pendingInvalidations.clear();
       supabase.removeChannel(channel);
     };
   }, [queryClient]);

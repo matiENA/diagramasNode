@@ -947,6 +947,7 @@ html.dark .calendar-day-cell.status-ind {
 .day-dot-km {
   position: absolute;
   bottom: 2px;
+  left: 2px;
   width: 4px;
   height: 4px;
   border-radius: 50%;
@@ -955,6 +956,50 @@ html.dark .calendar-day-cell.status-ind {
 
 html.dark .day-dot-km {
   background-color: #818cf8;
+}
+
+/* ==============================================================
+   🏷️ BADGE ÚNICO DE KILÓMETROS EN HEADER PRINCIPAL (Ciclo 26 a 25)
+   ============================================================== */
+.badge-diagrama-ciclo-header {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  padding: 0.35rem 0.85rem;
+  border-radius: 9999px;
+  background-color: var(--bg-hover, #1f2937);
+  border: 1px solid var(--border-subtle, #374151);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  user-select: none;
+}
+
+.badge-diagrama-km {
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: #0284c7;
+  letter-spacing: -0.01em;
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+}
+
+.badge-diagrama-periodo {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-secondary, #6b7280);
+  text-transform: lowercase;
+}
+
+html.dark .badge-diagrama-ciclo-header {
+  background-color: rgba(15, 23, 42, 0.85);
+  border-color: rgba(56, 189, 248, 0.28);
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.08);
+}
+
+html.dark .badge-diagrama-km {
+  color: #38bdf8;
+}
+
+html.dark .badge-diagrama-periodo {
+  color: #94a3b8;
 }
 
 /* ==============================================================

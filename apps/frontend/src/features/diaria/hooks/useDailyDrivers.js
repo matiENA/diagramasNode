@@ -225,9 +225,10 @@ export const useDailyDrivers = (filters = {}, fechaContexto = null, options = {}
     getNextPageParam: (lastPage) => lastPage.nextPage,
     placeholderData: (previousData) => previousData,
     enabled: isEnabled,
-    staleTime: 1000 * 10,       // 10 seg en RAM para máxima reactividad
+    staleTime: 1000 * 30,       // 30 seg en RAM (Realtime WebSockets sincroniza cambios inmediatos)
     gcTime: 1000 * 60 * 30,     // 30 min persistido en memoria
-    refetchInterval: isEnabled ? 15000 : false, // Sondeo reactivo en segundo plano solo si está activo
+    refetchInterval: isEnabled ? 60000 : false, // Sondeo de respaldo cada 60s solo en pestaña activa
+    refetchIntervalInBackground: false,
     refetchOnWindowFocus: true, // Recargar inmediatamente al volver a la ventana
     refetchOnReconnect: true,
   });

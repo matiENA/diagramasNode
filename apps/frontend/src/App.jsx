@@ -2,7 +2,7 @@ import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { HeaderNav } from './features/navigation/HeaderNav';
 import { DailyDashboard } from './features/diaria/DailyDashboard';
-import { supabase } from './api/supabaseClient';
+import { apiClient } from './api/apiClient';
 import { queryKeys } from './api/queryKeys';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { NavigationProvider, useNavigation } from './context/NavigationContext';
@@ -43,19 +43,13 @@ function AppContent() {
     }
   }, [isDarkMode]);
 
-  // Consulta ligera de badge para el encabezado (solo cuando el usuario está autenticado)
+  // Consulta ligera de badge para el encabezado (Hot RAM TTL 30s con fallback Supabase)
   const { data: badgeData } = useQuery({
     queryKey: queryKeys.auth.badge,
-    queryFn: async () => {
-      const { count, error } = await supabase
-        .from('novedades')
-        .select('*', { count: 'exact', head: true })
-        .eq('resuelto', false);
-      if (error) return { novedades_pendientes: 0 };
-      return { novedades_pendientes: count || 0 };
-    },
+    queryFn: () => apiClient.getBadgePendientes(),
     enabled: isAuthenticated,
-    staleTime: 1000 * 60 * 2,
+    staleTime: 1000 * 60 * 3,
+    refetchOnWindowFocus: false,
   });
 
   const pendingCount = badgeData?.novedades_pendientes || 0;

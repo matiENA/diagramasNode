@@ -29,10 +29,13 @@ const { supabase } = require('../utils/shared');
 const crypto = require('crypto');
 const hotRamManager = require('./hotRamManager');
 
-// Control de versión para Dirty Check y supresión de Egress
+// Control de versión para Dirty Check granular y supresión de Egress
 let lastSupabaseStatsString = null;
+let lastCoreStatsString = null;
+let lastCalStatsString = null;
 let lastBroadcastHash = null;
 let kmCacheCargado = false;
+const CAL_TABLES = new Set(['diagramas', 'choferes_km_mensual', 'cisternas_km']);
 
 // ==============================================================
 // 📦 HELPER: Payload reducido para WebSocket y HTTP (sin viajes de KM ni clones)
@@ -82,17 +85,49 @@ async function verificarCambiosSupabase() {
             const res = await db.query(`
                 SELECT relname, n_tup_ins, n_tup_upd, n_tup_del 
                 FROM pg_stat_user_tables 
-                WHERE relname IN ('choferes', 'unidades', 'movimientos', 'tractores', 'semis', 'servicios_unidades', 'servicios_choferes')
+                WHERE relname IN ('choferes', 'chofer_documentacion', 'unidades', 'movimientos', 'tractores', 'semis', 'servicios_unidades', 'servicios_choferes', 'choferes_km_mensual', 'cisternas_km', 'diagramas')
                 ORDER BY relname ASC
             `);
             if (res.rows && res.rows.length > 0) {
-                return res.rows.map(r => `${r.relname}:${r.n_tup_ins}:${r.n_tup_upd}:${r.n_tup_del}`).join('|');
+                const coreParts = [];
+                const calParts = [];
+                const allParts = [];
+                for (const r of res.rows) {
+                    const token = `${r.relname}:${r.n_tup_ins}:${r.n_tup_upd}:${r.n_tup_del}`;
+                    allParts.push(token);
+                    if (CAL_TABLES.has(r.relname)) calParts.push(token);
+                    else coreParts.push(token);
+                }
+                return {
+                    all: allParts.join('|'),
+                    core: coreParts.join('|'),
+                    cal: calParts.join('|')
+                };
             }
         } catch (e) {
             return null;
         }
     }
     return null;
+}
+
+function extraerViajesDesdeHotRam(limiteIso) {
+    const out = [];
+    for (const [fIso, entries] of hotRamManager.kmDiariaPorFecha.entries()) {
+        if (limiteIso && fIso < limiteIso) continue;
+        for (const it of entries) {
+            out.push({
+                fecha: fIso,
+                dominio: it.dominio || '',
+                chofer_nombre: null,
+                km_totales: it.km_totales,
+                hoja_ruta: Array.isArray(it.hoja_ruta) ? it.hoja_ruta.join(', ') : (it.hoja_ruta || ''),
+                id_chofer: it.id_chofer,
+                id_unidad: it.id_unidad
+            });
+        }
+    }
+    return out;
 }
 
 function formatDateISO(val) {
@@ -109,12 +144,26 @@ function formatDateISO(val) {
 async function actualizarCacheDesdeSupabase(cacheDatosGlobales, io, ioDash, opciones = {}) {
     const { forceFull = false, recargarKm = false } = opciones;
     const t0 = Date.now();
+    let statsActuales = null;
 
-    // 🛡️ 1. DIRTY CHECK: Si ya hay datos en RAM y no es forzado, validar si hubo cambios en BD
-    if (!forceFull && cacheDatosGlobales.diagramas && cacheDatosGlobales.diagramas.diagramas?.length > 0 && hotRamManager.isReady) {
-        const statsActuales = await verificarCambiosSupabase();
-        if (statsActuales && statsActuales === lastSupabaseStatsString) {
+    // 🛡️ 1. DIRTY CHECK GRANULAR: Evita doble hidratación de tablas crudas + vistas
+    if (db.isConfigured()) {
+        statsActuales = await verificarCambiosSupabase();
+    }
+
+    if (!forceFull && cacheDatosGlobales.diagramas && cacheDatosGlobales.diagramas.diagramas?.length > 0 && hotRamManager.isReady && statsActuales) {
+        if (statsActuales.all === lastSupabaseStatsString) {
             console.log("⚡ [RAM Supabase] Dirty Check: Sin cambios en BD (0 bytes egress). RAM al día.");
+            return true;
+        }
+
+        // Si SOLO cambiaron diagramas/KMs y las tablas maestras siguen idénticas, refrescar solo vistas en HotRAM (sin bajar las 9 tablas crudas)
+        if (statsActuales.core === lastCoreStatsString && statsActuales.cal !== lastCalStatsString) {
+            await hotRamManager.hydrateFromDatabase(db, { skipCalendario: false });
+            lastSupabaseStatsString = statsActuales.all;
+            lastCalStatsString = statsActuales.cal;
+            cacheDatosGlobales.ultimaActualizacion = new Date().toISOString();
+            if (io) emitirDatosSiCambiaron(io, cacheDatosGlobales);
             return true;
         }
     }
@@ -128,6 +177,8 @@ async function actualizarCacheDesdeSupabase(cacheDatosGlobales, io, ioDash, opci
     let rowsMovimientosKm = [];
     const KM_RAM_DIAS = parseInt(process.env.KM_RAM_DIAS, 10) || 60;
     const debeCargarKm = recargarKm || !kmCacheCargado;
+    const hoyArKm = (typeof getFechaArgentina === 'function') ? getFechaArgentina() : new Date();
+    const limiteIso = new Date(hoyArKm.getTime() - (KM_RAM_DIAS * 24 * 3600 * 1000)).toISOString().split('T')[0];
 
     let rowsChoferDocumentacion = [];
     let rowsTractores = [];
@@ -137,7 +188,22 @@ async function actualizarCacheDesdeSupabase(cacheDatosGlobales, io, ioDash, opci
 
     try {
         if (db.isConfigured()) {
-            const queries = [
+            const skipCal = !forceFull && !debeCargarKm && hotRamManager.isReady && statsActuales && statsActuales.cal === lastCalStatsString;
+
+            // 1. Hidratar HotRAM en paralelo con tablas crudas (sin ejecutar view_calendario_km duplicado)
+            const [
+                ,
+                rUnidades,
+                rChoferes,
+                rMovimientos,
+                rUsuarios,
+                rChoferDoc,
+                rTractores,
+                rSemis,
+                rServUnidades,
+                rServChoferes
+            ] = await Promise.all([
+                hotRamManager.hydrateFromDatabase(db, { skipCalendario: skipCal }),
                 db.query('SELECT id, n_ute, servicio_id, tractor_id, semi_id, fecha_acople, estado FROM unidades ORDER BY n_ute ASC'),
                 db.query('SELECT id, nombre, legajo, servicio_id, estado, unidad_id, foto FROM choferes ORDER BY nombre ASC'),
                 db.query('SELECT * FROM movimientos'),
@@ -150,40 +216,23 @@ async function actualizarCacheDesdeSupabase(cacheDatosGlobales, io, ioDash, opci
                 db.query('SELECT id, servicio_id, patente, n_interno, marca, cisternado, esp_es, vi, ve, vtv, mas, estado FROM semis ORDER BY patente ASC').catch(() => ({ rows: [] })),
                 db.query('SELECT id, denominacion, spreadsheet_id, activo FROM servicios_unidades ORDER BY denominacion ASC').catch(() => ({ rows: [] })),
                 db.query('SELECT id, denominacion, servicio_unidad_id, spreadsheet_id, activo FROM servicios_choferes ORDER BY denominacion ASC').catch(() => ({ rows: [] }))
-            ];
+            ]);
 
-            if (debeCargarKm) {
-                queries.push(
-                    db.query(`
-                        SELECT TO_CHAR(fecha, 'YYYY-MM-DD') AS fecha, dominio, chofer_nombre, km AS km_totales, hoja_ruta, id_chofer, id_unidad
-                        FROM view_calendario_km
-                        WHERE fecha >= (CURRENT_DATE - ($1 || ' days')::interval)
-                        ORDER BY fecha ASC
-                    `, [KM_RAM_DIAS]).catch(e => {
-                        console.warn("⚠️ [RAM Supabase] Error consultando view_calendario_km en Postgres:", e.message);
-                        return { rows: [] };
-                    })
-                );
-            }
+            rowsUnidades = rUnidades.rows || [];
+            rowsChoferes = rChoferes.rows || [];
+            rowsMovimientos = rMovimientos.rows || [];
+            rowsUsuarios = (rUsuarios.rows || []).map(r => String(r.usuario || '').trim().toUpperCase());
+            rowsChoferDocumentacion = rChoferDoc.rows || [];
+            rowsTractores = rTractores.rows || [];
+            rowsSemis = rSemis.rows || [];
+            rowsServiciosUnidades = rServUnidades.rows || [];
+            rowsServiciosChoferes = rServChoferes.rows || [];
 
-            const results = await Promise.all(queries);
-            rowsUnidades = results[0].rows || [];
-            rowsChoferes = results[1].rows || [];
-            rowsMovimientos = results[2].rows || [];
-            rowsUsuarios = (results[3].rows || []).map(r => String(r.usuario || '').trim().toUpperCase());
-            rowsChoferDocumentacion = results[4].rows || [];
-            rowsTractores = results[5].rows || [];
-            rowsSemis = results[6].rows || [];
-            rowsServiciosUnidades = results[7].rows || [];
-            rowsServiciosChoferes = results[8].rows || [];
-
-            if (debeCargarKm && results[9]) {
-                rowsMovimientosKm = results[9].rows || [];
+            if (debeCargarKm || !skipCal) {
+                rowsMovimientosKm = extraerViajesDesdeHotRam(limiteIso);
                 kmCacheCargado = true;
             }
         } else {
-            const hoyArKm = (typeof getFechaArgentina === 'function') ? getFechaArgentina() : new Date();
-            const limiteIso = new Date(hoyArKm.getTime() - (KM_RAM_DIAS * 24 * 3600 * 1000)).toISOString().split('T')[0];
             const promises = [
                 supabase.from('unidades').select('id, n_ute, servicio_id, tractor_id, semi_id, fecha_acople, estado').order('n_ute', { ascending: true }),
                 supabase.from('choferes').select('id, nombre, legajo, servicio_id, estado, unidad_id, foto').order('nombre', { ascending: true }),
@@ -195,11 +244,6 @@ async function actualizarCacheDesdeSupabase(cacheDatosGlobales, io, ioDash, opci
                 supabase.from('servicios_unidades').select('*').order('denominacion', { ascending: true }).catch(() => ({ data: [] })),
                 supabase.from('servicios_choferes').select('*').order('denominacion', { ascending: true }).catch(() => ({ data: [] }))
             ];
-            if (debeCargarKm) {
-                promises.push(
-                    supabase.from('view_calendario_km').select('fecha, dominio, chofer_nombre, km, hoja_ruta, id_chofer, id_unidad').gte('fecha', limiteIso).order('fecha', { ascending: true }).catch(e => ({ data: [] }))
-                );
-            }
             const results = await Promise.all(promises);
             rowsUnidades = results[0].data || [];
             rowsChoferes = results[1].data || [];
@@ -211,11 +255,6 @@ async function actualizarCacheDesdeSupabase(cacheDatosGlobales, io, ioDash, opci
             rowsSemis = results[6].data || [];
             rowsServiciosUnidades = results[7].data || [];
             rowsServiciosChoferes = results[8].data || [];
-
-            if (debeCargarKm && results[9]) {
-                rowsMovimientosKm = results[9].data || [];
-                kmCacheCargado = true;
-            }
         }
 
         if (rowsUnidades.length === 0 && rowsChoferes.length === 0 && rowsTractores.length === 0) {
@@ -365,7 +404,7 @@ async function actualizarCacheDesdeSupabase(cacheDatosGlobales, io, ioDash, opci
 
             const norm = normalizar(nom);
             const isoDate = r.fecha instanceof Date ? r.fecha.toISOString().split('T')[0] : String(r.fecha).split('T')[0];
-            const km = parseNum(r.km_totales);
+            const km = parseNum(r.km_totales !== undefined ? r.km_totales : r.km);
             const hojaStr = String(r.hoja_ruta || '').trim();
 
             if (!nuevaSeccionViajes[norm]) nuevaSeccionViajes[norm] = {};
@@ -410,8 +449,12 @@ async function actualizarCacheDesdeSupabase(cacheDatosGlobales, io, ioDash, opci
         const docPorChoferId = {};
         const docPorDni = {};
         const docPorDrv = {};
+        hotRamManager.docsPorChofer.clear();
         (rowsChoferDocumentacion || []).forEach(doc => {
-            if (doc.chofer_id) docPorChoferId[doc.chofer_id] = doc;
+            if (doc.chofer_id) {
+                docPorChoferId[doc.chofer_id] = doc;
+                hotRamManager.docsPorChofer.set(String(doc.chofer_id), doc);
+            }
             if (doc.dni) docPorDni[String(doc.dni).replace(/\D/g, '')] = doc;
             if (doc.drv_codigo) docPorDrv[doc.drv_codigo] = doc;
         });
@@ -600,15 +643,15 @@ async function actualizarCacheDesdeSupabase(cacheDatosGlobales, io, ioDash, opci
         if (rowsUsuarios.length > 0) cacheDatosGlobales.usuarios = rowsUsuarios;
         cacheDatosGlobales.ultimaActualizacion = new Date().toISOString();
 
-        // 🛡️ Actualizar firma del Dirty Check tras sincronización exitosa
-        lastSupabaseStatsString = await verificarCambiosSupabase();
+        // 🛡️ Actualizar firma granular del Dirty Check tras sincronización exitosa
+        const postStats = statsActuales || await verificarCambiosSupabase();
+        if (postStats) {
+            lastSupabaseStatsString = postStats.all;
+            lastCoreStatsString = postStats.core;
+            lastCalStatsString = postStats.cal;
+        }
 
         console.log(`✅ [RAM Supabase] Caché ensamblado en ${Date.now() - t0} ms (${catalogoUnidades.length} UTs, ${diagramasHibridos.length} choferes, ${Object.keys(viajesFinales).length} con KM en RAM).`);
-
-        // ⚡ Hidratar Vistas Hot RAM en memoria Node.js
-        if (db.isConfigured()) {
-            await hotRamManager.hydrateFromDatabase(db);
-        }
 
         // Emitir WebSocket a clientes conectados (solo si hubo cambio real en los datos)
         if (io) emitirDatosSiCambiaron(io, cacheDatosGlobales);
@@ -1073,28 +1116,56 @@ async function actualizarCacheDesdeGoogle(cacheDatosGlobales, io, ioDash) {
 
                 const parseNum = (val) => parseFloat(String(val || '').replace(/,/g, '.').replace(/[^0-9.-]/g, '')) || 0;
 
-                (await fetchRango(ID_SHEET_KILOMETROS, "'KM'!A2:T")).forEach(row => {
-                    let fRaw = row[1], nRaw = row[2]; if (!fRaw || !nRaw) return;
-                    let dObj, parts = String(fRaw).split(' ')[0].split(/[\/\-]/);
-                    if (parts.length >= 3) { let aa = parts[2].length === 2 ? "20" + parts[2] : parts[2]; dObj = new Date(aa, parseInt(parts[1], 10) - 1, parts[0]); } else { dObj = new Date(fRaw); }
-                    if (isNaN(dObj.getTime())) return;
-                    
-                    // Descartar registros históricos mayores a 2 meses en RAM (el resto se sirve por consulta)
-                    if (dObj.getTime() < limiteRamKmMs) return;
+                const rawSheetKm = await fetchRango(ID_SHEET_KILOMETROS, "'KM'!A1:V");
+                if (rawSheetKm && rawSheetKm.length > 1) {
+                    const headers = rawSheetKm[0] || [];
+                    const normHeader = (h) => String(h || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+                    const colMap = {};
+                    headers.forEach((h, idx) => {
+                        const k = normHeader(h);
+                        if (k && colMap[k] === undefined) colMap[k] = idx;
+                    });
+                    const colFecha = colMap['fecha'] ?? 1;
+                    const colChofer = colMap['chofer'] ?? 2;
+                    const colDominio = colMap['dominio'] ?? colMap['tractor'] ?? 0;
+                    const colKm = colMap['kmtotales'] ?? colMap['kilometros'] ?? colMap['km'] ?? (colMap['cargas'] !== undefined && colMap['cargas'] === 16 ? 17 : 16);
+                    const colHr = colMap['nhojaderuta'] ?? colMap['hojaderuta'] ?? colMap['hr'] ?? 20;
 
-                    let choferNorm = normalizar(nRaw); let isoDate = dObj.toISOString().split('T')[0];
-                    let km = parseNum(row[16]) > 0 ? parseNum(row[16]) : parseNum(row[8]); let campo = parseNum(row[5]); let hojaStr = String(row[19] || "").trim();
-                    if (km > 0 || campo > 0 || hojaStr !== "") {
-                        if (!nuevaSeccionViajes[choferNorm]) nuevaSeccionViajes[choferNorm] = {};
-                        if (!nuevaSeccionViajes[choferNorm][isoDate]) nuevaSeccionViajes[choferNorm][isoDate] = { dominio: String(row[0] || '').trim(), km: 0, campo: 0, hoja_ruta: [] };
-                        let target = nuevaSeccionViajes[choferNorm][isoDate]; target.km += km; target.campo += campo;
-                        if (hojaStr !== "") hojaStr.split(',').map(s => s.trim()).filter(Boolean).forEach(h => { if (!target.hoja_ruta.includes(h)) target.hoja_ruta.push(h); });
-                        if (choferNorm.includes('ñ')) {
-                            let sinEnie = choferNorm.replace(/ñ/g, 'n');
-                            nuevaSeccionViajes[sinEnie] = nuevaSeccionViajes[choferNorm];
+                    for (let rIdx = 1; rIdx < rawSheetKm.length; rIdx++) {
+                        const row = rawSheetKm[rIdx];
+                        let fRaw = row[colFecha], nRaw = row[colChofer]; if (!fRaw || !nRaw) continue;
+                        if (['1', '0', '-', 'S/A', 'VACANTE', 'SIN CHOFER'].includes(String(nRaw).trim().toUpperCase())) continue;
+
+                        let dObj, parts = String(fRaw).split(' ')[0].split(/[\/\-]/);
+                        if (parts.length >= 3) {
+                            let aa = parts[2].length === 2 ? "20" + parts[2] : parts[2];
+                            let yInt = parseInt(aa, 10);
+                            if (yInt < 2020 || yInt > 2030) continue;
+                            dObj = new Date(yInt, parseInt(parts[1], 10) - 1, parts[0]);
+                        } else {
+                            dObj = new Date(fRaw);
+                        }
+                        if (isNaN(dObj.getTime())) continue;
+                        if (dObj.getTime() < limiteRamKmMs) continue;
+
+                        let choferNorm = normalizar(nRaw);
+                        let isoDate = dObj.toISOString().split('T')[0];
+                        let km = parseNum(row[colKm]);
+                        let campo = parseNum(row[5]);
+                        let hojaStr = String(row[colHr] || "").trim();
+
+                        if (km > 0 || campo > 0 || hojaStr !== "") {
+                            if (!nuevaSeccionViajes[choferNorm]) nuevaSeccionViajes[choferNorm] = {};
+                            if (!nuevaSeccionViajes[choferNorm][isoDate]) nuevaSeccionViajes[choferNorm][isoDate] = { dominio: String(row[colDominio] || '').trim(), km: 0, campo: 0, hoja_ruta: [] };
+                            let target = nuevaSeccionViajes[choferNorm][isoDate]; target.km += km; target.campo += campo;
+                            if (hojaStr !== "") hojaStr.split(',').map(s => s.trim()).filter(Boolean).forEach(h => { if (!target.hoja_ruta.includes(h)) target.hoja_ruta.push(h); });
+                            if (choferNorm.includes('ñ')) {
+                                let sinEnie = choferNorm.replace(/ñ/g, 'n');
+                                nuevaSeccionViajes[sinEnie] = nuevaSeccionViajes[choferNorm];
+                            }
                         }
                     }
-                });
+                }
             }
         } catch(e) {
             console.error("❌ Error cargando viajes/km en RAM:", e);

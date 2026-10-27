@@ -91,6 +91,28 @@ module.exports = function createHotRamRouter(hotRam = require('../cache/hotRamMa
         });
     });
 
+    // 1.1 Rehidratación en caliente de Hot RAM desde PostgreSQL
+    router.post('/ram/rehydrate', async (req, res) => {
+        const t0 = Date.now();
+        try {
+            if (!db.isConfigured()) {
+                return res.status(503).json({ success: false, error: 'Database no configurada' });
+            }
+            const ok = await hotRam.hydrateFromDatabase(db);
+            res.json({
+                success: ok,
+                message: 'Hot RAM rehidratada con éxito desde PostgreSQL',
+                latenciaMs: Date.now() - t0,
+                stats: hotRam.stats,
+                totalCalendarios: hotRam.stats.totalCalendarios,
+                etag: hotRam.getEtag()
+            });
+        } catch (err) {
+            console.error('❌ Error en /ram/rehydrate:', err.message);
+            res.status(500).json({ success: false, error: err.message });
+        }
+    });
+
     // 2. Ventana completa de 60 Días de Turnos en RAM (< 5ms)
     router.get('/ram/diagramas', (req, res) => {
         const t0 = Date.now();
@@ -270,6 +292,7 @@ module.exports = function createHotRamRouter(hotRam = require('../cache/hotRamMa
         const offsetNum = Math.max(parseInt(offset, 10) || 0, 0);
 
         let list = hotRam.flota.map(f => {
+            const uKm = (f.unidad_id && hotRam.km?.porUnidad?.get(f.unidad_id)) || null;
             return {
                 id_unidad: f.unidad_id,
                 dominio: f.tractor || 'S/D',
@@ -278,9 +301,9 @@ module.exports = function createHotRamRouter(hotRam = require('../cache/hotRamMa
                 n_ute: f.n_ute || null,
                 servicio: f.servicio || 'S/A',
                 chofer_nombre: f.chofer_nombre || '',
-                total_km: 0,
-                km_periodo: 0,
-                viajes_count: 0
+                total_km: uKm ? uKm.total_km : 0,
+                km_periodo: uKm ? uKm.total_km : 0,
+                viajes_count: uKm ? uKm.viajes_count : 0
             };
         });
 

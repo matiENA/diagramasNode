@@ -55,6 +55,75 @@ class HotRamManager {
             porChofer: new Map(),
             porUnidad: new Map()
         };
+        this.kmDiariaPorFecha = new Map();
+
+        // Ventana activa en Hot RAM C1 y caché LRU C2 bajo demanda para histórico (6M/12M)
+        this.windowMinYm = 0;
+        this.windowMaxYm = 0;
+        this.windowTabs = new Set();
+        this.calendarioHistoricoLru = new Map(); // key -> { ts, datos }
+        this.docsPorChofer = new Map();          // chofer_id -> row chofer_documentacion
+        this.obsLru = new Map();                 // chofer_id -> { ts, datos }
+        this.badgeCache = { count: 0, ts: 0 };
+    }
+
+    /**
+     * Convierte una etiqueta 'Oct-26' a entero YYYYMM (ej: 202610)
+     */
+    parseTabYm(tab) {
+        if (!tab) return null;
+        const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+        const parts = String(tab).trim().split('-');
+        if (parts.length !== 2) return null;
+        const mIdx = MESES.indexOf(parts[0].toLowerCase());
+        const yy = parseInt(parts[1], 10);
+        if (mIdx === -1 || isNaN(yy)) return null;
+        const yyyy = yy < 100 ? 2000 + yy : yy;
+        return yyyy * 100 + (mIdx + 1);
+    }
+
+    /**
+     * Verifica si una consulta de calendario está 100% cubierta por la ventana C1 en RAM
+     */
+    isCalendarioInWindow({ anio, tabs } = {}) {
+        if (!this.isReady || !this.windowMinYm || !this.windowMaxYm) return false;
+        if (tabs) {
+            const list = String(tabs).split(',').map(t => t.trim()).filter(Boolean);
+            if (list.length === 0) return false;
+            return list.every(t => {
+                const ym = this.parseTabYm(t);
+                return ym !== null && ym >= this.windowMinYm && ym <= this.windowMaxYm;
+            });
+        }
+        if (anio) {
+            const aNum = parseInt(anio, 10);
+            if (isNaN(aNum)) return false;
+            return (aNum * 100 + 1) >= this.windowMinYm && (aNum * 100 + 12) <= this.windowMaxYm;
+        }
+        return false;
+    }
+
+    getCalendarioC2(key, ttlMs = 10 * 60 * 1000) {
+        const entry = this.calendarioHistoricoLru.get(key);
+        if (!entry) return null;
+        if (Date.now() - entry.ts > ttlMs) {
+            this.calendarioHistoricoLru.delete(key);
+            return null;
+        }
+        // Refresh LRU order
+        this.calendarioHistoricoLru.delete(key);
+        this.calendarioHistoricoLru.set(key, entry);
+        return entry.datos;
+    }
+
+    setCalendarioC2(key, datos, maxEntries = 80) {
+        if (this.calendarioHistoricoLru.has(key)) {
+            this.calendarioHistoricoLru.delete(key);
+        } else if (this.calendarioHistoricoLru.size >= maxEntries) {
+            const oldestKey = this.calendarioHistoricoLru.keys().next().value;
+            if (oldestKey !== undefined) this.calendarioHistoricoLru.delete(oldestKey);
+        }
+        this.calendarioHistoricoLru.set(key, { ts: Date.now(), datos });
     }
 
     /**
@@ -74,22 +143,31 @@ class HotRamManager {
     }
 
     /**
-     * Hidrata todos los almacenes Hot RAM directamente desde las vistas relacionales de PostgreSQL
+     * Hidrata los almacenes Hot RAM desde las vistas relacionales de PostgreSQL
+     * acotando series temporales a una ventana móvil activa (default: 4 meses: -2 a +1)
+     * para evitar descargas masivas de historia cerrada (~90% menos Data Egress).
      * @param {Object} db - Instancia de utils/db
+     * @param {Object} [options] - { skipCalendario?: boolean }
      */
-    async hydrateFromDatabase(db) {
+    async hydrateFromDatabase(db, options = {}) {
         if (!db || !db.isConfigured()) return false;
         const t0 = Date.now();
+        const skipCal = Boolean(options.skipCalendario && this.calendarioPorChofer.size > 0);
+
+        const hoy = new Date();
+        const yNow = hoy.getFullYear();
+        const mNow = hoy.getMonth();
+        const dNow = hoy.getDate();
+
+        const monthsBack = Math.max(parseInt(process.env.HOT_RAM_MONTHS_BACK, 10) || 2, 2);
+        const monthsFwd = Math.max(parseInt(process.env.HOT_RAM_MONTHS_FWD, 10) || 1, 1);
+        const dMinWin = new Date(yNow, mNow - monthsBack, 1);
+        const dMaxWin = new Date(yNow, mNow + monthsFwd, 1);
+        const minYm = dMinWin.getFullYear() * 100 + (dMinWin.getMonth() + 1);
+        const maxYm = dMaxWin.getFullYear() * 100 + (dMaxWin.getMonth() + 1);
 
         try {
-            const [
-                rDiaria,
-                rFlota,
-                rRetorno,
-                rIndividual,
-                rDiagramaMensual,
-                rCalendario
-            ] = await Promise.all([
+            const corePromises = [
                 db.query('SELECT * FROM public.view_diaria_operativa ORDER BY nombre ASC')
                     .catch(e => { console.warn('⚠️ [HotRAM] Error view_diaria_operativa:', e.message); return { rows: [] }; }),
                 db.query('SELECT * FROM public.view_flota_operativa ORDER BY tractor ASC NULLS LAST, semi ASC NULLS LAST')
@@ -97,15 +175,36 @@ class HotRamManager {
                 db.query('SELECT * FROM public.view_personal_retorno ORDER BY fecha_retorno ASC, nombre ASC')
                     .catch(e => { console.warn('⚠️ [HotRAM] Error view_personal_retorno:', e.message); return { rows: [] }; }),
                 db.query('SELECT * FROM public.view_individual_chofer ORDER BY nombre ASC')
-                    .catch(e => { console.warn('⚠️ [HotRAM] Error view_individual_chofer:', e.message); return { rows: [] }; }),
-                db.query('SELECT * FROM public.view_diagrama_mensual ORDER BY chofer_nombre ASC')
-                    .catch(e => { console.warn('⚠️ [HotRAM] Error view_diagrama_mensual:', e.message); return { rows: [] }; }),
-                db.query(`
-                    SELECT diagrama_id, chofer_id, mes_tab, anio, mes_numero, tira_dias, contabilizador, km_mes_total, cant_viajes_mes, dias_km
-                    FROM public.view_calendario_diagrama_km
-                    ORDER BY anio ASC, mes_numero ASC
-                `).catch(e => { console.warn('⚠️ [HotRAM] Error view_calendario_diagrama_km:', e.message); return { rows: [] }; })
-            ]);
+                    .catch(e => { console.warn('⚠️ [HotRAM] Error view_individual_chofer:', e.message); return { rows: [] }; })
+            ];
+
+            if (!skipCal) {
+                corePromises.push(
+                    db.query(`
+                        SELECT registro_id, mes_tab, anio, mes_numero, servicio, diagrama_tipo,
+                               chofer_id, chofer_nombre, tira_dias, contabilizador, actualizado_el
+                        FROM public.view_diagrama_mensual
+                        WHERE (anio * 100 + mes_numero) BETWEEN $1 AND $2
+                        ORDER BY chofer_nombre ASC
+                    `, [minYm, maxYm]).catch(e => { console.warn('⚠️ [HotRAM] Error view_diagrama_mensual:', e.message); return { rows: [] }; }),
+                    db.query(`
+                        SELECT diagrama_id, chofer_id, mes_tab, anio, mes_numero, tira_dias,
+                               contabilizador, km_mes_total, cant_viajes_mes, dias_km
+                        FROM public.view_calendario_diagrama_km
+                        WHERE (anio * 100 + mes_numero) BETWEEN $1 AND $2
+                        ORDER BY anio ASC, mes_numero ASC
+                    `, [minYm, maxYm]).catch(e => { console.warn('⚠️ [HotRAM] Error view_calendario_diagrama_km:', e.message); return { rows: [] }; })
+                );
+            }
+
+            const [
+                rDiaria,
+                rFlota,
+                rRetorno,
+                rIndividual,
+                rDiagramaMensual,
+                rCalendario
+            ] = await Promise.all(corePromises);
 
             // 1. Vista Diaria
             this.diaria = rDiaria.rows || [];
@@ -136,39 +235,138 @@ class HotRamManager {
                 };
             });
 
-            // 5. Diagrama Mensual indexado por mes_tab
-            this.diagramaMensual.clear();
-            (rDiagramaMensual.rows || []).forEach(row => {
-                const tab = row.mes_tab || 'GENERAL';
-                if (!this.diagramaMensual.has(tab)) {
-                    this.diagramaMensual.set(tab, []);
-                }
-                this.diagramaMensual.get(tab).push(row);
-            });
+            if (!skipCal && rDiagramaMensual && rCalendario) {
+                this.windowMinYm = minYm;
+                this.windowMaxYm = maxYm;
+                this.windowTabs.clear();
+                this.calendarioHistoricoLru.clear();
 
-            // 6. Calendario Diagrama + KM indexado por chofer_id
-            this.calendarioPorChofer.clear();
-            (rCalendario.rows || []).forEach(row => {
-                const chId = String(row.chofer_id);
-                if (!this.calendarioPorChofer.has(chId)) {
-                    this.calendarioPorChofer.set(chId, []);
+                // 5. Diagrama Mensual indexado por mes_tab (ventana activa)
+                this.diagramaMensual.clear();
+                (rDiagramaMensual.rows || []).forEach(row => {
+                    const tab = row.mes_tab || 'GENERAL';
+                    this.windowTabs.add(tab);
+                    if (!this.diagramaMensual.has(tab)) {
+                        this.diagramaMensual.set(tab, []);
+                    }
+                    this.diagramaMensual.get(tab).push(row);
+                });
+
+                // 6. Calendario Diagrama + KM indexado por chofer_id y KMs diarios por fecha
+                this.calendarioPorChofer.clear();
+                this.kmDiariaPorFecha.clear();
+                (rCalendario.rows || []).forEach(row => {
+                    if (row.mes_tab) this.windowTabs.add(row.mes_tab);
+                    const chId = String(row.chofer_id);
+                    if (!this.calendarioPorChofer.has(chId)) {
+                        this.calendarioPorChofer.set(chId, []);
+                    }
+                    this.calendarioPorChofer.get(chId).push(row);
+
+                    const dias = row.dias_km;
+                    if (dias && typeof dias === 'object') {
+                        for (const [fIso, info] of Object.entries(dias)) {
+                            if (!info) continue;
+                            const kmVal = parseFloat(info.km) || 0;
+                            const hrVal = String(info.hr || '').trim();
+                            if (kmVal <= 0 && !hrVal) continue;
+
+                            if (!this.kmDiariaPorFecha.has(fIso)) {
+                                this.kmDiariaPorFecha.set(fIso, []);
+                            }
+                            this.kmDiariaPorFecha.get(fIso).push({
+                                id_chofer: chId,
+                                chofer_id: chId,
+                                fecha: fIso,
+                                km: kmVal,
+                                km_totales: kmVal,
+                                hoja_ruta: hrVal ? hrVal.split(',').map(s => s.trim()).filter(Boolean) : [],
+                                dominio: info.tractor || null,
+                                semi: info.semi || null,
+                                id_unidad: info.id_unidad || null,
+                                n_ute: info.n_ute || null
+                            });
+                        }
+                    }
+                });
+
+                this.stats.totalCalendarios = rCalendario.rows.length;
+                this.stats.totalDiagramaMes = rDiagramaMensual.rows.length;
+            }
+
+            // Invalidar cachés auxiliares C2 de observaciones y badge
+            this.obsLru.clear();
+            this.badgeCache.ts = 0;
+
+            // 7. Pre-agregación en Hot RAM del Ciclo de Diagrama Operativo (del 26 al 25)
+            const MESES_ABREV = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+
+            let dDesde, dHasta;
+            if (dNow >= 26) {
+                dDesde = new Date(yNow, mNow, 26);
+                dHasta = new Date(yNow, mNow + 1, 25);
+            } else {
+                dDesde = new Date(yNow, mNow - 1, 26);
+                dHasta = new Date(yNow, mNow, 25);
+            }
+
+            const startIsoActual = `${dDesde.getFullYear()}-${String(dDesde.getMonth() + 1).padStart(2, '0')}-26`;
+            const endIsoActual = `${dHasta.getFullYear()}-${String(dHasta.getMonth() + 1).padStart(2, '0')}-25`;
+            const labelActual = `${MESES_ABREV[dDesde.getMonth()]} 26 - ${MESES_ABREV[dHasta.getMonth()]} 25`;
+
+            const dPrevDesde = new Date(dDesde.getFullYear(), dDesde.getMonth() - 1, 26);
+            const dPrevHasta = new Date(dHasta.getFullYear(), dHasta.getMonth() - 1, 25);
+            const startIsoPrev = `${dPrevDesde.getFullYear()}-${String(dPrevDesde.getMonth() + 1).padStart(2, '0')}-26`;
+            const endIsoPrev = `${dPrevHasta.getFullYear()}-${String(dPrevHasta.getMonth() + 1).padStart(2, '0')}-25`;
+            const labelPrev = `${MESES_ABREV[dPrevDesde.getMonth()]} 26 - ${MESES_ABREV[dPrevHasta.getMonth()]} 25`;
+
+            for (const [chId, choferObj] of this.individualPorId.entries()) {
+                const mesesChofer = this.calendarioPorChofer.get(chId) || [];
+                let kmCicloActual = 0;
+                let kmCicloPrevio = 0;
+
+                mesesChofer.forEach(m => {
+                    const dias = m.dias_km;
+                    if (!dias || typeof dias !== 'object') return;
+                    for (const [fIso, info] of Object.entries(dias)) {
+                        if (!info) continue;
+                        const k = parseFloat(info.km) || 0;
+                        if (k > 0) {
+                            if (fIso >= startIsoActual && fIso <= endIsoActual) kmCicloActual += k;
+                            if (fIso >= startIsoPrev && fIso <= endIsoPrev) kmCicloPrevio += k;
+                        }
+                    }
+                });
+
+                if (kmCicloActual > 0) {
+                    choferObj.km_ciclo = Math.round(kmCicloActual * 100) / 100;
+                    choferObj.ciclo_label = labelActual;
+                    choferObj.ciclo_desde = startIsoActual;
+                    choferObj.ciclo_hasta = endIsoActual;
+                } else if (kmCicloPrevio > 0) {
+                    choferObj.km_ciclo = Math.round(kmCicloPrevio * 100) / 100;
+                    choferObj.ciclo_label = labelPrev;
+                    choferObj.ciclo_desde = startIsoPrev;
+                    choferObj.ciclo_hasta = endIsoPrev;
+                } else {
+                    choferObj.km_ciclo = 0;
+                    choferObj.ciclo_label = labelActual;
+                    choferObj.ciclo_desde = startIsoActual;
+                    choferObj.ciclo_hasta = endIsoActual;
                 }
-                this.calendarioPorChofer.get(chId).push(row);
-            });
+            }
 
             // Actualizar estadísticas y versionado
             this.stats.totalDiaria = this.diaria.length;
             this.stats.totalFlota = this.flota.length;
             this.stats.totalRetorno = this.retorno.length;
             this.stats.totalChoferes = this.catalogoChoferes.length;
-            this.stats.totalCalendarios = rCalendario.rows.length;
-            this.stats.totalDiagramaMes = rDiagramaMensual.rows.length;
 
             this.touch();
             this.isReady = true;
 
             const duracion = Date.now() - t0;
-            console.log(`⚡ [HotRAM] Hidratación completa en ${duracion}ms (${this.stats.totalDiaria} diaria, ${this.stats.totalFlota} flota, ${this.stats.totalRetorno} retorno, ${this.stats.totalCalendarios} calendarios). ETag: ${this.getEtag()}`);
+            console.log(`⚡ [HotRAM] Hidratación ${skipCal ? 'parcial (sin calendario)' : `ventana ${minYm}-${maxYm}`} en ${duracion}ms (${this.stats.totalDiaria} diaria, ${this.stats.totalFlota} flota, ${this.stats.totalRetorno} retorno, ${this.stats.totalCalendarios} calendarios). ETag: ${this.getEtag()}`);
             return true;
         } catch (err) {
             console.error('❌ [HotRAM] Error en hidratación:', err.message);
@@ -234,6 +432,23 @@ class HotRamManager {
             hay_mas: (offsetNum + paged.length) < total,
             datos: paged
         };
+    }
+
+    /**
+     * Devuelve los kilómetros y viajes del día para la Vista Diaria en O(1) desde RAM
+     * @param {string} fechaIso - Fecha en formato YYYY-MM-DD
+     */
+    getDiariaKm(fechaIso) {
+        if (!this.isReady) return null;
+        const f = String(fechaIso || '').split('T')[0];
+        const parts = f.split('-');
+        if (parts.length >= 2 && this.windowMinYm && this.windowMaxYm) {
+            const ym = parseInt(parts[0], 10) * 100 + parseInt(parts[1], 10);
+            if (!isNaN(ym) && (ym < this.windowMinYm || ym > this.windowMaxYm)) {
+                return null; // Fuera de ventana C1 -> delegar a fn_km_por_fecha en SQL (< 1ms)
+            }
+        }
+        return this.kmDiariaPorFecha.get(f) || [];
     }
 
     /**

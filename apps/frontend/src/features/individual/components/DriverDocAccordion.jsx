@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Disclosure, DisclosureButton, DisclosurePanel, Transition } from '@headlessui/react';
 import { ChevronUp, ChevronDown, Check, Save, ShieldCheck, AlertCircle, FileText } from 'lucide-react';
 import { useDriverDocs, useDriverObservations, useUpdateDocField, useSaveAllDocs } from '../hooks/useDriverDocs';
@@ -11,33 +11,27 @@ export const DriverDocAccordion = ({ choferId, chofer }) => {
   const updateField = useUpdateDocField(choferObj);
   const saveAll = useSaveAllDocs(choferObj);
 
-  // Estados locales para los inputs de fechas
-  const [dates, setDates] = useState({
-    venc_periodico: '',
-    venc_licencia_nacional: '',
-    venc_cargas_peligrosas: '',
-    venc_psicofisico: '',
-    apto_medico_venc: '',
-    apto_medico_estado: 'Activo',
-  });
+  const src = docData || chofer || {};
 
+  // Estado local para almacenar únicamente las ediciones activas del usuario
+  const [userEdits, setUserEdits] = useState({});
   const [savedField, setSavedField] = useState(null);
   const [globalSaved, setGlobalSaved] = useState(false);
 
-  // Sincronizar con datos unificados (view_individual_chofer o chofer_documentacion)
-  useEffect(() => {
-    const src = docData || chofer;
-    if (src) {
-      setDates({
-        venc_periodico: src.venc_periodico ? String(src.venc_periodico).substring(0, 10) : '',
-        venc_licencia_nacional: src.venc_licencia_nacional ? String(src.venc_licencia_nacional).substring(0, 10) : '',
-        venc_cargas_peligrosas: src.venc_cargas_peligrosas ? String(src.venc_cargas_peligrosas).substring(0, 10) : '',
-        venc_psicofisico: src.venc_psicofisico ? String(src.venc_psicofisico).substring(0, 10) : '',
-        apto_medico_venc: src.apto_medico_venc ? String(src.apto_medico_venc).substring(0, 10) : '',
-        apto_medico_estado: src.apto_medico_estado || 'Activo',
-      });
-    }
-  }, [docData, chofer]);
+  // Valores derivados: Si el usuario editó el campo, se usa el valor editado; si no, el del servidor
+  const getFieldVal = (campo, fallback = '') => {
+    if (userEdits[campo] !== undefined) return userEdits[campo];
+    return src[campo] ? String(src[campo]).substring(0, 10) : fallback;
+  };
+
+  const dates = {
+    venc_periodico: getFieldVal('venc_periodico'),
+    venc_licencia_nacional: getFieldVal('venc_licencia_nacional'),
+    venc_cargas_peligrosas: getFieldVal('venc_cargas_peligrosas'),
+    venc_psicofisico: getFieldVal('venc_psicofisico'),
+    apto_medico_venc: getFieldVal('apto_medico_venc'),
+    apto_medico_estado: userEdits.apto_medico_estado !== undefined ? userEdits.apto_medico_estado : (src.apto_medico_estado || 'Activo'),
+  };
 
   const docId = docData?.id || chofer?.doc_id;
 
@@ -62,6 +56,11 @@ export const DriverDocAccordion = ({ choferId, chofer }) => {
       {
         onSuccess: () => {
           setSavedField(field);
+          setUserEdits((prev) => {
+            const next = { ...prev };
+            delete next[field];
+            return next;
+          });
           setTimeout(() => setSavedField(null), 2200);
         },
       }
@@ -75,6 +74,7 @@ export const DriverDocAccordion = ({ choferId, chofer }) => {
       {
         onSuccess: () => {
           setGlobalSaved(true);
+          setUserEdits({});
           setTimeout(() => setGlobalSaved(false), 2200);
         },
       }
@@ -139,7 +139,7 @@ export const DriverDocAccordion = ({ choferId, chofer }) => {
                       <input
                         type="date"
                         value={dates.venc_periodico}
-                        onChange={(e) => setDates({ ...dates, venc_periodico: e.target.value })}
+                        onChange={(e) => setUserEdits((prev) => ({ ...prev, venc_periodico: e.target.value }))}
                         className="doc-date-input"
                         style={{ fontSize: '0.75rem', padding: '0.25rem 0.4rem' }}
                       />
@@ -167,7 +167,7 @@ export const DriverDocAccordion = ({ choferId, chofer }) => {
                       <input
                         type="date"
                         value={dates.venc_licencia_nacional}
-                        onChange={(e) => setDates({ ...dates, venc_licencia_nacional: e.target.value })}
+                        onChange={(e) => setUserEdits((prev) => ({ ...prev, venc_licencia_nacional: e.target.value }))}
                         className="doc-date-input"
                         style={{ fontSize: '0.75rem', padding: '0.25rem 0.4rem' }}
                       />
@@ -195,7 +195,7 @@ export const DriverDocAccordion = ({ choferId, chofer }) => {
                       <input
                         type="date"
                         value={dates.venc_cargas_peligrosas}
-                        onChange={(e) => setDates({ ...dates, venc_cargas_peligrosas: e.target.value })}
+                        onChange={(e) => setUserEdits((prev) => ({ ...prev, venc_cargas_peligrosas: e.target.value }))}
                         className="doc-date-input"
                         style={{ fontSize: '0.75rem', padding: '0.25rem 0.4rem' }}
                       />
@@ -223,7 +223,7 @@ export const DriverDocAccordion = ({ choferId, chofer }) => {
                       <input
                         type="date"
                         value={dates.venc_psicofisico}
-                        onChange={(e) => setDates({ ...dates, venc_psicofisico: e.target.value })}
+                        onChange={(e) => setUserEdits((prev) => ({ ...prev, venc_psicofisico: e.target.value }))}
                         className="doc-date-input"
                         style={{ fontSize: '0.75rem', padding: '0.25rem 0.4rem' }}
                       />
@@ -400,7 +400,7 @@ export const DriverDocAccordion = ({ choferId, chofer }) => {
                       value={dates.apto_medico_estado}
                       onChange={(e) => {
                         const val = e.target.value;
-                        setDates({ ...dates, apto_medico_estado: val });
+                        setUserEdits((prev) => ({ ...prev, apto_medico_estado: val }));
                         updateField.mutate({ field: 'apto_medico_estado', value: val, docId });
                       }}
                       className="filter-search-input"
@@ -424,7 +424,7 @@ export const DriverDocAccordion = ({ choferId, chofer }) => {
                       <input
                         type="date"
                         value={dates.apto_medico_venc}
-                        onChange={(e) => setDates({ ...dates, apto_medico_venc: e.target.value })}
+                        onChange={(e) => setUserEdits((prev) => ({ ...prev, apto_medico_venc: e.target.value }))}
                         className="doc-date-input"
                         style={{ fontSize: '0.75rem', padding: '0.25rem 0.4rem' }}
                       />

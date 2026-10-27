@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { Client } = require('pg');
-require('dotenv').config();
+require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
 
 async function runMigration() {
   console.log('🔄 Conectando a Supabase PostgreSQL...');
@@ -9,7 +9,8 @@ async function runMigration() {
   await client.connect();
   console.log('✅ Conexión establecida.');
 
-  const sqlPath = path.join(__dirname, 'supabase_clean_duplicates.sql');
+  const targetFile = process.argv[2] || 'supabase_clean_duplicates.sql';
+  const sqlPath = path.isAbsolute(targetFile) ? targetFile : path.join(__dirname, '..', 'migrations_src', targetFile);
   const sql = fs.readFileSync(sqlPath, 'utf8');
 
   console.log('🚀 Ejecutando script de migración SQL...');
@@ -42,13 +43,13 @@ async function runMigration() {
   `);
   console.log('• Columnas actuales en diagramas:', diagramasCols.rows.map(r => r.column_name).join(', '));
 
-  // 3. Columnas de movimientos_km
+  // 3. Columnas de choferes_km_mensual
   const kmCols = await client.query(`
     SELECT column_name FROM information_schema.columns 
-    WHERE table_schema = 'public' AND table_name = 'movimientos_km'
+    WHERE table_schema = 'public' AND table_name = 'choferes_km_mensual'
     ORDER BY ordinal_position;
   `);
-  console.log('• Columnas actuales en movimientos_km:', kmCols.rows.map(r => r.column_name).join(', '));
+  console.log('• Columnas actuales en choferes_km_mensual:', kmCols.rows.map(r => r.column_name).join(', '));
 
   // 4. Columnas de novedades
   const novCols = await client.query(`
@@ -71,7 +72,7 @@ async function runMigration() {
   console.log('• Conteo en vista movimientos:', movView.rows[0].count);
 
   // 7. Conteo de filas en tablas principales
-  const tables = ['choferes', 'chofer_documentacion', 'chofer_observaciones', 'diagramas', 'movimientos_km', 'novedades', 'tractores', 'semis', 'unidades'];
+  const tables = ['choferes', 'chofer_documentacion', 'chofer_observaciones', 'diagramas', 'choferes_km_mensual', 'cisternas_km', 'novedades', 'tractores', 'semis', 'unidades'];
   console.log('\n📈 Conteo de filas conservadas:');
   for (const t of tables) {
     const c = await client.query(`SELECT count(*) FROM public."${t}";`);

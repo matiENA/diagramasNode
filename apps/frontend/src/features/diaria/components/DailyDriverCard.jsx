@@ -292,13 +292,13 @@ export const DailyDriverCard = ({ driver, fechaContexto, kmInfo, onSelectDriver 
                       🚚 UNIDAD
                     </span>
                   )}
-                  {kmInfo && kmInfo.km_totales > 0 && (
+                  {kmInfo && (kmInfo.km_totales > 0 || kmInfo.hoja_ruta) && (
                     <div
                       className="daily-km-badge"
-                      title={`Viaje hoy: ${kmInfo.km_totales} km${kmInfo.hoja_ruta ? ' (HR: ' + kmInfo.hoja_ruta + ')' : ''}`}
+                      title={`Viaje hoy: ${kmInfo.km_totales} km${kmInfo.hoja_ruta ? ' (HR: ' + kmInfo.hoja_ruta + ')' : ''}${kmInfo.dominio ? ' • ' + kmInfo.dominio : ''}`}
                     >
                       <span className="daily-km-icon">⚡</span>
-                      <span className="daily-km-val">{kmInfo.km_totales} km</span>
+                      {kmInfo.km_totales > 0 && <span className="daily-km-val">{kmInfo.km_totales} km</span>}
                       {kmInfo.hoja_ruta && (
                         <span className="daily-km-hr">HR {kmInfo.hoja_ruta}</span>
                       )}
@@ -387,8 +387,29 @@ export const DailyDriverCard = ({ driver, fechaContexto, kmInfo, onSelectDriver 
                     )}
                   </div>
 
-                  {/* Columna 3: Acceso a Ficha Individual */}
+                  {/* Columna 3: Viaje y Acceso a Ficha Individual */}
                   <div className="expanded-section-box expanded-action-box">
+                    {kmInfo && (kmInfo.km_totales > 0 || kmInfo.hoja_ruta) && (
+                      <div className="expanded-km-summary" style={{ marginBottom: '0.75rem', padding: '0.5rem', background: 'rgba(234, 179, 8, 0.08)', borderRadius: '6px', border: '1px solid rgba(234, 179, 8, 0.2)' }}>
+                        <div style={{ fontSize: '0.75rem', color: '#eab308', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span>⚡</span>
+                          <span>Viaje registrado hoy</span>
+                        </div>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-main, #fff)', marginTop: '2px' }}>
+                          {kmInfo.km_totales > 0 ? `${kmInfo.km_totales.toLocaleString('es-AR')} km` : 'Sin KMs declarados'}
+                        </div>
+                        {kmInfo.hoja_ruta && (
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted, #94a3b8)' }}>
+                            HR: {kmInfo.hoja_ruta}
+                          </div>
+                        )}
+                        {kmInfo.dominio && (
+                          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted, #94a3b8)' }}>
+                            Tractor: {kmInfo.dominio}
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <button
                       type="button"
                       onClick={() => onSelectDriver && onSelectDriver(driver.chofer_id)}

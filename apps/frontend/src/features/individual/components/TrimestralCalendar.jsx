@@ -8,7 +8,7 @@ import { useAuth } from '@/context/AuthContext';
 export const TrimestralCalendar = ({ choferId, choferNombre }) => {
   const { user } = useAuth();
   const [zoomLevel, setZoomLevel] = useState(3); // 3 (90 días / Trimestre) | 12 (Anual)
-  const [baseDate, setBaseDate] = useState(() => new Date(2026, 8, 1)); // Septiembre 2026 por defecto
+  const [baseDate, setBaseDate] = useState(() => new Date()); // Mes actual dinámico
   const [selectedRange, setSelectedRange] = useState(null);
 
   const updateDiagrama = useUpdateDiagramaRange(choferId);
@@ -329,6 +329,8 @@ export const TrimestralCalendar = ({ choferId, choferNombre }) => {
               monthIndex={m.monthIndex}
               monthName={m.monthName}
               tiraDias={m.tiraDias}
+              kmMesTotal={m.kmMesTotal}
+              cantViajesMes={m.cantViajesMes}
               isActiveMonth={m.isActiveMonth}
               todayIso={todayIso}
               selectedRange={selectedRange}

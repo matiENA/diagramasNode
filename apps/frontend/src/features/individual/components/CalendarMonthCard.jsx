@@ -6,6 +6,8 @@ export const CalendarMonthCard = ({
   monthIndex, // 0..11
   monthName,
   tiraDias, // string "1,2,F,F,..."
+  kmMesTotal = 0,
+  cantViajesMes = 0,
   isActiveMonth,
   todayIso,
   selectedRange,
@@ -32,7 +34,7 @@ export const CalendarMonthCard = ({
     <div className={`calendar-month-card ${isActiveMonth ? 'current-active-month' : ''}`}>
       {/* Título del Mes */}
       <div className="month-title-header">
-        {monthName} {year}
+        <span>{monthName} {year}</span>
       </div>
 
       {/* Cabecera L M X J V S D */}
@@ -70,6 +72,8 @@ export const CalendarMonthCard = ({
               isSelected={isSelected}
               isToday={isToday}
               hasKm={hasKm}
+              km={trip?.km || 0}
+              hr={trip?.hr || ''}
               kmTooltip={kmTooltip}
               onClick={onDayClick}
             />
