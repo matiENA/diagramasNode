@@ -446,57 +446,94 @@ async function syncAll() {
         }
     }
 
-    // Limpiar pareos anteriores e insertar la foto operativa actual reflejando fielmente la planilla
+    // ⚡ Sincronización Incremental por Diff (0 escrituras si la planilla no cambió)
     if (pool) {
-        await pool.query(`DELETE FROM movimientos WHERE id != '00000000-0000-0000-0000-000000000000'`);
+        const currentMovsRes = await pool.query('SELECT id_unidad, id_chofer FROM movimientos');
+        const currentMovsMap = new Map();
+        for (const r of currentMovsRes.rows) {
+            currentMovsMap.set(String(r.id_unidad), String(r.id_chofer));
+        }
+
+        const targetMovsMap = new Map();
+        for (const m of movsToInsert) {
+            targetMovsMap.set(String(m.id_unidad), String(m.id_chofer));
+        }
+
+        const toDeleteUnidadIds = [];
+        for (const [uId] of currentMovsMap.entries()) {
+            if (!targetMovsMap.has(uId)) {
+                toDeleteUnidadIds.push(uId);
+            }
+        }
+
+        const toUpsert = [];
+        for (const [uId, chId] of targetMovsMap.entries()) {
+            if (currentMovsMap.get(uId) !== chId) {
+                toUpsert.push({ id_unidad: uId, id_chofer: chId });
+            }
+        }
+
+        const huboCambios = toDeleteUnidadIds.length > 0 || toUpsert.length > 0;
+
+        if (!huboCambios) {
+            console.log('   ⚡ [Diff-Incremental] 0 cambios en pareos operativos. Omitiendo escrituras en DB (0 WAL).');
+        } else {
+            console.log(`   🔄 [Diff-Incremental] Aplicando diff: ${toDeleteUnidadIds.length} eliminados, ${toUpsert.length} modificados/nuevos.`);
+            if (toDeleteUnidadIds.length > 0) {
+                await pool.query('DELETE FROM movimientos WHERE id_unidad = ANY($1::uuid[])', [toDeleteUnidadIds]);
+            }
+
+            if (toUpsert.length > 0) {
+                const BATCH_PG = 100;
+                for (let i = 0; i < toUpsert.length; i += BATCH_PG) {
+                    const chunk = toUpsert.slice(i, i + BATCH_PG);
+                    const values = [];
+                    const params = [];
+                    chunk.forEach((m, idx) => {
+                        params.push(m.id_unidad, m.id_chofer);
+                        values.push(`($${idx * 2 + 1}, $${idx * 2 + 2})`);
+                    });
+                    await pool.query(`
+                        INSERT INTO movimientos (id_unidad, id_chofer) 
+                        VALUES ${values.join(', ')}
+                        ON CONFLICT (id_unidad) DO UPDATE SET 
+                            id_chofer = EXCLUDED.id_chofer,
+                            actualizado_el = NOW()
+                    `, params);
+                }
+            }
+
+            // 1. Limpiar choferes que perdieron asignación
+            const activeChoferIds = Array.from(targetMovsMap.values());
+            if (activeChoferIds.length > 0) {
+                await pool.query(`
+                    UPDATE choferes 
+                    SET unidad_id = NULL, 
+                        estado = CASE WHEN estado = 'circulando' THEN 'inactivo' ELSE estado END,
+                        actualizado_el = NOW() 
+                    WHERE unidad_id IS NOT NULL AND id != ALL($1::uuid[])
+                `, [activeChoferIds]);
+            }
+
+            // 2. Establecer unidad_id para las asignaciones modificadas
+            for (const u of toUpsert) {
+                await pool.query(`UPDATE choferes SET unidad_id = $1, estado = 'circulando', actualizado_el = NOW() WHERE id = $2`, [u.id_unidad, u.id_chofer]);
+            }
+            console.log(`   🔄 Sincronizados ${toUpsert.length} choferes modificados con su unidad_id.`);
+        }
     } else {
         const { error: errDelMov } = await supabase.from('movimientos').delete().neq('id', '00000000-0000-0000-0000-000000000000');
         if (errDelMov) console.error('   ❌ Error eliminando movimientos antiguos:', errDelMov.message);
-    }
-
-    if (movsToInsert.length > 0) {
-        if (pool) {
-            const BATCH_PG = 100;
-            for (let i = 0; i < movsToInsert.length; i += BATCH_PG) {
-                const chunk = movsToInsert.slice(i, i + BATCH_PG);
-                const values = [];
-                const params = [];
-                chunk.forEach((m, idx) => {
-                    params.push(m.id_unidad, m.id_chofer);
-                    values.push(`($${idx * 2 + 1}, $${idx * 2 + 2})`);
-                });
-                await pool.query(`INSERT INTO movimientos (id_unidad, id_chofer) VALUES ${values.join(', ')}`, params);
-            }
-        } else {
+        if (movsToInsert.length > 0) {
             for (const batch of chunkArray(movsToInsert, BATCH_SIZE)) {
                 const { error: errInsMov } = await supabase.from('movimientos').insert(batch);
                 if (errInsMov) console.error('   ❌ Error insertando lote movimientos:', errInsMov.message);
             }
         }
-        console.log(`   ✅ ${movsToInsert.length} movimientos activos registrados desde Sheets.`);
-    }
-
-    // Mantener choferes.unidad_id sincronizado con los movimientos activos
-    if (pool) {
-        // 1. Limpiar unidad_id de choferes que ya no tienen asignación activa
-        await pool.query(`
-            UPDATE choferes 
-            SET unidad_id = NULL, 
-                estado = CASE WHEN estado = 'circulando' THEN 'inactivo' ELSE estado END 
-            WHERE unidad_id IS NOT NULL
-        `);
-        // 2. Establecer unidad_id para las asignaciones activas de hoy
-        for (const [idChofer, idUnidad] of choferesConUnidad.entries()) {
-            await pool.query(`UPDATE choferes SET unidad_id = $1, estado = 'circulando' WHERE id = $2`, [idUnidad, idChofer]);
-        }
-        console.log(`   🔄 Sincronizados ${choferesConUnidad.size} choferes con su unidad_id vía Postgres directo.`);
-    } else {
-        // Fallback con cliente Supabase usando update explícito (evitando el error NOT NULL de upsert)
         await supabase.from('choferes').update({ unidad_id: null, estado: 'inactivo' }).not('unidad_id', 'is', null);
         for (const [idChofer, idUnidad] of choferesConUnidad.entries()) {
             await supabase.from('choferes').update({ unidad_id: idUnidad, estado: 'circulando' }).eq('id', idChofer);
         }
-        console.log(`   🔄 Sincronizados ${choferesConUnidad.size} choferes con su unidad_id vía Supabase update.`);
     }
 
     // D. Opcional: Sincronizar tabla `diagramas` histórica si existe

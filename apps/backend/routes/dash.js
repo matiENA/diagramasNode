@@ -523,39 +523,30 @@ module.exports = function createDashRouter(cacheDatosGlobales, io) {
             const semiFinal = unidadObj?.semi?.patente || unidadObj?.semi || semiInput || '';
             const uteFinal = unidadObj?.n_ute || uteInput || '';
 
-            // 3. Persistencia en Base de Datos (movimientos y choferes)
+            // 3. Persistencia Atómica en Base de Datos (RPC canónico PostgreSQL ACID)
             if (db.isConfigured()) {
                 try {
                     if (esDesasignar) {
-                        await db.query(`DELETE FROM movimientos WHERE id_chofer = $1`, [targetChoferId]);
-                        await db.query(`UPDATE choferes SET unidad_id = NULL, estado = 'inactivo', actualizado_el = NOW() WHERE id = $1`, [targetChoferId]);
+                        await db.query(`SELECT public.fn_desunir_unidad_chofer($1::uuid, 'DASH')`, [targetChoferId]);
                     } else {
-                        // 1. Eliminar asignación previa de este chofer o de esta unidad en movimientos
-                        await db.query(`DELETE FROM movimientos WHERE id_chofer = $1 OR id_unidad = $2`, [targetChoferId, targetUnidadId]);
-                        // 2. Si otro chofer tenía esta unidad, desasignarlo en choferes para no dejar fantasmas
-                        await db.query(`UPDATE choferes SET unidad_id = NULL, estado = 'inactivo', actualizado_el = NOW() WHERE unidad_id = $1 AND id != $2`, [targetUnidadId, targetChoferId]);
-                        // 3. Crear el nuevo movimiento y asignar al chofer
-                        await db.query(`INSERT INTO movimientos (id, id_unidad, id_chofer) VALUES (gen_random_uuid(), $1, $2)`, [targetUnidadId, targetChoferId]);
-                        await db.query(`UPDATE choferes SET unidad_id = $1, estado = 'circulando', actualizado_el = NOW() WHERE id = $2`, [targetUnidadId, targetChoferId]);
-                        await db.query(`UPDATE unidades SET estado = 'circulando' WHERE id = $1`, [targetUnidadId]);
+                        await db.query(`SELECT public.fn_asignar_unidad_chofer($1::uuid, $2::uuid, 'DASH')`, [targetChoferId, targetUnidadId]);
                     }
                 } catch (ePg) {
-                    console.warn("⚠️ [dash] Error en pg directo, usando fallback supabase:", ePg.message);
+                    console.warn("⚠️ [dash] Error en RPC atómico pg, usando fallback supabase:", ePg.message);
+                    if (supabase) {
+                        if (esDesasignar) {
+                            await supabase.rpc('fn_desunir_unidad_chofer', { p_chofer_id: targetChoferId, p_usuario: 'DASH' });
+                        } else {
+                            await supabase.rpc('fn_asignar_unidad_chofer', { p_chofer_id: targetChoferId, p_unidad_id: targetUnidadId, p_usuario: 'DASH' });
+                        }
+                    }
                 }
-            }
-
-            if (supabase) {
+            } else if (supabase) {
                 try {
                     if (esDesasignar) {
-                        await supabase.from('movimientos').delete().eq('id_chofer', targetChoferId);
-                        await supabase.from('choferes').update({ unidad_id: null, estado: 'inactivo', actualizado_el: new Date().toISOString() }).eq('id', targetChoferId);
+                        await supabase.rpc('fn_desunir_unidad_chofer', { p_chofer_id: targetChoferId, p_usuario: 'DASH' });
                     } else {
-                        // Desasignar choferes anteriores de esta unidad en Supabase
-                        await supabase.from('choferes').update({ unidad_id: null, estado: 'inactivo', actualizado_el: new Date().toISOString() }).eq('unidad_id', targetUnidadId).neq('id', targetChoferId);
-                        await supabase.from('movimientos').delete().or(`id_chofer.eq.${targetChoferId},id_unidad.eq.${targetUnidadId}`);
-                        await supabase.from('movimientos').insert([{ id_unidad: targetUnidadId, id_chofer: targetChoferId }]);
-                        await supabase.from('choferes').update({ unidad_id: targetUnidadId, estado: 'circulando', actualizado_el: new Date().toISOString() }).eq('id', targetChoferId);
-                        await supabase.from('unidades').update({ estado: 'circulando' }).eq('id', targetUnidadId);
+                        await supabase.rpc('fn_asignar_unidad_chofer', { p_chofer_id: targetChoferId, p_unidad_id: targetUnidadId, p_usuario: 'DASH' });
                     }
                 } catch (eSupa) {
                     console.error("❌ Error persistiendo movimiento en Supabase:", eSupa.message);

@@ -680,61 +680,107 @@ class InjectorService {
         }
         const deduplicatedMovs = Array.from(uniqueMovsMap.values());
 
-        // Limpiar pareos anteriores e insertar la foto de hoy
+        // ⚡ Sincronización Incremental por Diff (0 escrituras si la planilla no cambió)
         if (this.pool) {
-            await this.pool.query(`DELETE FROM movimientos WHERE id != '00000000-0000-0000-0000-000000000000'`);
-            if (deduplicatedMovs.length > 0) {
-                const BATCH_PG = 100;
-                for (let i = 0; i < deduplicatedMovs.length; i += BATCH_PG) {
-                    const chunk = deduplicatedMovs.slice(i, i + BATCH_PG);
-                    const values = [];
-                    const params = [];
-                    chunk.forEach((m, idx) => {
-                        params.push(m.id_unidad, m.id_chofer);
-                        values.push(`($${idx * 2 + 1}, $${idx * 2 + 2})`);
-                    });
-                    await this.pool.query(`
-                        INSERT INTO movimientos (id_unidad, id_chofer) 
-                        VALUES ${values.join(', ')}
-                        ON CONFLICT (id_unidad) DO UPDATE SET 
-                            id_chofer = EXCLUDED.id_chofer,
-                            actualizado_el = NOW()
-                    `, params);
+            const currentMovsRes = await this.pool.query('SELECT id_unidad, id_chofer FROM movimientos');
+            const currentMovsMap = new Map();
+            for (const r of currentMovsRes.rows) {
+                currentMovsMap.set(String(r.id_unidad), String(r.id_chofer));
+            }
+
+            const targetMovsMap = new Map();
+            for (const m of deduplicatedMovs) {
+                targetMovsMap.set(String(m.id_unidad), String(m.id_chofer));
+            }
+
+            const toDeleteUnidadIds = [];
+            for (const [uId] of currentMovsMap.entries()) {
+                if (!targetMovsMap.has(uId)) {
+                    toDeleteUnidadIds.push(uId);
                 }
             }
-            // 1. Limpiar unidad_id de choferes que ya no tienen asignación activa
-            await this.pool.query(`
-                UPDATE choferes 
-                SET unidad_id = NULL, 
-                    estado = CASE WHEN estado = 'circulando' THEN 'inactivo' ELSE estado END,
-                    actualizado_el = NOW() 
-                WHERE unidad_id IS NOT NULL
-            `);
-            // 2. Asignar unidad_id a los choferes con asignación activa hoy (Batch optimizado en 1 sola query)
-            const entries = Array.from(choferesConUnidad.entries());
-            if (entries.length > 0) {
-                const values = entries.map(([idCh, idUn], idx) => `($${idx * 2 + 1}::uuid, $${idx * 2 + 2}::uuid)`).join(', ');
-                const params = entries.flatMap(([idCh, idUn]) => [idCh, idUn]);
-                await this.pool.query(`
-                    UPDATE choferes AS c
-                    SET unidad_id = v.unidad_id,
-                        estado = 'circulando',
-                        actualizado_el = NOW()
-                    FROM (VALUES ${values}) AS v(chofer_id, unidad_id)
-                    WHERE c.id = v.chofer_id
-                `, params);
+
+            const toUpsert = [];
+            for (const [uId, chId] of targetMovsMap.entries()) {
+                if (currentMovsMap.get(uId) !== chId) {
+                    toUpsert.push({ id_unidad: uId, id_chofer: chId });
+                }
             }
-            // 3. Sincronizar estado de las unidades: si no tienen chofer hoy, quedan disponibles
-            await this.pool.query(`
-                UPDATE unidades 
-                SET estado = 'disponible' 
-                WHERE estado = 'circulando' AND id NOT IN (SELECT id_unidad FROM movimientos)
-            `);
-            await this.pool.query(`
-                UPDATE unidades 
-                SET estado = 'circulando' 
-                WHERE id IN (SELECT id_unidad FROM movimientos)
-            `);
+
+            const huboCambios = toDeleteUnidadIds.length > 0 || toUpsert.length > 0;
+
+            if (!huboCambios) {
+                log('info', '   ⚡ [Diff-Incremental] 0 cambios detectados en pareos operativos. Omitiendo escrituras en DB (0 WAL).');
+            } else {
+                log('info', `   🔄 [Diff-Incremental] Aplicando diff: ${toDeleteUnidadIds.length} eliminados, ${toUpsert.length} modificados/nuevos.`);
+                if (toDeleteUnidadIds.length > 0) {
+                    await this.pool.query('DELETE FROM movimientos WHERE id_unidad = ANY($1::uuid[])', [toDeleteUnidadIds]);
+                }
+
+                if (toUpsert.length > 0) {
+                    const BATCH_PG = 100;
+                    for (let i = 0; i < toUpsert.length; i += BATCH_PG) {
+                        const chunk = toUpsert.slice(i, i + BATCH_PG);
+                        const values = [];
+                        const params = [];
+                        chunk.forEach((m, idx) => {
+                            params.push(m.id_unidad, m.id_chofer);
+                            values.push(`($${idx * 2 + 1}, $${idx * 2 + 2})`);
+                        });
+                        await this.pool.query(`
+                            INSERT INTO movimientos (id_unidad, id_chofer) 
+                            VALUES ${values.join(', ')}
+                            ON CONFLICT (id_unidad) DO UPDATE SET 
+                                id_chofer = EXCLUDED.id_chofer,
+                                actualizado_el = NOW()
+                        `, params);
+                    }
+                }
+
+                // 1. Limpiar choferes que perdieron asignación
+                const activeChoferIds = Array.from(targetMovsMap.values());
+                if (activeChoferIds.length > 0) {
+                    await this.pool.query(`
+                        UPDATE choferes 
+                        SET unidad_id = NULL, 
+                            estado = CASE WHEN estado = 'circulando' THEN 'inactivo' ELSE estado END,
+                            actualizado_el = NOW() 
+                        WHERE unidad_id IS NOT NULL AND id != ALL($1::uuid[])
+                    `, [activeChoferIds]);
+                }
+
+                // 2. Asignar unidad_id a los choferes modificados
+                const entriesToUpdate = toUpsert.map(u => [u.id_chofer, u.id_unidad]);
+                if (entriesToUpdate.length > 0) {
+                    const values = entriesToUpdate.map(([idCh, idUn], idx) => `($${idx * 2 + 1}::uuid, $${idx * 2 + 2}::uuid)`).join(', ');
+                    const params = entriesToUpdate.flatMap(([idCh, idUn]) => [idCh, idUn]);
+                    await this.pool.query(`
+                        UPDATE choferes AS c
+                        SET unidad_id = v.unidad_id,
+                            estado = 'circulando',
+                            actualizado_el = NOW()
+                        FROM (VALUES ${values}) AS v(chofer_id, unidad_id)
+                        WHERE c.id = v.chofer_id
+                    `, params);
+                }
+
+                // 3. Sincronizar estado de las unidades
+                if (toDeleteUnidadIds.length > 0) {
+                    await this.pool.query(`
+                        UPDATE unidades 
+                        SET estado = 'disponible' 
+                        WHERE id = ANY($1::uuid[]) AND estado = 'circulando'
+                    `, [toDeleteUnidadIds]);
+                }
+                const newUnitIds = toUpsert.map(u => u.id_unidad);
+                if (newUnitIds.length > 0) {
+                    await this.pool.query(`
+                        UPDATE unidades 
+                        SET estado = 'circulando' 
+                        WHERE id = ANY($1::uuid[]) AND estado != 'circulando'
+                    `, [newUnitIds]);
+                }
+            }
         } else {
             await this.supabase.from('movimientos').delete().neq('id', '00000000-0000-0000-0000-000000000000');
             const BATCH_SIZE = 50;
