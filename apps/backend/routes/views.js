@@ -750,6 +750,7 @@ module.exports = function createViewsRouter(hotRam = require('../cache/hotRamMan
 
             let sql;
             let params;
+            let vistaNombre;
 
             if (tabs) {
                 const tabList = tabs.split(',').map(t => t.trim());
@@ -759,20 +760,26 @@ module.exports = function createViewsRouter(hotRam = require('../cache/hotRamMan
                     ORDER BY anio ASC, mes_numero ASC
                 `;
                 params = [choferId, tabList];
-            } else if (anio) {
+                vistaNombre = "public.fn_calendario_diagrama_km";
+            } else if (anio || zoom === '12') {
                 sql = `
                     SELECT diagrama_id, chofer_id, mes_tab, anio, mes_numero, tira_dias, contabilizador, km_mes_total, cant_viajes_mes, dias_km
-                    FROM public.fn_calendario_diagrama_km($1::uuid, NULL, $2::int)
-                    ORDER BY anio ASC, mes_numero ASC
-                `;
-                params = [choferId, parseInt(anio, 10)];
-            } else {
-                sql = `
-                    SELECT diagrama_id, chofer_id, mes_tab, anio, mes_numero, tira_dias, contabilizador, km_mes_total, cant_viajes_mes, dias_km
-                    FROM public.fn_calendario_diagrama_km($1::uuid, NULL, NULL)
+                    FROM public.view_calendario_diagrama_km_12m
+                    WHERE chofer_id::text = $1
                     ORDER BY anio ASC, mes_numero ASC
                 `;
                 params = [choferId];
+                vistaNombre = "public.view_calendario_diagrama_km_12m";
+            } else {
+                // Default: 2 Meses Operativos Activos (Sep-26 + Oct-26)
+                sql = `
+                    SELECT diagrama_id, chofer_id, mes_tab, anio, mes_numero, tira_dias, contabilizador, km_mes_total, cant_viajes_mes, dias_km
+                    FROM public.view_calendario_diagrama_km_2m
+                    WHERE chofer_id::text = $1
+                    ORDER BY anio ASC, mes_numero ASC
+                `;
+                params = [choferId];
+                vistaNombre = "public.view_calendario_diagrama_km_2m";
             }
 
             const dataRes = await db.query(sql, params);
@@ -782,7 +789,7 @@ module.exports = function createViewsRouter(hotRam = require('../cache/hotRamMan
 
             res.json({
                 success: true,
-                vista: "public.view_calendario_diagrama_km",
+                vista: vistaNombre,
                 latenciaMs: Date.now() - t0,
                 total: dataRes.rows.length,
                 datos: dataRes.rows

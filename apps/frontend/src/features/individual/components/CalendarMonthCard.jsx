@@ -32,17 +32,9 @@ export const CalendarMonthCard = ({
 
   return (
     <div className={`calendar-month-card ${isActiveMonth ? 'current-active-month' : ''}`}>
-      {/* Título del Mes con Badge de KMs del Mes */}
+      {/* Título del Mes */}
       <div className="month-title-header">
-        <span className="month-title-text">{monthName} {year}</span>
-        {kmMesTotal > 0 && (
-          <span
-            className="badge-month-km"
-            title={`${cantViajesMes} viajes registrados en ${monthName}`}
-          >
-            {Math.round(kmMesTotal).toLocaleString('es-AR')} km
-          </span>
-        )}
+        <span>{monthName} {year}</span>
       </div>
 
       {/* Cabecera L M X J V S D */}

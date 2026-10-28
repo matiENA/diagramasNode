@@ -190,10 +190,9 @@ class HotRamManager {
                     db.query(`
                         SELECT diagrama_id, chofer_id, mes_tab, anio, mes_numero, tira_dias,
                                contabilizador, km_mes_total, cant_viajes_mes, dias_km
-                        FROM public.view_calendario_diagrama_km
-                        WHERE (anio * 100 + mes_numero) BETWEEN $1 AND $2
+                        FROM public.view_calendario_diagrama_km_2m
                         ORDER BY anio ASC, mes_numero ASC
-                    `, [minYm, maxYm]).catch(e => { console.warn('⚠️ [HotRAM] Error view_calendario_diagrama_km:', e.message); return { rows: [] }; })
+                    `).catch(e => { console.warn('⚠️ [HotRAM] Error view_calendario_diagrama_km_2m:', e.message); return { rows: [] }; })
                 );
             }
 
