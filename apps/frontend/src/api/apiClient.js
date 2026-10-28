@@ -430,6 +430,64 @@ class ApiClient {
     }
     return data || [];
   }
+
+  // 13. Asignación Atómica de Unidad (Node Backend Hot RAM + ACID Supabase RPC fallback)
+  async asignarUnidad({ choferId, unidadId, usuario = 'OPERADOR', tractor = null, semi = null, n_ute = null, choferNombre = null }) {
+    try {
+      const res = await this.fetchJson('/api/movimientos/asignar', {
+        method: 'POST',
+        body: JSON.stringify({
+          choferId,
+          unidadId,
+          usuario,
+          tractor,
+          semi,
+          n_ute,
+          choferNombre
+        })
+      });
+      if (res && res.success) {
+        return res;
+      }
+    } catch (err) {
+      console.warn('⚠️ [ApiClient] Fallback a RPC fn_asignar_unidad_chofer en Supabase:', err.message);
+    }
+
+    // Fallback RPC directo a Supabase
+    const { data, error } = await supabase.rpc('fn_asignar_unidad_chofer', {
+      p_chofer_id: choferId,
+      p_unidad_id: unidadId,
+      p_usuario: usuario,
+    });
+    if (error) throw error;
+    return { success: true, message: 'Unidad asignada exitosamente', data };
+  }
+
+  // 14. Desunión Atómica de Unidad (Node Backend Hot RAM + ACID Supabase RPC fallback)
+  async desunirUnidad({ choferId, usuario = 'OPERADOR' }) {
+    try {
+      const res = await this.fetchJson('/api/movimientos/desunir', {
+        method: 'POST',
+        body: JSON.stringify({
+          choferId,
+          usuario
+        })
+      });
+      if (res && res.success) {
+        return res;
+      }
+    } catch (err) {
+      console.warn('⚠️ [ApiClient] Fallback a RPC fn_desunir_unidad_chofer en Supabase:', err.message);
+    }
+
+    // Fallback RPC directo a Supabase
+    const { data, error } = await supabase.rpc('fn_desunir_unidad_chofer', {
+      p_chofer_id: choferId,
+      p_usuario: usuario,
+    });
+    if (error) throw error;
+    return { success: true, message: 'Unidad desasignada exitosamente', data };
+  }
 }
 
 export const apiClient = new ApiClient();

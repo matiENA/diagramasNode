@@ -46,25 +46,24 @@ export const useAssignUnit = () => {
 
       const usuarioActivo = localStorage.getItem('usuarioActivo') || 'OPERADOR';
 
-      // 1. Desasignación Atómica (ACID vía RPC en PostgreSQL -> public.eor_sync_queue)
+      // 1. Desasignación Atómica (ACID vía RPC en PostgreSQL -> public.eor_sync_queue + Hot RAM)
       if (esDesasignar) {
-        const { data, error } = await supabase.rpc('fn_desunir_unidad_chofer', {
-          p_chofer_id: choferId,
-          p_usuario: usuarioActivo,
+        return await apiClient.desunirUnidad({
+          choferId,
+          usuario: usuarioActivo,
         });
-        if (error) throw error;
-        return { success: true, message: 'Unidad desasignada exitosamente', data };
       }
 
-      // 2. Asignación Directa Atómica (ACID vía RPC en PostgreSQL -> public.eor_sync_queue)
-      const { data, error } = await supabase.rpc('fn_asignar_unidad_chofer', {
-        p_chofer_id: choferId,
-        p_unidad_id: unidadId,
-        p_usuario: usuarioActivo,
+      // 2. Asignación Directa Atómica (ACID vía RPC en PostgreSQL -> public.eor_sync_queue + Hot RAM)
+      return await apiClient.asignarUnidad({
+        choferId,
+        choferNombre,
+        unidadId,
+        tractor,
+        semi,
+        n_ute,
+        usuario: usuarioActivo,
       });
-      if (error) throw error;
-
-      return { success: true, message: 'Unidad asignada exitosamente', data };
     },
 
     // Mutación optimista en RAM para que la UI responda en <16 ms

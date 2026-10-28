@@ -307,5 +307,122 @@ module.exports = function createMovimientosRouter(hotRam = require('../cache/hot
         }
     });
 
+    // 3. POST /api/movimientos/asignar — Asignación atómica de unidad a chofer (ACID en PostgreSQL + Hot RAM O(1))
+    router.post('/asignar', async (req, res) => {
+        const t0 = Date.now();
+        const {
+            choferId,
+            unidadId,
+            usuario = 'OPERADOR',
+            tractor = null,
+            semi = null,
+            n_ute = null,
+            choferNombre = null
+        } = req.body || {};
+
+        if (!choferId || !unidadId) {
+            return res.status(400).json({ success: false, error: 'choferId y unidadId son requeridos' });
+        }
+
+        try {
+            if (!db.isConfigured()) {
+                return res.status(503).json({ success: false, error: "PostgreSQL no configurado" });
+            }
+
+            // 1. Invocar función atómica en PostgreSQL (escribe en choferes, movimientos y eor_sync_queue)
+            const r = await db.query(
+                'SELECT public.fn_asignar_unidad_chofer($1::uuid, $2::uuid, $3::text) AS res',
+                [choferId, unidadId, usuario]
+            );
+            const rpcData = r.rows[0]?.res || {};
+
+            // 2. Reflejar inmediatamente en Hot RAM (< 1ms)
+            if (hotRam) {
+                hotRam.actualizarPareo(unidadId, choferId, {
+                    choferNombre: choferNombre || rpcData.chofer_nombre,
+                    tractor: tractor || rpcData.tractor,
+                    semi: semi || rpcData.semi,
+                    n_ute: n_ute || rpcData.n_ute
+                });
+            }
+
+            // 3. Emitir evento Socket.IO para sincronización instantánea multicliente
+            if (io) {
+                io.emit('datos_actualizados', {
+                    timestamp: new Date().toISOString(),
+                    evento: 'asignacion',
+                    choferId,
+                    unidadId
+                });
+            }
+
+            return res.json({
+                success: true,
+                mensaje: "Unidad asignada exitosamente",
+                latenciaMs: Date.now() - t0,
+                data: rpcData
+            });
+        } catch (err) {
+            console.error('❌ Error en POST /api/movimientos/asignar:', err.message);
+            return res.status(500).json({ success: false, error: err.message });
+        }
+    });
+
+    // 4. POST /api/movimientos/desunir — Desunión atómica de unidad y chofer (ACID en PostgreSQL + Hot RAM O(1))
+    router.post('/desunir', async (req, res) => {
+        const t0 = Date.now();
+        const {
+            choferId,
+            usuario = 'OPERADOR'
+        } = req.body || {};
+
+        if (!choferId) {
+            return res.status(400).json({ success: false, error: 'choferId es requerido' });
+        }
+
+        try {
+            if (!db.isConfigured()) {
+                return res.status(503).json({ success: false, error: "PostgreSQL no configurado" });
+            }
+
+            // 1. Invocar función atómica en PostgreSQL (libera choferes, movimientos y eor_sync_queue con carácter '1')
+            const r = await db.query(
+                'SELECT public.fn_desunir_unidad_chofer($1::uuid, $2::text) AS res',
+                [choferId, usuario]
+            );
+            const rpcData = r.rows[0]?.res || {};
+
+            // 2. Liberar inmediatamente en Hot RAM (< 1ms)
+            if (hotRam) {
+                if (rpcData.unidad_liberada) {
+                    hotRam.desasignarUnidad(rpcData.unidad_liberada);
+                }
+                if (typeof hotRam.desasignarChofer === 'function') {
+                    hotRam.desasignarChofer(choferId);
+                }
+            }
+
+            // 3. Emitir evento Socket.IO
+            if (io) {
+                io.emit('datos_actualizados', {
+                    timestamp: new Date().toISOString(),
+                    evento: 'desunion',
+                    choferId,
+                    unidadLiberada: rpcData.unidad_liberada
+                });
+            }
+
+            return res.json({
+                success: true,
+                mensaje: "Unidad desasignada exitosamente",
+                latenciaMs: Date.now() - t0,
+                data: rpcData
+            });
+        } catch (err) {
+            console.error('❌ Error en POST /api/movimientos/desunir:', err.message);
+            return res.status(500).json({ success: false, error: err.message });
+        }
+    });
+
     return router;
 };

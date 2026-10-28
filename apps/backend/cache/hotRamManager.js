@@ -742,6 +742,45 @@ class HotRamManager {
 
         this.touch();
     }
+
+    /**
+     * Aplica una desunión explícita por choferId
+     */
+    desasignarChofer(choferId) {
+        if (!choferId) return;
+
+        this.diaria.forEach(d => {
+            if (String(d.chofer_id) === String(choferId)) {
+                const uId = d.unidad_id;
+                d.unidad_id = null;
+                d.n_ute = null;
+                d.tractor = null;
+                d.semi = null;
+                d.estado_chofer = 'inactivo';
+
+                if (uId) {
+                    const targetFlota = this.flota.find(f => f.unidad_id === uId);
+                    if (targetFlota) {
+                        targetFlota.chofer_id = null;
+                        targetFlota.chofer_nombre = '';
+                        targetFlota.dia_diagrama = '-';
+                    }
+                }
+            }
+        });
+
+        const ind = this.individualPorId.get(String(choferId));
+        if (ind) {
+            ind.unidad_id = null;
+            ind.n_ute = null;
+            ind.tractor = null;
+            ind.semi = null;
+            ind.estado_chofer = 'inactivo';
+            ind.estado_unidad = 'disponible';
+        }
+
+        this.touch();
+    }
 }
 
 const hotRamManager = new HotRamManager();

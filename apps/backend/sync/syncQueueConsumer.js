@@ -509,7 +509,7 @@ async function processSyncQueue({ batchLimit = 50, dryRun = false } = {}) {
                     };
                 }
 
-                const batchData = [];
+                const cellMap = new Map();
                 const successIds = [];
                 const failedUnmatched = [];
 
@@ -565,18 +565,25 @@ async function processSyncQueue({ batchLimit = 50, dryRun = false } = {}) {
                         // Col Chofer en Movimientos: 27 + 13*(dia - 1)
                         const colChoferIdx = 27 + 13 * (diaNum - 1);
                         const colLetter = colToLetter(colChoferIdx);
-                        const valChofer = item.datos_nuevos?.esDesasignar ? '' : (item.chofer_nombre || '');
+                        const valChofer = item.datos_nuevos?.esDesasignar ? (item.datos_nuevos?.caracter || '1') : (item.chofer_nombre || '');
 
-                        batchData.push({
-                            range: `'${tabMov}'!${colLetter}${rowNum}`,
-                            values: [[valChofer]]
-                        });
+                        const cellRange = `'${tabMov}'!${colLetter}${rowNum}`;
+                        // Deduplicar: si hay más de una operación para la misma celda en el lote, queda la más reciente
+                        cellMap.set(cellRange, valChofer);
                         successIds.push(item.id);
                     } else {
                         console.warn(`   ⚠️ Unidad no hallada en Movimientos: Tractor=${tractorNorm || '-'}, Semi=${semiNorm || '-'}, UTE=${nUteNorm || '-'}`);
                         failedUnmatched.push(item);
                         rowIndexCache.movimientos.data = null;
                     }
+                }
+
+                const batchData = [];
+                for (const [range, val] of cellMap.entries()) {
+                    batchData.push({
+                        range,
+                        values: [[val]]
+                    });
                 }
 
                 if (failedUnmatched.length > 0 && !dryRun) {
