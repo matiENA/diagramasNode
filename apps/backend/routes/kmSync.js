@@ -1,9 +1,10 @@
 /**
  * routes/kmSync.js - Partición 7: Extractor de Kilómetros y Viajes (Sincronizador Autónomo)
  * 
- * Extrae la planilla de Kilómetros desde Google Sheets (A1:T), normaliza nombres con algoritmo
- * multi-capa (mojibake restore + fuzzy Soundex), agrupa en buckets mensuales (Rollup),
- * evalúa Diffing O(1) contra Supabase y ejecuta UPSERT atómico en public.choferes_km_mensual.
+ * Extrae la planilla de Kilómetros desde Google Sheets ('KM'!A1:V), normaliza nombres con
+ * la arquitectura multi-capa y Fuzzy Resolver canónica de n8n (basesOrgTractores01),
+ * agrupa en buckets mensuales (Rollup), evalúa Diffing O(1) contra Supabase y ejecuta
+ * UPSERT atómico parametrizado por lotes (Chunks de 200) en public.choferes_km_mensual.
  */
 
 const express = require('express');
@@ -14,6 +15,9 @@ const {
     ID_SHEET_KILOMETROS 
 } = require('../utils/shared');
 
+// ==============================================================
+// 1. ARQUITECTURA DE NORMALIZACIÓN MULTI-CAPA Y FUZZY RESOLVER
+// ==============================================================
 function restoreEnie(str) {
     if (!str) return { restored: '', hadHashOrMojibake: false };
     const orig = String(str).trim();
@@ -38,29 +42,53 @@ function sanitizeNameAscii(str) {
         .trim();
 }
 
-function soundex(s) {
-    if (!s) return '';
-    const clean = s.toUpperCase().replace(/[^A-Z]/g, '');
-    if (!clean) return '';
-    const map = {
-        B:1, F:1, P:1, V:1,
-        C:2, G:2, J:2, K:2, Q:2, S:2, X:2, Z:2,
-        D:3, T:3,
-        L:4,
-        M:5, N:5,
-        R:6
-    };
-    let out = clean[0];
-    let prev = map[clean[0]] || 0;
-    for (let i = 1; i < clean.length && out.length < 4; i++) {
-        const code = map[clean[i]] || 0;
-        if (code !== 0 && code !== prev) {
-            out += code;
-        }
-        prev = code;
-    }
-    return (out + '000').slice(0, 4);
+function getSignificantTokens(str) {
+    const stopWords = new Set(['DE', 'DEL', 'LA', 'LAS', 'LOS', 'Y', 'SAN', 'SANTA']);
+    return sanitizeNameAscii(str).split(' ').filter(t => t && !stopWords.has(t));
 }
+
+function sortedTokenKey(str) {
+    return getSignificantTokens(str).slice().sort().join(' ');
+}
+
+function levenshtein(a, b) {
+    if (a === b) return 0;
+    const m = a.length, n = b.length;
+    if (m === 0) return n;
+    if (n === 0) return m;
+    let prev = new Array(n + 1);
+    let curr = new Array(n + 1);
+    for (let j = 0; j <= n; j++) prev[j] = j;
+    for (let i = 1; i <= m; i++) {
+        curr[0] = i;
+        const ca = a.charCodeAt(i - 1);
+        for (let j = 1; j <= n; j++) {
+            const cost = ca === b.charCodeAt(j - 1) ? 0 : 1;
+            curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
+        }
+        const tmp = prev; prev = curr; curr = tmp;
+    }
+    return prev[n];
+}
+
+function tokenSimilarity(t1, t2) {
+    if (t1 === t2) return 1.0;
+    const maxLen = Math.max(t1.length, t2.length);
+    return maxLen === 0 ? 1.0 : 1.0 - levenshtein(t1, t2) / maxLen;
+}
+
+const KNOWN_ALIASES = {
+    'ACUNA SANTIAGO': 'ACUÑA RAFAEL SANTIAGO',
+    'AGUERO ALEXIS': 'AGUERO ALEXIS DAMIAN',
+    'ALANIZ CRISTIAN PAULO': 'ALANIZ CRISTIAN PAULO',
+    'MENDOZA ERWIN GONZALO': 'MENDOZA REYES ERWIN GONZALO',
+    'POO NARVAEZ JAIRO': 'POO NARVAEZ JAIRO BERNABE',
+    'SANDOVAL DARIO': 'SANDOVAL REYES CRISTIAN EDUARDO',
+    'LEONARDO ARIEL GUEVARA': 'GUEVARA LEONARDO A',
+    'GUEVARA LEONARDO ARIEL': 'GUEVARA LEONARDO A',
+    'RAMOS GONZALO DAVID': 'RAMOS DAVID GONZALO',
+    'RAMOS DAVID GONZALO': 'RAMOS DAVID GONZALO'
+};
 
 function parseFecha(val) {
     if (!val) return null;
@@ -97,6 +125,7 @@ const mesesMap = {
 
 /**
  * Función central de sincronización de Partición 7 (Kilómetros)
+ * Idéntica al motor de basesOrgTractores01 de n8n local.
  */
 async function sincronizarKmDesdeSheets(cacheDatosGlobales = null, io = null, ioDash = null) {
     const t0 = Date.now();
@@ -147,25 +176,79 @@ async function sincronizarKmDesdeSheets(cacheDatosGlobales = null, io = null, io
         }
     });
 
-    const choferMap = new Map();
-    const choferMapAscii = new Map();
-    const choferSoundexMap = new Map();
+    // Indexar choferes catalogados con arquitectura multi-capa (idéntica a n8n)
+    const bySanitized = new Map();
+    const bySortedTokens = new Map();
+    const byTokensList = [];
 
     choferes.forEach(c => {
         if (!c || !c.nombre) return;
-        const { restored } = restoreEnie(c.nombre);
-        const upper = restored.toUpperCase();
-        const ascii = sanitizeNameAscii(c.nombre);
-
-        choferMap.set(upper, c.id);
-        if (!choferMapAscii.has(ascii)) choferMapAscii.set(ascii, c.id);
-
-        const tokens = ascii.split(' ').filter(t => t.length > 2);
-        if (tokens.length >= 2) {
-            const sxKey = `${soundex(tokens[0])}_${soundex(tokens[1])}`;
-            if (!choferSoundexMap.has(sxKey)) choferSoundexMap.set(sxKey, c.id);
-        }
+        const san = sanitizeNameAscii(c.nombre);
+        const sKey = sortedTokenKey(c.nombre);
+        const tokens = getSignificantTokens(c.nombre);
+        bySanitized.set(san, c);
+        bySortedTokens.set(sKey, c);
+        byTokensList.push({ chofer: c, tokens, tokenSet: new Set(tokens), mainSurname: tokens[0] });
     });
+
+    function resolveChoferParticion1(rawName) {
+        if (!rawName) return null;
+        const { restored } = restoreEnie(rawName);
+        const san = sanitizeNameAscii(restored);
+        if (!san || san.length < 3 || san.startsWith('NO IDENTIFICADO') || san.startsWith('TOTAL') || san === 'CHOFER' || san.startsWith('PERSONAL')) return null;
+
+        if (bySanitized.has(san)) return bySanitized.get(san);
+        if (KNOWN_ALIASES[san]) {
+            const aliasT = sanitizeNameAscii(KNOWN_ALIASES[san]);
+            if (bySanitized.has(aliasT)) return bySanitized.get(aliasT);
+        }
+        const sKey = sortedTokenKey(restored);
+        if (bySortedTokens.has(sKey)) return bySortedTokens.get(sKey);
+
+        const kTokens = getSignificantTokens(restored);
+        const kSet = new Set(kTokens);
+        if (kTokens.length >= 2) {
+            const cands = byTokensList.filter(it => {
+                const surnameMatch = it.mainSurname === kTokens[0] || tokenSimilarity(it.mainSurname, kTokens[0]) >= 0.85;
+                if (!surnameMatch) return false;
+                const kInIt = kTokens.every(t => it.tokenSet.has(t) || Array.from(it.tokenSet).some(itT => tokenSimilarity(t, itT) >= 0.85));
+                const itInK = it.tokens.every(t => kSet.has(t) || Array.from(kSet).some(kt => tokenSimilarity(t, kt) >= 0.85));
+                return kInIt || itInK;
+            });
+            if (cands.length === 1) return cands[0].chofer;
+        }
+
+        let bestCand = null, bestSim = 0;
+        for (const item of byTokensList) {
+            const surnameSim = Math.max(...kTokens.map(kt => tokenSimilarity(item.mainSurname, kt)));
+            if (surnameSim < 0.72) continue;
+            const shorter = kTokens.length <= item.tokens.length ? kTokens : item.tokens;
+            const longer = kTokens.length <= item.tokens.length ? item.tokens : kTokens;
+            if (shorter.length === 0) continue;
+            let sumSim = 0;
+            for (const st of shorter) {
+                let maxS = 0;
+                for (let i = 0; i < longer.length; i++) {
+                    const s = tokenSimilarity(st, longer[i]);
+                    if (s > maxS) maxS = s;
+                }
+                sumSim += maxS;
+            }
+            const score = sumSim / shorter.length;
+            if (score > bestSim) { bestSim = score; bestCand = item.chofer; }
+        }
+        if (bestSim >= 0.80 && bestCand) return bestCand;
+        return null;
+    }
+
+    const resolveCache = new Map();
+    function resolveChoferCached(rawName) {
+        if (!rawName) return null;
+        if (resolveCache.has(rawName)) return resolveCache.get(rawName);
+        const resolved = resolveChoferParticion1(rawName);
+        resolveCache.set(rawName, resolved);
+        return resolved;
+    }
 
     const preMap = new Map();
     preexistentes.forEach(p => {
@@ -192,11 +275,12 @@ async function sincronizarKmDesdeSheets(cacheDatosGlobales = null, io = null, io
     const colFecha = colMap['fecha'] ?? 1;
     const colChofer = colMap['chofer'] ?? 2;
     const colDominio = colMap['dominio'] ?? colMap['tractor'] ?? 0;
-    const colKm = colMap['kmtotales'] ?? colMap['kilometros'] ?? colMap['km'] ?? (colMap['cargas'] !== undefined && colMap['cargas'] === 16 ? 17 : 16);
+    const colKmTot = colMap['kmtotales'] ?? (colMap['cargas'] !== undefined && colMap['cargas'] === 16 ? 17 : 17);
+    const colKmAlt = colMap['kilometros'] ?? colMap['km'] ?? 10;
     const colHr = colMap['nhojaderuta'] ?? colMap['hojaderuta'] ?? colMap['hr'] ?? 20;
     const colSemi = colMap['semi'] ?? 19;
 
-    console.log(`   📊 [KM Mapeo] Columnas detectadas: Fecha=${colFecha}, Chofer=${colChofer}, Dominio=${colDominio}, Km=${colKm}, HR=${colHr}, Semi=${colSemi}`);
+    console.log(`   📊 [KM Mapeo] Columnas: Fecha=${colFecha}, Chofer=${colChofer}, Dominio=${colDominio}, KmTot=${colKmTot}, KmAlt=${colKmAlt}, HR=${colHr}, Semi=${colSemi}`);
 
     const buckets = new Map();
     const inconsistencias = [];
@@ -216,7 +300,7 @@ async function sincronizarKmDesdeSheets(cacheDatosGlobales = null, io = null, io
 
         const fechaParts = fechaIso.split('-');
         const anio = parseInt(fechaParts[0], 10);
-        if (anio < 2020 || anio > 2030) continue;
+        if (anio < 2024 || anio > 2030) continue;
 
         const mm = fechaParts[1];
         const mesNumero = parseInt(mm, 10);
@@ -224,16 +308,18 @@ async function sincronizarKmDesdeSheets(cacheDatosGlobales = null, io = null, io
         const yy = String(anio).slice(-2);
         const mesTab = `${mesAbrev}-${yy}`;
 
-        const rawKm = row[colKm];
-        const km = parseNum(rawKm);
-        const hr = row[colHr] !== undefined ? String(row[colHr]).trim() : '';
+        // Prioridad Km Totales (col 17) -> Fallback Kilómetros (col 10)
+        const kmTot = parseNum(row[colKmTot]);
+        const kmAlt = parseNum(row[colKmAlt]);
+        const km = kmTot > 0 ? kmTot : kmAlt;
+        const hr = colHr !== undefined && row[colHr] !== undefined ? String(row[colHr]).trim() : '';
 
         // Descartar filas vacías sin KM ni Hoja de Ruta
         if (km <= 0 && !hr) continue;
 
         const rawDominio = String(row[colDominio] || '').trim().toUpperCase();
         const dominio = rawDominio || null;
-        const rawSemi = colSemi !== undefined ? String(row[colSemi] || '').trim().toUpperCase() : null;
+        const rawSemi = colSemi !== undefined && row[colSemi] !== undefined ? String(row[colSemi] || '').trim().toUpperCase() : null;
         const semi = rawSemi || null;
 
         const domClean = dominio ? dominio.replace(/[^A-Z0-9]/g, '') : '';
@@ -243,26 +329,8 @@ async function sincronizarKmDesdeSheets(cacheDatosGlobales = null, io = null, io
         const idUnidad = formacion ? formacion.id : null;
         const nUte = formacion ? formacion.n_ute : null;
 
-        const { restored: nombreRestaurado } = restoreEnie(rawChofer);
-        const nombreUpper = nombreRestaurado.toUpperCase();
-        const nombreAscii = sanitizeNameAscii(nombreRestaurado);
-
-        let choferId = choferMap.get(nombreUpper) || null;
-        if (!choferId && choferMapAscii.has(nombreAscii)) {
-            choferId = choferMapAscii.get(nombreAscii);
-            fuzzyMatchesCount++;
-        }
-
-        if (!choferId) {
-            const tokens = nombreAscii.split(' ').filter(t => t.length > 2);
-            if (tokens.length >= 2) {
-                const sxKey = `${soundex(tokens[0])}_${soundex(tokens[1])}`;
-                if (choferSoundexMap.has(sxKey)) {
-                    choferId = choferSoundexMap.get(sxKey);
-                    fuzzyMatchesCount++;
-                }
-            }
-        }
+        const matchedChofer = resolveChoferCached(rawChofer);
+        const choferId = matchedChofer ? matchedChofer.id : null;
 
         if (!choferId) {
             inconsistencias.push({
@@ -275,6 +343,10 @@ async function sincronizarKmDesdeSheets(cacheDatosGlobales = null, io = null, io
                 timestamp: new Date().toISOString()
             });
             continue;
+        }
+
+        if (matchedChofer.nombre !== rawChofer.trim().toUpperCase()) {
+            fuzzyMatchesCount++;
         }
 
         const bucketKey = `${choferId}__${mesTab}`;
@@ -482,6 +554,7 @@ async function sincronizarKmDesdeSheets(cacheDatosGlobales = null, io = null, io
         total_buckets: buckets.size,
         modificados: itemsParaUpsert.length,
         omitidos_identicos: omitidosCount,
+        normalizaciones_fuzzy: fuzzyMatchesCount,
         inconsistencias: inconsistencias.length,
         duracion_ms: Date.now() - t0
     };
