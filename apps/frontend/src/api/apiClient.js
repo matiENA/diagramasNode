@@ -30,6 +30,7 @@ class ApiClient {
 
     try {
       const res = await fetch(url, {
+        cache: options.cache || 'no-cache',
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',

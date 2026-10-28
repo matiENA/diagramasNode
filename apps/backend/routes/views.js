@@ -28,7 +28,7 @@ module.exports = function createViewsRouter(hotRam = require('../cache/hotRamMan
 
             // ⚡ 1. Servicio Hot RAM (< 1ms, 0 Egress)
             if (hotRam && hotRam.isReady) {
-                res.set('Cache-Control', 'public, max-age=15, stale-while-revalidate=60');
+                res.set('Cache-Control', 'no-cache, must-revalidate');
                 const etag = hotRam.getEtag();
                 res.set('ETag', etag);
 
@@ -71,7 +71,7 @@ module.exports = function createViewsRouter(hotRam = require('../cache/hotRamMan
         try {
             // ⚡ 1. Servicio Hot RAM (< 3ms) con soporte ETag HTTP 304
             if (hotRam && hotRam.isReady) {
-                res.set('Cache-Control', 'public, max-age=10, must-revalidate');
+                res.set('Cache-Control', 'no-cache, must-revalidate');
                 const etag = hotRam.getEtag();
                 res.set('ETag', etag);
 
@@ -272,7 +272,7 @@ module.exports = function createViewsRouter(hotRam = require('../cache/hotRamMan
         try {
             // ⚡ 1. Servicio Hot RAM (< 3ms) con soporte ETag HTTP 304
             if (hotRam && hotRam.isReady) {
-                res.set('Cache-Control', 'public, max-age=10, must-revalidate');
+                res.set('Cache-Control', 'no-cache, must-revalidate');
                 const etag = hotRam.getEtag();
                 res.set('ETag', etag);
 
@@ -342,7 +342,7 @@ module.exports = function createViewsRouter(hotRam = require('../cache/hotRamMan
             if (hotRam && hotRam.isReady) {
                 const datos = hotRam.queryDiagramaMensual(mesTab, { servicio, search, limit });
                 if (datos.length > 0) {
-                    res.set('Cache-Control', 'public, max-age=10, must-revalidate');
+                    res.set('Cache-Control', 'no-cache, must-revalidate');
                     const etag = hotRam.getEtag();
                     res.set('ETag', etag);
 
@@ -480,7 +480,7 @@ module.exports = function createViewsRouter(hotRam = require('../cache/hotRamMan
             const esFechaHoy = !fecha || fecha.trim() === hoyIso;
 
             if (hotRam && hotRam.isReady && esFechaHoy) {
-                res.set('Cache-Control', 'public, max-age=10, must-revalidate');
+                res.set('Cache-Control', 'no-cache, must-revalidate');
                 const etag = hotRam.getEtag();
                 res.set('ETag', etag);
 
@@ -602,7 +602,7 @@ module.exports = function createViewsRouter(hotRam = require('../cache/hotRamMan
         try {
             // ⚡ 1. Servicio Hot RAM (< 1ms) con soporte ETag HTTP 304
             if (hotRam && hotRam.isReady) {
-                res.set('Cache-Control', 'public, max-age=10, must-revalidate');
+                res.set('Cache-Control', 'no-cache, must-revalidate');
                 const etag = hotRam.getEtag();
                 res.set('ETag', etag);
 

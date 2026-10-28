@@ -89,9 +89,9 @@ export const useAssignUnit = () => {
           return {
             ...old,
             unidad_id: esDesasignar ? null : unidadId || old.unidad_id,
-            tractor: esDesasignar ? null : tractor || old.tractor,
-            semi: esDesasignar ? null : semi || old.semi,
-            n_ute: esDesasignar ? null : n_ute || old.n_ute,
+            tractor: esDesasignar ? null : (tractor !== undefined ? tractor : old.tractor),
+            semi: esDesasignar ? null : (semi !== undefined ? semi : old.semi),
+            n_ute: esDesasignar ? null : (n_ute !== undefined ? n_ute : old.n_ute),
             estado_chofer: esDesasignar ? 'inactivo' : 'circulando',
             estado_unidad: esDesasignar ? 'disponible' : 'circulando',
           };
@@ -110,9 +110,9 @@ export const useAssignUnit = () => {
               return {
                 ...d,
                 unidad_id: esDesasignar ? null : unidadId || d.unidad_id,
-                tractor: esDesasignar ? null : tractor || d.tractor,
-                semi: esDesasignar ? null : semi || d.semi,
-                n_ute: esDesasignar ? null : n_ute || d.n_ute,
+                tractor: esDesasignar ? null : (tractor !== undefined ? tractor : d.tractor),
+                semi: esDesasignar ? null : (semi !== undefined ? semi : d.semi),
+                n_ute: esDesasignar ? null : (n_ute !== undefined ? n_ute : d.n_ute),
                 estado_chofer: esDesasignar ? 'inactivo' : 'circulando',
                 alerta_docs_unidad: esDesasignar ? 'S_D' : d.alerta_docs_unidad,
               };

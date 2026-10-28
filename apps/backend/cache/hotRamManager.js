@@ -659,7 +659,7 @@ class HotRamManager {
 
         // 1. Desasignar chofer previo de la unidad en Diaria, Flota e Individual
         this.diaria.forEach(d => {
-            if (d.unidad_id === unidadId && d.chofer_id !== choferId) {
+            if (String(d.unidad_id) === String(unidadId) && String(d.chofer_id) !== String(choferId)) {
                 d.unidad_id = null;
                 d.n_ute = null;
                 d.tractor = null;
@@ -678,12 +678,12 @@ class HotRamManager {
         });
 
         // 2. Asignar nuevo chofer a la unidad en Diaria
-        const targetChofer = this.diaria.find(d => d.chofer_id === choferId);
+        const targetChofer = this.diaria.find(d => String(d.chofer_id) === String(choferId));
         if (targetChofer) {
             targetChofer.unidad_id = unidadId;
-            if (tractor) targetChofer.tractor = tractor;
-            if (semi) targetChofer.semi = semi;
-            if (n_ute) targetChofer.n_ute = n_ute;
+            targetChofer.tractor = tractor || targetChofer.tractor || null;
+            targetChofer.semi = semi || targetChofer.semi || null;
+            targetChofer.n_ute = n_ute || targetChofer.n_ute || null;
             targetChofer.estado_chofer = 'circulando';
         }
 
@@ -691,15 +691,15 @@ class HotRamManager {
         const targetInd = this.individualPorId.get(String(choferId));
         if (targetInd) {
             targetInd.unidad_id = unidadId;
-            if (tractor) targetInd.tractor = tractor;
-            if (semi) targetInd.semi = semi;
-            if (n_ute) targetInd.n_ute = n_ute;
+            targetInd.tractor = tractor || targetInd.tractor || null;
+            targetInd.semi = semi || targetInd.semi || null;
+            targetInd.n_ute = n_ute || targetInd.n_ute || null;
             targetInd.estado_chofer = 'circulando';
             targetInd.estado_unidad = 'circulando';
         }
 
         // 4. Reflejar en Flota
-        const targetFlota = this.flota.find(f => f.unidad_id === unidadId);
+        const targetFlota = this.flota.find(f => String(f.unidad_id) === String(unidadId));
         if (targetFlota) {
             targetFlota.chofer_id = choferId;
             if (choferNombre) targetFlota.chofer_nombre = choferNombre;
