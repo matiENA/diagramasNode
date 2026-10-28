@@ -9,6 +9,7 @@
   },
   "scripts": {
     "start": "node server.js",
+    "worker": "node syncWorkerServer.js",
     "dev": "node --watch server.js"
   },
   "type": "commonjs",

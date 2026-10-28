@@ -400,6 +400,19 @@ try {
     console.warn("⚠️ No se pudo inicializar routes/diagramasSync:", e.message);
 }
 
+// Sync Worker — Partición 8 (eor_sync_queue -> Google Sheets batchUpdate)
+try {
+    const createSyncQueueRouter = require('./routes/syncQueue');
+    const syncQueueRouter = createSyncQueueRouter();
+    app.use('/api/sync/queue', syncQueueRouter);
+    app.use('/uptimerobot', (req, res, next) => {
+        req.url = '/uptimerobot' + (req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '');
+        syncQueueRouter(req, res, next);
+    });
+} catch (e) {
+    console.warn("⚠️ No se pudo inicializar routes/syncQueue:", e.message);
+}
+
 // DASH — API ligera (solo flota + usuarios, sin días) + Legajo bajo demanda
 const dashRouter = createDashRouter(cacheDatosGlobales, io);
 app.use('/api/dash', dashRouter);

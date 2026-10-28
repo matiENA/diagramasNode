@@ -2,11 +2,11 @@ import React, { useState, useMemo } from 'react';
 import { Dialog, DialogPanel, DialogTitle, Transition, TransitionChild } from '@headlessui/react';
 import { X, Search, Truck, AlertTriangle, Check, UserMinus, ShieldAlert } from 'lucide-react';
 import { useAvailableUnits, useAssignUnit } from '../hooks/useAssignUnit';
+import { showLegacyToast } from '@/utils/clipboard';
 
 export const UnitAssignModal = ({ isOpen, onClose, driver }) => {
   const [search, setSearch] = useState('');
   const [servicio, setServicio] = useState('TODOS');
-  const [feedbackMsg, setFeedbackMsg] = useState(null);
 
   const { data: units, isLoading } = useAvailableUnits(servicio, { enabled: Boolean(isOpen) });
   const assignMutation = useAssignUnit();
@@ -26,10 +26,11 @@ export const UnitAssignModal = ({ isOpen, onClose, driver }) => {
 
   if (!driver) return null;
 
-  const handleAssign = async (unit) => {
+  // Asignación con Optimistic UI: actualización inmediata en memoria (<16 ms) y cierre instantáneo
+  const handleAssign = (unit) => {
     try {
-      setFeedbackMsg({ type: 'info', text: `Asignando ${unit.tractor || unit.semi || 'unidad'} a ${driver.nombre}...` });
-      await assignMutation.mutateAsync({
+      showLegacyToast(`Asignando ${unit.tractor || unit.semi || 'unidad'} a ${driver.nombre}...`, 'success');
+      assignMutation.mutate({
         choferId: driver.chofer_id || driver.id,
         choferNombre: driver.nombre,
         unidadId: unit.unidad_id,
@@ -38,33 +39,24 @@ export const UnitAssignModal = ({ isOpen, onClose, driver }) => {
         n_ute: unit.n_ute,
         esDesasignar: false,
       });
-
-      setFeedbackMsg({ type: 'success', text: `✅ Unidad asignada exitosamente (BD + Sheets)` });
-      setTimeout(() => {
-        setFeedbackMsg(null);
-        onClose();
-      }, 1200);
+      onClose();
     } catch (err) {
-      setFeedbackMsg({ type: 'error', text: `❌ ${err.message}` });
+      showLegacyToast(`❌ ${err.message}`, 'error');
     }
   };
 
-  const handleUnassign = async () => {
+  // Desasignación con Optimistic UI: liberación inmediata en memoria y cierre instantáneo
+  const handleUnassign = () => {
     try {
-      setFeedbackMsg({ type: 'info', text: `Desasignando unidad de ${driver.nombre}...` });
-      await assignMutation.mutateAsync({
+      showLegacyToast(`Desasignando unidad de ${driver.nombre}...`, 'success');
+      assignMutation.mutate({
         choferId: driver.chofer_id || driver.id,
         choferNombre: driver.nombre,
         esDesasignar: true,
       });
-
-      setFeedbackMsg({ type: 'success', text: `✅ Unidad desasignada (BD + Sheets)` });
-      setTimeout(() => {
-        setFeedbackMsg(null);
-        onClose();
-      }, 1200);
+      onClose();
     } catch (err) {
-      setFeedbackMsg({ type: 'error', text: `❌ ${err.message}` });
+      showLegacyToast(`❌ ${err.message}`, 'error');
     }
   };
 
@@ -193,21 +185,6 @@ export const UnitAssignModal = ({ isOpen, onClose, driver }) => {
                   ))}
                 </select>
               </div>
-
-              {/* Notificación de Feedback */}
-              {feedbackMsg && (
-                <div
-                  className={`unit-modal-feedback ${feedbackMsg.type || 'info'}`}
-                  style={{
-                    padding: '0.6rem 1.5rem',
-                    fontSize: '0.8rem',
-                    fontWeight: 700,
-                    borderBottom: '1px solid var(--border-subtle)',
-                  }}
-                >
-                  {feedbackMsg.text}
-                </div>
-              )}
 
               {/* Lista Scrollable de Unidades */}
               <div style={{ flex: 1, overflowY: 'auto', padding: '1rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>

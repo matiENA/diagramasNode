@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/api/supabaseClient';
 import { apiClient } from '@/api/apiClient';
 import { queryKeys } from '@/api/queryKeys';
+import { showLegacyToast } from '@/utils/clipboard';
 
 /**
  * Hook para consultar el catálogo de unidades operativas disponibles para asignación
@@ -45,21 +46,21 @@ export const useAssignUnit = () => {
 
       const usuarioActivo = localStorage.getItem('usuarioActivo') || 'OPERADOR';
 
-      // 1. Desasignación Atómica (ACID vía RPC en PostgreSQL)
+      // 1. Desasignación Atómica (ACID vía RPC en PostgreSQL -> public.eor_sync_queue)
       if (esDesasignar) {
         const { data, error } = await supabase.rpc('fn_desunir_unidad_chofer', {
           p_chofer_id: choferId,
-          p_usuario: usuarioActivo
+          p_usuario: usuarioActivo,
         });
         if (error) throw error;
         return { success: true, message: 'Unidad desasignada exitosamente', data };
       }
 
-      // 2. Asignación Directa Atómica (ACID vía RPC en PostgreSQL)
+      // 2. Asignación Directa Atómica (ACID vía RPC en PostgreSQL -> public.eor_sync_queue)
       const { data, error } = await supabase.rpc('fn_asignar_unidad_chofer', {
         p_chofer_id: choferId,
         p_unidad_id: unidadId,
-        p_usuario: usuarioActivo
+        p_usuario: usuarioActivo,
       });
       if (error) throw error;
 
@@ -68,26 +69,27 @@ export const useAssignUnit = () => {
 
     // Mutación optimista en RAM para que la UI responda en <16 ms
     onMutate: async (vars) => {
-      const { choferId, tractor, semi, n_ute, esDesasignar } = vars;
-      
+      const { choferId, tractor, semi, n_ute, unidadId, esDesasignar } = vars;
+
       // Cancelar queries activas que pudieran sobreescribir la mutación optimista
       await queryClient.cancelQueries({ queryKey: queryKeys.individual.detail(choferId) });
       await queryClient.cancelQueries({ queryKey: queryKeys.diaria.all });
       await queryClient.cancelQueries({ queryKey: queryKeys.flota.all });
-      await queryClient.cancelQueries({ queryKey: ['flota', 'disponibles'] });
+      await queryClient.cancelQueries({ queryKey: ['unidades_para_asignar'] });
 
       // Capturar snapshots para rollback en caso de error de red
       const prevDetail = queryClient.getQueryData(queryKeys.individual.detail(choferId));
       const prevDiaria = queryClient.getQueriesData({ queryKey: queryKeys.diaria.all });
       const prevFlota = queryClient.getQueriesData({ queryKey: queryKeys.flota.all });
-      const prevDisponibles = queryClient.getQueriesData({ queryKey: ['flota', 'disponibles'] });
+      const prevDisponibles = queryClient.getQueriesData({ queryKey: ['unidades_para_asignar'] });
 
-      // A. Actualizar ficha individual del chofer en RAM
+      // A. Actualizar ficha individual del chofer en RAM inmediatamente
       if (prevDetail) {
         queryClient.setQueryData(queryKeys.individual.detail(choferId), (old) => {
           if (!old) return old;
           return {
             ...old,
+            unidad_id: esDesasignar ? null : unidadId || old.unidad_id,
             tractor: esDesasignar ? null : tractor || old.tractor,
             semi: esDesasignar ? null : semi || old.semi,
             n_ute: esDesasignar ? null : n_ute || old.n_ute,
@@ -100,14 +102,15 @@ export const useAssignUnit = () => {
       // B. Actualizar Vista Diaria Operativa en RAM inmediatamente (<16ms)
       queryClient.setQueriesData({ queryKey: queryKeys.diaria.all }, (old) => {
         if (!old) return old;
-        
-        // Función auxiliar para transformar lista de drivers
+
+        // Función auxiliar para transformar lista de drivers en memoria
         const updateDrivers = (drivers = []) => {
           return drivers.map((d) => {
-            const isTarget = d.chofer_id === choferId || d.id === choferId;
+            const isTarget = String(d.chofer_id) === String(choferId) || String(d.id) === String(choferId);
             if (isTarget) {
               return {
                 ...d,
+                unidad_id: esDesasignar ? null : unidadId || d.unidad_id,
                 tractor: esDesasignar ? null : tractor || d.tractor,
                 semi: esDesasignar ? null : semi || d.semi,
                 n_ute: esDesasignar ? null : n_ute || d.n_ute,
@@ -115,10 +118,16 @@ export const useAssignUnit = () => {
                 alerta_docs_unidad: esDesasignar ? 'S_D' : d.alerta_docs_unidad,
               };
             }
+
             // Si otra tarjeta tenía previamente esta misma unidad asignada, liberarla
-            if (!esDesasignar && tractor && d.tractor === tractor) {
+            if (!esDesasignar && (
+              (tractor && d.tractor === tractor) ||
+              (n_ute && String(d.n_ute) === String(n_ute)) ||
+              (unidadId && String(d.unidad_id) === String(unidadId))
+            )) {
               return {
                 ...d,
+                unidad_id: null,
                 tractor: null,
                 semi: null,
                 n_ute: null,
@@ -130,7 +139,7 @@ export const useAssignUnit = () => {
           });
         };
 
-        // Soporta respuesta paginada o array plano
+        // Soporta respuesta paginada de useInfiniteQuery
         if (old.pages) {
           return {
             ...old,
@@ -148,6 +157,10 @@ export const useAssignUnit = () => {
           };
         }
 
+        if (Array.isArray(old)) {
+          return updateDrivers(old);
+        }
+
         return old;
       });
 
@@ -155,22 +168,24 @@ export const useAssignUnit = () => {
       queryClient.setQueriesData({ queryKey: queryKeys.flota.all }, (old) => {
         if (!Array.isArray(old)) return old;
         return old.map((u) => {
-          if (u.tractor === tractor) {
+          const isAssigned = (unidadId && u.unidad_id === unidadId) || (tractor && u.tractor === tractor);
+          if (isAssigned) {
             return {
               ...u,
               estado: esDesasignar ? 'disponible' : 'circulando',
               chofer_id: esDesasignar ? null : choferId,
+              chofer_nombre: esDesasignar ? null : (vars.choferNombre || u.chofer_nombre),
             };
           }
           return u;
         });
       });
 
-      // D. Actualizar unidades disponibles en RAM
-      queryClient.setQueriesData({ queryKey: ['flota', 'disponibles'] }, (old) => {
+      // D. Actualizar unidades disponibles en RAM (filtro de catálogo)
+      queryClient.setQueriesData({ queryKey: ['unidades_para_asignar'] }, (old) => {
         if (!Array.isArray(old)) return old;
-        if (!esDesasignar && tractor) {
-          return old.filter((u) => u.tractor !== tractor);
+        if (!esDesasignar && (unidadId || tractor)) {
+          return old.filter((u) => (unidadId ? u.unidad_id !== unidadId : u.tractor !== tractor));
         }
         return old;
       });
@@ -178,10 +193,11 @@ export const useAssignUnit = () => {
       return { prevDetail, prevDiaria, prevFlota, prevDisponibles };
     },
 
-    // Rollback exacto en caso de error
+    // Rollback exacto en caso de error de red o servidor
     onError: (err, vars, context) => {
       console.warn('⚠️ [useAssignUnit] Error en mutación, ejecutando rollback:', err.message);
-      
+      showLegacyToast(`Error al sincronizar pareo: ${err.message}`, 'error');
+
       if (context?.prevDetail && vars?.choferId) {
         queryClient.setQueryData(queryKeys.individual.detail(vars.choferId), context.prevDetail);
       }
@@ -196,12 +212,12 @@ export const useAssignUnit = () => {
       }
     },
 
-    // Invalidación en cascada garantizada para sincronizar contra las SQL Views
+    // Invalidación reactiva suave para confirmar con las SQL Views
     onSettled: (data, error, variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.individual.catalog });
       queryClient.invalidateQueries({ queryKey: queryKeys.diaria.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.flota.all });
-      queryClient.invalidateQueries({ queryKey: ['flota', 'disponibles'] });
+      queryClient.invalidateQueries({ queryKey: ['unidades_para_asignar'] });
       if (variables?.choferId) {
         queryClient.invalidateQueries({ queryKey: queryKeys.individual.detail(variables.choferId) });
         queryClient.invalidateQueries({ queryKey: queryKeys.individual.calendar(variables.choferId) });
