@@ -115,3 +115,52 @@ export function calcularKmCiclo(tripsMap, refDate = new Date()) {
     endIso: defaultCiclo.endIso,
   };
 }
+
+/**
+ * Calcula tanto el ciclo actual como el ciclo anterior de liquidación (del 26 al 25).
+ * Ej: Ciclo anterior "sep 26 - oct 25" y Ciclo actual "oct 26 - nov 25".
+ * 
+ * @param {Object} tripsMap - Diccionario { [isoDate]: { km, hr, ... } }
+ * @param {Date|string} [refDate=new Date()] - Fecha de referencia
+ * @returns {{ actual: { km: number, label: string, startIso: string, endIso: string }, anterior: { km: number, label: string, startIso: string, endIso: string } }}
+ */
+export function calcularCiclosComparativos(tripsMap, refDate = new Date()) {
+  const d = (refDate instanceof Date) ? refDate : new Date(refDate);
+  const cicloActualFechas = getDiagramaCicloFechas(d);
+
+  // Fecha de referencia para el ciclo anterior: 1 día antes del inicio del ciclo actual
+  const dPrev = new Date(cicloActualFechas.startIso + 'T12:00:00');
+  dPrev.setDate(dPrev.getDate() - 1);
+  const cicloAnteriorFechas = getDiagramaCicloFechas(dPrev);
+
+  let kmActual = 0;
+  let kmAnterior = 0;
+
+  if (tripsMap && typeof tripsMap === 'object') {
+    for (const [isoDate, trip] of Object.entries(tripsMap)) {
+      const k = parseFloat(trip?.km) || 0;
+      if (k > 0) {
+        if (isoDate >= cicloActualFechas.startIso && isoDate <= cicloActualFechas.endIso) {
+          kmActual += k;
+        } else if (isoDate >= cicloAnteriorFechas.startIso && isoDate <= cicloAnteriorFechas.endIso) {
+          kmAnterior += k;
+        }
+      }
+    }
+  }
+
+  return {
+    actual: {
+      km: Math.round(kmActual * 100) / 100,
+      label: cicloActualFechas.label,
+      startIso: cicloActualFechas.startIso,
+      endIso: cicloActualFechas.endIso,
+    },
+    anterior: {
+      km: Math.round(kmAnterior * 100) / 100,
+      label: cicloAnteriorFechas.label,
+      startIso: cicloAnteriorFechas.startIso,
+      endIso: cicloAnteriorFechas.endIso,
+    },
+  };
+}

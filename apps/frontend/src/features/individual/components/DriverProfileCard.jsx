@@ -5,7 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/api/queryKeys';
 import { copyToClipboard } from '@/utils/clipboard';
 import { convertImageToWebP } from '@/utils/imageToWebp';
-import { calcularKmCiclo } from '@/utils/dateCycleUtils';
+import { calcularKmCiclo, calcularCiclosComparativos } from '@/utils/dateCycleUtils';
 
 export const DriverProfileCard = ({ chofer, tripsMap }) => {
   const [copiedField, setCopiedField] = useState(null);
@@ -131,19 +131,19 @@ export const DriverProfileCard = ({ chofer, tripsMap }) => {
   const wspLink = numLimpio.length >= 8 ? `https://wa.me/${wspNum}` : null;
   const totalKm = parseFloat(chofer.total_km) || 0;
 
-  // Cálculo reactivo del ciclo de liquidación (día 26 al día 25)
-  const cicloStats = useMemo(() => {
+  // Cálculo reactivo de ciclos de liquidación (período actual y ciclo anterior sep 26 - oct 25)
+  const ciclosData = useMemo(() => {
     if (tripsMap && Object.keys(tripsMap).length > 0) {
-      return calcularKmCiclo(tripsMap);
+      return calcularCiclosComparativos(tripsMap);
     }
-    if (chofer.km_ciclo !== undefined && chofer.km_ciclo !== null) {
-      return {
-        km: Number(chofer.km_ciclo) || 0,
-        label: chofer.ciclo_label || 'período activo',
-      };
-    }
-    return { km: 0, label: 'período activo' };
-  }, [tripsMap, chofer.km_ciclo, chofer.ciclo_label]);
+    return {
+      actual: { km: Number(chofer?.km_ciclo) || 0, label: chofer?.ciclo_label || 'oct 26 - nov 25' },
+      anterior: { km: 0, label: 'sep 26 - oct 25' }
+    };
+  }, [tripsMap, chofer?.km_ciclo, chofer?.ciclo_label]);
+
+  const cicloActual = ciclosData.actual;
+  const cicloAnterior = ciclosData.anterior;
 
   // Formato de Alta (ej: "3 DEC 2024")
   const formatAltaDate = (dateVal) => {
@@ -258,17 +258,33 @@ export const DriverProfileCard = ({ chofer, tripsMap }) => {
               </button>
             </div>
 
-            {/* BADGE ÚNICO CONSOLIDADO: PERÍODO DE 26 A 25 */}
-            <div
-              className="badge-diagrama-ciclo-header"
-              title={`Kilómetros acumulados en el ciclo de liquidación: ${cicloStats.label}`}
-            >
-              <span className="badge-diagrama-km">
-                {cicloStats.km > 0
-                  ? `${cicloStats.km.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} km`
-                  : '0,00 km'}
-              </span>
-              <span className="badge-diagrama-periodo">· {cicloStats.label}</span>
+            {/* BADGES COMPARATIVOS DE CICLO (26 A 25) */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+              {/* Ciclo Anterior (sep 26 - oct 25) */}
+              <div
+                className="badge-diagrama-ciclo-header badge-ciclo-anterior"
+                title={`Kilómetros del ciclo anterior de liquidación: ${cicloAnterior.label}`}
+              >
+                <span className="badge-diagrama-km">
+                  {cicloAnterior.km > 0
+                    ? `${cicloAnterior.km.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} km`
+                    : '0,00 km'}
+                </span>
+                <span className="badge-diagrama-periodo">· {cicloAnterior.label}</span>
+              </div>
+
+              {/* Ciclo en Curso (oct 26 - nov 25) */}
+              <div
+                className="badge-diagrama-ciclo-header badge-ciclo-actual"
+                title={`Kilómetros acumulados en el ciclo en curso: ${cicloActual.label}`}
+              >
+                <span className="badge-diagrama-km">
+                  {cicloActual.km > 0
+                    ? `${cicloActual.km.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} km`
+                    : '0,00 km'}
+                </span>
+                <span className="badge-diagrama-periodo">· {cicloActual.label}</span>
+              </div>
             </div>
           </div>
 

@@ -39,6 +39,16 @@ module.exports = function createProxyRouter(cacheDatosGlobales, io) {
         }
     });
 
+    router.all(['/sync-choferes-dni', '/sync-choferes-fotos'], async (req, res) => {
+        try {
+            const { runSyncChoferesFotos } = require('../sync/syncChoferesFotos');
+            const resultado = await runSyncChoferesFotos();
+            res.json(resultado);
+        } catch(e) {
+            res.status(500).json({ success: false, error: e.message });
+        }
+    });
+
     router.post('/', async (req, res) => {
         try {
             const body = req.body;

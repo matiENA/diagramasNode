@@ -748,23 +748,34 @@ module.exports = function createViewsRouter(hotRam = require('../cache/hotRamMan
                 return res.status(503).json({ success: false, error: "PostgreSQL no configurado" });
             }
 
-            let sql = `
-                SELECT diagrama_id, chofer_id, mes_tab, anio, mes_numero, tira_dias, contabilizador, km_mes_total, cant_viajes_mes, dias_km
-                FROM public.view_calendario_diagrama_km
-                WHERE chofer_id::text = $1
-            `;
-            const params = [choferId];
+            let sql;
+            let params;
 
             if (tabs) {
                 const tabList = tabs.split(',').map(t => t.trim());
-                params.push(tabList);
-                sql += ` AND mes_tab = ANY($${params.length})`;
+                sql = `
+                    SELECT diagrama_id, chofer_id, mes_tab, anio, mes_numero, tira_dias, contabilizador, km_mes_total, cant_viajes_mes, dias_km
+                    FROM public.fn_calendario_diagrama_km($1::uuid, $2::text[])
+                    ORDER BY anio ASC, mes_numero ASC
+                `;
+                params = [choferId, tabList];
             } else if (anio) {
-                params.push(parseInt(anio, 10));
-                sql += ` AND anio = $${params.length}`;
+                sql = `
+                    SELECT diagrama_id, chofer_id, mes_tab, anio, mes_numero, tira_dias, contabilizador, km_mes_total, cant_viajes_mes, dias_km
+                    FROM public.view_calendario_diagrama_km
+                    WHERE chofer_id::text = $1 AND anio = $2
+                    ORDER BY anio ASC, mes_numero ASC
+                `;
+                params = [choferId, parseInt(anio, 10)];
+            } else {
+                sql = `
+                    SELECT diagrama_id, chofer_id, mes_tab, anio, mes_numero, tira_dias, contabilizador, km_mes_total, cant_viajes_mes, dias_km
+                    FROM public.view_calendario_diagrama_km
+                    WHERE chofer_id::text = $1
+                    ORDER BY anio ASC, mes_numero ASC
+                `;
+                params = [choferId];
             }
-
-            sql += ` ORDER BY anio ASC, mes_numero ASC`;
 
             const dataRes = await db.query(sql, params);
             if (hotRam) {
