@@ -97,13 +97,18 @@ export const useCalendarDiagramaKm = (choferId, zoomLevel = 3, baseDate = new Da
   }
 
   return useQuery({
-    queryKey: queryKeys.individual.calendar(choferId, zoomLevel, targetTabs.join(',')),
+    queryKey: queryKeys.individual.calendar(choferId, zoomLevel, zoomLevel === 12 ? String(year) : targetTabs.join(',')),
     queryFn: async () => {
       if (!choferId) {
         return { months: [], monthsMap: {}, tripsMap: {}, totalKm: 0, totalViajes: 0 };
       }
 
-      const data = await apiClient.getCalendarioDiagramaKm(choferId, zoomLevel, targetTabs);
+      const data = await apiClient.getCalendarioDiagramaKm(
+        choferId,
+        zoomLevel,
+        zoomLevel === 3 ? targetTabs : [],
+        zoomLevel === 12 ? year : null
+      );
 
       const months = data || [];
       const monthsMap = {};

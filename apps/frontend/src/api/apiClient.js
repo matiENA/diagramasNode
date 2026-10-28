@@ -210,11 +210,12 @@ class ApiClient {
   }
 
   // 6. Calendario Diagrama + KMs
-  async getCalendarioDiagramaKm(choferId, zoom = 3, targetTabs = []) {
+  async getCalendarioDiagramaKm(choferId, zoom = 3, targetTabs = [], anio = null) {
     if (!choferId) return [];
     try {
       const tabsParam = targetTabs.length ? `&tabs=${encodeURIComponent(targetTabs.join(','))}` : '';
-      const res = await this.fetchJson(`/api/views/calendario/${encodeURIComponent(choferId)}?zoom=${zoom}${tabsParam}`);
+      const anioParam = anio ? `&anio=${encodeURIComponent(anio)}` : '';
+      const res = await this.fetchJson(`/api/views/calendario/${encodeURIComponent(choferId)}?zoom=${zoom}${tabsParam}${anioParam}`);
       if (res && res.success) {
         return res.datos || [];
       }
@@ -229,9 +230,11 @@ class ApiClient {
 
     if (targetTabs.length > 0) {
       query = query.in('mes_tab', targetTabs);
+    } else if (anio) {
+      query = query.eq('anio', parseInt(anio, 10));
     }
 
-    const { data, error } = await query.order('mes_numero', { ascending: true });
+    const { data, error } = await query.order('anio', { ascending: true }).order('mes_numero', { ascending: true });
     if (error) throw error;
     return data || [];
   }

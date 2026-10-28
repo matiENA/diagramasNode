@@ -744,7 +744,10 @@ html.dark .badge-km-rango-unit {
 }
 
 .month-title-header {
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
   font-size: 0.88rem;
   font-weight: 800;
   text-transform: uppercase;
@@ -752,6 +755,33 @@ html.dark .badge-km-rango-unit {
   color: var(--text-main);
   padding-bottom: 0.4rem;
   border-bottom: 1px solid var(--border-subtle);
+}
+
+.month-title-text {
+  flex: 1;
+  text-align: left;
+}
+
+/* Badge de Total de Kilómetros del Mes en la Cabecera de la Tarjeta */
+.badge-month-km {
+  font-size: 0.70rem;
+  font-weight: 800;
+  padding: 0.12rem 0.5rem;
+  border-radius: 9999px;
+  background-color: rgba(99, 102, 241, 0.10);
+  color: #3730a3; /* Indigo 800: WCAG AAA (>8.5:1) en light mode */
+  border: 1px solid rgba(99, 102, 241, 0.32);
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: nowrap;
+  line-height: 1.25;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+html.dark .badge-month-km {
+  background-color: rgba(99, 102, 241, 0.22);
+  color: #c7d2fe; /* Indigo 200: WCAG AAA (>10:1) en dark mode */
+  border-color: rgba(129, 140, 248, 0.45);
 }
 
 /* Matriz 7xN de Días */

@@ -253,11 +253,26 @@ class HotRamManager {
                 });
 
                 // 6. Calendario Diagrama + KM indexado por chofer_id y KMs diarios por fecha
+                const prevCalendarioPorChofer = new Map(this.calendarioPorChofer);
                 this.calendarioPorChofer.clear();
                 this.kmDiariaPorFecha.clear();
                 (rCalendario.rows || []).forEach(row => {
                     if (row.mes_tab) this.windowTabs.add(row.mes_tab);
                     const chId = String(row.chofer_id);
+
+                    // 🛡️ Guardia defensiva: Si la base de datos devuelve 0 km o vacío pero en RAM previa existían KMs > 0 para este mes_tab, conservar los KMs previos
+                    if ((!row.km_mes_total || Number(row.km_mes_total) === 0) && prevCalendarioPorChofer.has(chId)) {
+                        const prevList = prevCalendarioPorChofer.get(chId);
+                        const prevRow = prevList.find(p => p.mes_tab === row.mes_tab);
+                        if (prevRow && Number(prevRow.km_mes_total) > 0) {
+                            row.km_mes_total = prevRow.km_mes_total;
+                            row.cant_viajes_mes = prevRow.cant_viajes_mes;
+                            if (prevRow.dias_km && Object.keys(prevRow.dias_km).length > 0 && (!row.dias_km || Object.keys(row.dias_km).length === 0)) {
+                                row.dias_km = prevRow.dias_km;
+                            }
+                        }
+                    }
+
                     if (!this.calendarioPorChofer.has(chId)) {
                         this.calendarioPorChofer.set(chId, []);
                     }

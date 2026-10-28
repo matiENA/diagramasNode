@@ -755,23 +755,21 @@ module.exports = function createViewsRouter(hotRam = require('../cache/hotRamMan
                 const tabList = tabs.split(',').map(t => t.trim());
                 sql = `
                     SELECT diagrama_id, chofer_id, mes_tab, anio, mes_numero, tira_dias, contabilizador, km_mes_total, cant_viajes_mes, dias_km
-                    FROM public.fn_calendario_diagrama_km($1::uuid, $2::text[])
+                    FROM public.fn_calendario_diagrama_km($1::uuid, $2::text[], NULL)
                     ORDER BY anio ASC, mes_numero ASC
                 `;
                 params = [choferId, tabList];
             } else if (anio) {
                 sql = `
                     SELECT diagrama_id, chofer_id, mes_tab, anio, mes_numero, tira_dias, contabilizador, km_mes_total, cant_viajes_mes, dias_km
-                    FROM public.view_calendario_diagrama_km
-                    WHERE chofer_id::text = $1 AND anio = $2
+                    FROM public.fn_calendario_diagrama_km($1::uuid, NULL, $2::int)
                     ORDER BY anio ASC, mes_numero ASC
                 `;
                 params = [choferId, parseInt(anio, 10)];
             } else {
                 sql = `
                     SELECT diagrama_id, chofer_id, mes_tab, anio, mes_numero, tira_dias, contabilizador, km_mes_total, cant_viajes_mes, dias_km
-                    FROM public.view_calendario_diagrama_km
-                    WHERE chofer_id::text = $1
+                    FROM public.fn_calendario_diagrama_km($1::uuid, NULL, NULL)
                     ORDER BY anio ASC, mes_numero ASC
                 `;
                 params = [choferId];
