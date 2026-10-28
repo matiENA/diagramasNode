@@ -400,34 +400,33 @@ async function sincronizarKmDesdeSheets(cacheDatosGlobales = null, io = null, io
     }
 
     if (itemsParaUpsert.length > 0) {
-        const batchJsonStr = JSON.stringify(itemsParaUpsert).replace(/'/g, "''");
-        const sqlQuery = `
-          DO $$
-          BEGIN
-            INSERT INTO public.choferes_km_mensual (
-              chofer_id, mes_tab, anio, mes_numero, km_mes_total, cant_viajes, dias_km, rangos, actualizado_el
-            )
-            SELECT
-              (x->>'chofer_id')::uuid,
-              x->>'mes_tab',
-              (x->>'anio')::int,
-              (x->>'mes_numero')::int,
-              (x->>'km_mes_total')::numeric,
-              (x->>'cant_viajes')::int,
-              COALESCE(x->'dias_km', '{}'::jsonb),
-              COALESCE(x->'rangos', '[]'::jsonb),
-              NOW()
-            FROM jsonb_array_elements('${batchJsonStr}'::jsonb) AS x
-            ON CONFLICT (chofer_id, mes_tab)
-            DO UPDATE SET
-              km_mes_total = EXCLUDED.km_mes_total,
-              cant_viajes = EXCLUDED.cant_viajes,
-              dias_km = EXCLUDED.dias_km,
-              rangos = EXCLUDED.rangos,
-              actualizado_el = NOW();
-          END $$;
-        `;
-        await db.query(sqlQuery);
+        const chunkSize = 200;
+        for (let i = 0; i < itemsParaUpsert.length; i += chunkSize) {
+            const chunk = itemsParaUpsert.slice(i, i + chunkSize);
+            await db.query(`
+                INSERT INTO public.choferes_km_mensual (
+                    chofer_id, mes_tab, anio, mes_numero, km_mes_total, cant_viajes, dias_km, rangos, actualizado_el
+                )
+                SELECT
+                    (x->>'chofer_id')::uuid,
+                    x->>'mes_tab',
+                    (x->>'anio')::int,
+                    (x->>'mes_numero')::int,
+                    (x->>'km_mes_total')::numeric,
+                    (x->>'cant_viajes')::int,
+                    COALESCE(x->'dias_km', '{}'::jsonb),
+                    COALESCE(x->'rangos', '[]'::jsonb),
+                    NOW()
+                FROM jsonb_array_elements($1::jsonb) AS x
+                ON CONFLICT (chofer_id, mes_tab)
+                DO UPDATE SET
+                    km_mes_total = GREATEST(choferes_km_mensual.km_mes_total, EXCLUDED.km_mes_total),
+                    cant_viajes = EXCLUDED.cant_viajes,
+                    dias_km = EXCLUDED.dias_km,
+                    rangos = EXCLUDED.rangos,
+                    actualizado_el = NOW();
+            `, [JSON.stringify(chunk)]);
+        }
         console.log(`✅ [Partición 7] Upsert completado en Supabase: ${itemsParaUpsert.length} buckets actualizados (${omitidosCount} omitidos idénticos) en ${Date.now() - t0}ms.`);
     } else {
         console.log(`✅ [Partición 7] Sin cambios pendientes. Todos los ${omitidosCount} buckets idénticos (Diffing O(1) Zero Egress).`);
@@ -436,29 +435,32 @@ async function sincronizarKmDesdeSheets(cacheDatosGlobales = null, io = null, io
     if (cisternasMap.size > 0) {
         try {
             const cisternasArr = Array.from(cisternasMap.values());
-            const cJsonStr = JSON.stringify(cisternasArr).replace(/'/g, "''");
-            await db.query(`
-              INSERT INTO public.cisternas_km (
-                fecha, cisterna_patente, tractor_patente, id_unidad, id_chofer, km_totales, hoja_ruta, origen_dato, actualizado_el
-              )
-              SELECT
-                (x->>'fecha')::date,
-                x->>'cisterna_patente',
-                x->>'tractor_patente',
-                (x->>'id_unidad')::uuid,
-                (x->>'id_chofer')::uuid,
-                (x->>'km_totales')::numeric,
-                x->>'hoja_ruta',
-                'sheets_km',
-                NOW()
-              FROM jsonb_array_elements('${cJsonStr}'::jsonb) AS x
-              ON CONFLICT (fecha, tractor_patente, COALESCE(cisterna_patente, ''), COALESCE(hoja_ruta, ''))
-              DO UPDATE SET
-                km_totales = EXCLUDED.km_totales,
-                id_unidad = COALESCE(EXCLUDED.id_unidad, cisternas_km.id_unidad),
-                id_chofer = COALESCE(EXCLUDED.id_chofer, cisternas_km.id_chofer),
-                actualizado_el = NOW();
-            `);
+            const cChunkSize = 250;
+            for (let i = 0; i < cisternasArr.length; i += cChunkSize) {
+                const cChunk = cisternasArr.slice(i, i + cChunkSize);
+                await db.query(`
+                    INSERT INTO public.cisternas_km (
+                        fecha, cisterna_patente, tractor_patente, id_unidad, id_chofer, km_totales, hoja_ruta, origen_dato, actualizado_el
+                    )
+                    SELECT
+                        (x->>'fecha')::date,
+                        x->>'cisterna_patente',
+                        x->>'tractor_patente',
+                        (x->>'id_unidad')::uuid,
+                        (x->>'id_chofer')::uuid,
+                        (x->>'km_totales')::numeric,
+                        x->>'hoja_ruta',
+                        'sheets_km',
+                        NOW()
+                    FROM jsonb_array_elements($1::jsonb) AS x
+                    ON CONFLICT (fecha, tractor_patente, COALESCE(cisterna_patente, ''), COALESCE(hoja_ruta, ''))
+                    DO UPDATE SET
+                        km_totales = EXCLUDED.km_totales,
+                        id_unidad = COALESCE(EXCLUDED.id_unidad, cisternas_km.id_unidad),
+                        id_chofer = COALESCE(EXCLUDED.id_chofer, cisternas_km.id_chofer),
+                        actualizado_el = NOW();
+                `, [JSON.stringify(cChunk)]);
+            }
             console.log(`✅ [Partición 7] Sincronización en public.cisternas_km completada (${cisternasArr.length} registros).`);
         } catch (cErr) {
             console.warn(`⚠️ [Partición 7] Advertencia en cisternas_km upsert:`, cErr.message);

@@ -170,20 +170,28 @@ app.get(['/api/viajes/historial', '/api/km/historial'], async (req, res) => {
             try {
                 const choferClean = String(chofer).trim();
                 let sql = `
-                    SELECT fecha, dominio, km_totales, array_to_string(hoja_ruta, ', ') as hoja_ruta, id_unidad
-                    FROM view_calendario_km
-                    WHERE (chofer_nombre ILIKE $1 OR id_chofer::text = $2)
+                    SELECT 
+                        f.key::date AS fecha,
+                        f.value->>'tractor' AS dominio,
+                        (f.value->>'km')::numeric AS km_totales,
+                        COALESCE(f.value->>'hr', '') AS hoja_ruta,
+                        (f.value->>'id_unidad')::uuid AS id_unidad
+                    FROM public.choferes_km_mensual ck
+                    JOIN public.choferes c ON ck.chofer_id = c.id
+                    CROSS JOIN LATERAL jsonb_each(ck.dias_km) f
+                    WHERE (c.nombre ILIKE $1 OR ck.chofer_id::text = $2)
+                      AND ((f.value->>'km')::numeric > 0 OR COALESCE(f.value->>'hr', '') <> '')
                 `;
                 const params = ['%' + choferClean + '%', choferClean];
                 if (desde) {
                     params.push(desde);
-                    sql += ` AND fecha >= $${params.length}::date`;
+                    sql += ` AND f.key >= $${params.length}`;
                 }
                 if (hasta) {
                     params.push(hasta);
-                    sql += ` AND fecha <= $${params.length}::date`;
+                    sql += ` AND f.key <= $${params.length}`;
                 }
-                sql += ` ORDER BY fecha ASC`;
+                sql += ` ORDER BY f.key ASC`;
 
                 const resPg = await db.query(sql, params);
                 if (resPg.rows && resPg.rows.length > 0) {
@@ -503,19 +511,28 @@ app.get('/api/km/rango', async (req, res) => {
             return res.json({ success: true, fuente: "RAM", data: filtrados });
         }
 
-        // Si se solicitan fechas históricas o fuera de RAM, consultar PostgreSQL view_calendario_km
+        // Si se solicitan fechas históricas o fuera de RAM, consultar PostgreSQL choferes_km_mensual
         if (db.isConfigured()) {
             let sql = `
-                SELECT TO_CHAR(fecha, 'YYYY-MM-DD') AS fecha, dominio, chofer_nombre, km_totales, array_to_string(hoja_ruta, ', ') AS hoja_ruta, id_unidad
-                FROM view_calendario_km
-                WHERE fecha >= $1::date AND fecha <= $2::date
+                SELECT 
+                    f.key AS fecha,
+                    f.value->>'tractor' AS dominio,
+                    c.nombre AS chofer_nombre,
+                    (f.value->>'km')::numeric AS km_totales,
+                    COALESCE(f.value->>'hr', '') AS hoja_ruta,
+                    (f.value->>'id_unidad')::uuid AS id_unidad
+                FROM public.choferes_km_mensual ck
+                JOIN public.choferes c ON ck.chofer_id = c.id
+                CROSS JOIN LATERAL jsonb_each(ck.dias_km) f
+                WHERE f.key >= $1 AND f.key <= $2
+                  AND ((f.value->>'km')::numeric > 0 OR COALESCE(f.value->>'hr', '') <> '')
             `;
             let params = [desde, hasta];
             if (chofer) {
                 params.push('%' + String(chofer).trim() + '%');
-                sql += ` AND chofer_nombre ILIKE $${params.length}`;
+                sql += ` AND c.nombre ILIKE $${params.length}`;
             }
-            sql += ` ORDER BY fecha ASC`;
+            sql += ` ORDER BY f.key ASC`;
 
             const resPg = await db.query(sql, params);
             const parseNum = (val) => parseFloat(String(val || '').replace(/,/g, '.').replace(/[^0-9.-]/g, '')) || 0;
@@ -573,28 +590,39 @@ app.get(['/api/km/calendario', '/api/viajes/calendario'], async (req, res) => {
             return res.json({ success: true, fuente: "CHOFERES_KM_MENSUAL", count: resView.rows.length, data: resView.rows });
         }
 
-        // Si se pide por rango de fechas flexible (desde/hasta), usar view_calendario_km
+        // Si se pide por rango de fechas flexible (desde/hasta), usar choferes_km_mensual
         let sql = `
-            SELECT TO_CHAR(fecha, 'YYYY-MM-DD') AS fecha, id_chofer, chofer_nombre, id_unidad, n_ute, dominio, km, cant_viajes, hoja_ruta
-            FROM view_calendario_km
-            WHERE 1=1
+            SELECT 
+                f.key AS fecha, 
+                ck.chofer_id AS id_chofer, 
+                c.nombre AS chofer_nombre, 
+                (f.value->>'id_unidad')::uuid AS id_unidad, 
+                f.value->>'n_ute' AS n_ute, 
+                f.value->>'tractor' AS dominio, 
+                (f.value->>'km')::numeric AS km, 
+                1 AS cant_viajes, 
+                string_to_array(COALESCE(f.value->>'hr', ''), ', ') AS hoja_ruta
+            FROM public.choferes_km_mensual ck
+            JOIN public.choferes c ON ck.chofer_id = c.id
+            CROSS JOIN LATERAL jsonb_each(ck.dias_km) f
+            WHERE ((f.value->>'km')::numeric > 0 OR COALESCE(f.value->>'hr', '') <> '')
         `;
         const params = [];
         if (desde) {
             params.push(desde);
-            sql += ` AND fecha >= $${params.length}::date`;
+            sql += ` AND f.key >= $${params.length}`;
         }
         if (hasta) {
             params.push(hasta);
-            sql += ` AND fecha <= $${params.length}::date`;
+            sql += ` AND f.key <= $${params.length}`;
         }
         if (chofer) {
             params.push('%' + String(chofer).trim() + '%');
-            sql += ` AND (chofer_nombre ILIKE $${params.length} OR id_chofer::text = $${params.length})`;
+            sql += ` AND (c.nombre ILIKE $${params.length} OR ck.chofer_id::text = $${params.length})`;
         }
-        sql += ` ORDER BY fecha ASC, chofer_nombre ASC`;
+        sql += ` ORDER BY f.key ASC, c.nombre ASC`;
         const resView = await db.query(sql, params);
-        return res.json({ success: true, fuente: "VIEW_CALENDARIO_KM", count: resView.rows.length, data: resView.rows });
+        return res.json({ success: true, fuente: "CHOFERES_KM_MENSUAL_EXPANDED", count: resView.rows.length, data: resView.rows });
     } catch (err) {
         console.error("❌ Error en /api/km/calendario:", err);
         res.status(500).json({ success: false, error: err.message });
