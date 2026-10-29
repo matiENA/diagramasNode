@@ -7,9 +7,14 @@ import { X, Calendar } from 'lucide-react';
 import { Dialog, DialogPanel, DialogTitle, Transition, TransitionChild } from '@headlessui/react';
 
 export const DailyDashboard = ({ isMobileFiltersOpen, onCloseMobileFilters, onNavigateToIndividual }) => {
-  // Fecha de contexto: por defecto hoy en formato YYYY-MM-DD
-  const [fechaContexto, setFechaContexto] = useState(() => {
-    return new Date().toISOString().split('T')[0];
+  // Fecha de contexto: resuelta automáticamente en huso horario de Buenos Aires (Fecha Wipe)
+  const [fechaContexto] = useState(() => {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Argentina/Buenos_Aires',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
   });
 
   const [filters, setFilters] = useState({
@@ -39,10 +44,8 @@ export const DailyDashboard = ({ isMobileFiltersOpen, onCloseMobileFilters, onNa
 
   return (
     <div className="daily-dashboard-wrapper">
-      {/* 1. BARRA SUPERIOR DE FECHA CONTEXTO Y CONTROLES */}
+      {/* 1. BARRA SUPERIOR DE CONTROLES (Fecha Wipe) */}
       <DailyHeaderControls
-        fechaContexto={fechaContexto}
-        onChangeFecha={setFechaContexto}
         filters={filters}
         onChangeFilter={handleFilterChange}
         totalCount={totalCount}

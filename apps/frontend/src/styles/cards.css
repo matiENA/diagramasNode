@@ -1393,3 +1393,40 @@ html.dark .daily-day-badge.day-badge-operativo.fatiga-crit {
   }
 }
 
+/* ==============================================================
+   🔄 MODO RETORNO + FECHA WIPE (Directivas de Obsidian)
+   ============================================================== */
+.daily-retorno-feed {
+  display: flex;
+  flex-direction: column;
+}
+
+.retorno-group-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.retorno-group-title {
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-weight: 700;
+  font-size: 1.25rem;
+  color: #F59E0B;
+  text-transform: uppercase;
+  letter-spacing: -0.01em;
+  margin: 0 0 15px 0; /* Spacing card - title: 15px */
+  padding: 0 0.25rem;
+}
+
+.retorno-group-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* En modo retorno, la tarjeta queda limpia en su bloque derecho (sin badges de fecha ni alertas) */
+.daily-card-right-box.retorno-clean {
+  justify-content: flex-end;
+  gap: 0;
+}
+
+

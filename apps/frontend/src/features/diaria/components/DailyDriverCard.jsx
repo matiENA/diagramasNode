@@ -5,7 +5,7 @@ import { getDriverDayStatus, calculateDriverReturn } from '../hooks/useDailyDriv
 import { UnitAssignModal } from '@/features/flota/components/UnitAssignModal';
 import { copyToClipboard } from '@/utils/clipboard';
 
-export const DailyDriverCard = ({ driver, fechaContexto, kmInfo, onSelectDriver }) => {
+export const DailyDriverCard = ({ driver, fechaContexto, kmInfo, onSelectDriver, isRetornoMode = false }) => {
   const [copiedField, setCopiedField] = useState(null);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
 
@@ -263,8 +263,8 @@ export const DailyDriverCard = ({ driver, fechaContexto, kmInfo, onSelectDriver 
               <div className="daily-card-right-box">
                 {/* Alertas Minimalistas */}
                 <div className="daily-card-alerts">
-                  {/* Badge Legacy: Retorna Hoy / Vuelve en Xd */}
-                  {returnInfo && (
+                  {/* Badge Legacy: Retorna Hoy / Vuelve en Xd (solo en vista regular sin grupos H1) */}
+                  {!isRetornoMode && returnInfo && (
                     <span
                       className="badge-retorno-legacy"
                       title={returnInfo.returnsToday ? 'El conductor retoma actividades hoy' : `Retoma servicio el ${returnInfo.date.substring(5).replace('-', '/')}`}
