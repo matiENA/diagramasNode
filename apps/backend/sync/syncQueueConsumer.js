@@ -389,7 +389,7 @@ async function processSyncQueue({ batchLimit = 50, dryRun = false } = {}) {
                     mapLegajoToRow = rowIndexCache.diagramas[tab].data.mapLegajoToRow;
                 } else {
                     stats.googleApiRequests++;
-                    const rowsDiag = await fetchRangeValues(ID_SPREADSHEET_DIAGRAMAS, `'${tab}'!A6:B150`);
+                    const rowsDiag = await fetchRangeValues(ID_SPREADSHEET_DIAGRAMAS, `'${tab}'!A6:B350`);
                     mapNameToRow = new Map();
                     mapLegajoToRow = new Map();
 
