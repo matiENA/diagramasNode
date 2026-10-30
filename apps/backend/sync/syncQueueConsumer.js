@@ -154,12 +154,13 @@ async function processSyncQueue({ batchLimit = 50, dryRun = false } = {}) {
     const client = await pool.connect();
 
     try {
-        // 1. Obtener registros pendientes en orden FIFO
+        // 1. Obtener registros pendientes o bloqueos huérfanos (stale EN_PROCESO > 5m) en orden FIFO
         const { rows: pendingItems } = await client.query(`
             SELECT id, entidad, destino_sheet, tipo_operacion, chofer_id, chofer_nombre, 
                    dni_cuil, unidad_tractor, datos_nuevos, datos_previos, creado_el
             FROM public.eor_sync_queue
             WHERE estado_sync = 'PENDIENTE'
+               OR (estado_sync = 'EN_PROCESO' AND creado_el < NOW() - INTERVAL '5 minutes' AND COALESCE(reintentos, 0) < 5)
             ORDER BY creado_el ASC
             LIMIT $1
         `, [batchLimit]);
@@ -249,6 +250,7 @@ async function processSyncQueue({ batchLimit = 50, dryRun = false } = {}) {
 
                 const batchData = [];
                 const successIds = [];
+                const failedUnmatched = [];
 
                 for (const item of groups.docPeriodicos) {
                     const cuilNorm = cleanCuil(item.dni_cuil);
@@ -265,6 +267,19 @@ async function processSyncQueue({ batchLimit = 50, dryRun = false } = {}) {
                         successIds.push(item.id);
                     } else {
                         console.warn(`   ⚠️ Chofer no hallado en PERIODICOS: CUIL=${cuilNorm || '-'}, Nombre=${nomNorm || '-'}`);
+                        failedUnmatched.push(item);
+                    }
+                }
+
+                if (failedUnmatched.length > 0 && !dryRun) {
+                    stats.failed += failedUnmatched.length;
+                    for (const fItem of failedUnmatched) {
+                        const desc = `Chofer no hallado en PERIODICOS: ${fItem.chofer_nombre} (CUIL: ${fItem.dni_cuil || '-'})`;
+                        await client.query(`
+                            UPDATE public.eor_sync_queue 
+                            SET estado_sync = 'ERROR', error_detalle = $1, reintentos = COALESCE(reintentos, 0) + 1 
+                            WHERE id = $2
+                        `, [desc, fItem.id]);
                     }
                 }
 
@@ -328,6 +343,7 @@ async function processSyncQueue({ batchLimit = 50, dryRun = false } = {}) {
 
                 const batchData = [];
                 const successIds = [];
+                const failedUnmatched = [];
 
                 for (const item of groups.docVencimientos) {
                     const dniNorm = cleanDni(item.dni_cuil);
@@ -344,6 +360,19 @@ async function processSyncQueue({ batchLimit = 50, dryRun = false } = {}) {
                         successIds.push(item.id);
                     } else {
                         console.warn(`   ⚠️ Chofer no hallado en VENCIMIENTOS: DNI=${dniNorm || '-'}, Nombre=${nomNorm || '-'}`);
+                        failedUnmatched.push(item);
+                    }
+                }
+
+                if (failedUnmatched.length > 0 && !dryRun) {
+                    stats.failed += failedUnmatched.length;
+                    for (const fItem of failedUnmatched) {
+                        const desc = `Chofer no hallado en VENCIMIENTOS: ${fItem.chofer_nombre} (DNI: ${fItem.dni_cuil || '-'})`;
+                        await client.query(`
+                            UPDATE public.eor_sync_queue 
+                            SET estado_sync = 'ERROR', error_detalle = $1, reintentos = COALESCE(reintentos, 0) + 1 
+                            WHERE id = $2
+                        `, [desc, fItem.id]);
                     }
                 }
 
@@ -409,6 +438,7 @@ async function processSyncQueue({ batchLimit = 50, dryRun = false } = {}) {
 
                 const batchData = [];
                 const successIds = [];
+                const failedUnmatched = [];
 
                 for (const item of items) {
                     const nomNorm = normalizar(item.chofer_nombre);
@@ -443,6 +473,19 @@ async function processSyncQueue({ batchLimit = 50, dryRun = false } = {}) {
                         successIds.push(item.id);
                     } else {
                         console.warn(`   ⚠️ Chofer no hallado en Diagrama [${tab}]: ${item.chofer_nombre}`);
+                        failedUnmatched.push(item);
+                    }
+                }
+
+                if (failedUnmatched.length > 0 && !dryRun) {
+                    stats.failed += failedUnmatched.length;
+                    for (const fItem of failedUnmatched) {
+                        const desc = `Chofer no hallado en Diagrama [${tab}]: ${fItem.chofer_nombre}`;
+                        await client.query(`
+                            UPDATE public.eor_sync_queue 
+                            SET estado_sync = 'ERROR', error_detalle = $1, reintentos = COALESCE(reintentos, 0) + 1 
+                            WHERE id = $2
+                        `, [desc, fItem.id]);
                     }
                 }
 

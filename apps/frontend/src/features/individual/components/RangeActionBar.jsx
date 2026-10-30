@@ -83,6 +83,16 @@ export const RangeActionBar = ({
 
         <button
           type="button"
+          onClick={() => onAssignStatus('FSF')}
+          disabled={isPending}
+          className="btn-range-action btn-range-fsf"
+          title="Asignar Franco Sin Firmar (FSF) en este rango"
+        >
+          Franco (FSF)
+        </button>
+
+        <button
+          type="button"
           onClick={() => onAssignStatus('V')}
           disabled={isPending}
           className="btn-range-action btn-range-vacaciones"

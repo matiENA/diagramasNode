@@ -57,7 +57,7 @@ module.exports = function createSyncQueueRouter() {
     router.get(['/', '/status'], async (req, res) => {
         let pendingCount = 0;
         try {
-            const r = await query("SELECT count(*) AS total FROM public.eor_sync_queue WHERE estado_sync = 'PENDIENTE'");
+            const r = await query("SELECT count(*) AS total FROM public.eor_sync_queue WHERE estado_sync = 'PENDIENTE' OR (estado_sync = 'EN_PROCESO' AND creado_el < NOW() - INTERVAL '5 minutes')");
             pendingCount = parseInt(r.rows[0]?.total || 0, 10);
         } catch (e) {
             pendingCount = -1;
@@ -112,11 +112,11 @@ module.exports = function createSyncQueueRouter() {
             timestamp: new Date().toISOString()
         });
 
-        // Procesar en segundo plano si hay pendientes
+        // Procesar en segundo plano si hay pendientes o stale locks
         if (!isProcessing) {
             setImmediate(async () => {
                 try {
-                    const r = await query("SELECT count(*) AS total FROM public.eor_sync_queue WHERE estado_sync = 'PENDIENTE'");
+                    const r = await query("SELECT count(*) AS total FROM public.eor_sync_queue WHERE estado_sync = 'PENDIENTE' OR (estado_sync = 'EN_PROCESO' AND creado_el < NOW() - INTERVAL '5 minutes')");
                     const count = parseInt(r.rows[0]?.total || 0, 10);
                     if (count > 0) {
                         console.log(`⏰ [UptimeRobot Ping / eor-backend] ${count} mutaciones detectadas. Consumiendo...`);
@@ -134,7 +134,7 @@ module.exports = function createSyncQueueRouter() {
     setInterval(async () => {
         if (isProcessing) return;
         try {
-            const r = await query("SELECT count(*) AS total FROM public.eor_sync_queue WHERE estado_sync = 'PENDIENTE'");
+            const r = await query("SELECT count(*) AS total FROM public.eor_sync_queue WHERE estado_sync = 'PENDIENTE' OR (estado_sync = 'EN_PROCESO' AND creado_el < NOW() - INTERVAL '5 minutes')");
             const count = parseInt(r.rows[0]?.total || 0, 10);
             if (count > 0) {
                 console.log(`\n⚡ [Auto-Runner / eor-backend] ${count} registros pendientes en eor_sync_queue. Consumiendo...`);

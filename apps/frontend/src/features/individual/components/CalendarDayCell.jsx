@@ -16,6 +16,7 @@ export const CalendarDayCell = ({
     if (!val) return 'status-default';
     const v = val.trim().toUpperCase();
 
+    if (v === 'FSF' || v.startsWith('FSF')) return 'status-fsf';
     if (v === 'F' || v.startsWith('F')) return 'status-franco';
     if (v === 'V' || v.startsWith('V')) return 'status-vacaciones';
     if (v === 'IND' || v.startsWith('IND')) return 'status-ind';

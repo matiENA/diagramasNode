@@ -52,7 +52,7 @@ let lastSyncReport = {
 app.get('/health', async (req, res) => {
     try {
         const { rows } = await pool.query(
-            "SELECT count(*) AS total_pendientes FROM public.eor_sync_queue WHERE estado_sync = 'PENDIENTE'"
+            "SELECT count(*) AS total_pendientes FROM public.eor_sync_queue WHERE estado_sync = 'PENDIENTE' OR (estado_sync = 'EN_PROCESO' AND creado_el < NOW() - INTERVAL '5 minutes')"
         );
         const pendingCount = parseInt(rows[0]?.total_pendientes || 0, 10);
 
@@ -101,7 +101,7 @@ app.all(['/uptimerobot', '/api/uptimerobot'], async (req, res) => {
         setImmediate(async () => {
             try {
                 const { rows } = await pool.query(
-                    "SELECT count(*) AS total FROM public.eor_sync_queue WHERE estado_sync = 'PENDIENTE'"
+                    "SELECT count(*) AS total FROM public.eor_sync_queue WHERE estado_sync = 'PENDIENTE' OR (estado_sync = 'EN_PROCESO' AND creado_el < NOW() - INTERVAL '5 minutes')"
                 );
                 const count = parseInt(rows[0]?.total || 0, 10);
                 if (count > 0) {

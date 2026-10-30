@@ -151,12 +151,13 @@ async function processSyncQueue({ batchLimit = 50, dryRun = false } = {}) {
     const client = await pool.connect();
 
     try {
-        // 1. Obtener registros pendientes en orden FIFO
+        // 1. Obtener registros pendientes o bloqueos huérfanos (stale EN_PROCESO > 5m) en orden FIFO
         const { rows: pendingItems } = await client.query(`
             SELECT id, entidad, destino_sheet, tipo_operacion, chofer_id, chofer_nombre, 
                    dni_cuil, unidad_tractor, datos_nuevos, datos_previos, creado_el
             FROM public.eor_sync_queue
             WHERE estado_sync = 'PENDIENTE'
+               OR (estado_sync = 'EN_PROCESO' AND creado_el < NOW() - INTERVAL '5 minutes' AND COALESCE(reintentos, 0) < 5)
             ORDER BY creado_el ASC
             LIMIT $1
         `, [batchLimit]);
