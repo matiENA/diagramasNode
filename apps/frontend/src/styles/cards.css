@@ -1263,6 +1263,162 @@ html.dark .daily-day-badge.day-badge-operativo.fatiga-crit {
   color: var(--text-secondary);
 }
 
+.doc-row-label {
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+}
+
+/* ==============================================================
+   MATRIZ UNIFICADA DE CONTROL DE VENCIMIENTOS (MERGE DE TABLAS)
+   ============================================================== */
+.expanded-venc-unified-box {
+  grid-column: span 2;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+@media (max-width: 900px) {
+  .expanded-venc-unified-box {
+    grid-column: span 1;
+  }
+}
+
+.unified-venc-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: 0.4rem;
+}
+
+.unified-venc-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+@media (max-width: 640px) {
+  .unified-venc-columns {
+    grid-template-columns: 1fr;
+    gap: 0.85rem;
+  }
+}
+
+.unified-venc-subgroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.unified-venc-subgroup-title {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin-bottom: 0.2rem;
+}
+
+.venc-no-unit {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-style: italic;
+  padding: 0.75rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* ==============================================================
+   SEMÁFORO CROMÁTICO COMPARTIDO: BADGE, PILL Y ACORDEÓN
+   (🔴 Rojo vencido, 🟡 Amarillo 1 mes, 🟢 Al día, ⚪ S/D)
+   ============================================================== */
+.doc-date-val {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.12rem 0.45rem;
+  border-radius: var(--radius-sm, 4px);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.76rem;
+  font-weight: 700;
+  line-height: 1.25;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.venc-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 9999px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+}
+
+/* 🟢 Vigente (> 30 días) */
+.doc-date-val.vigente {
+  color: var(--text-main, #e2e8f0);
+}
+
+.venc-status-pill.vigente {
+  background-color: rgba(16, 185, 129, 0.15);
+  color: #6ee7b7;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+}
+html:not(.dark) .venc-status-pill.vigente {
+  background-color: #ecfdf5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+}
+
+/* 🟡 Por vencer (<= 30 días / 1 mes) - Amarillo */
+.alert-mini-pill.alert-venc-por_vencer,
+.venc-status-pill.por_vencer,
+.doc-date-val.por_vencer {
+  background-color: rgba(245, 158, 11, 0.2);
+  color: #fde68a;
+  border: 1px solid rgba(245, 158, 11, 0.45);
+}
+html:not(.dark) .alert-mini-pill.alert-venc-por_vencer,
+html:not(.dark) .venc-status-pill.por_vencer,
+html:not(.dark) .doc-date-val.por_vencer {
+  background-color: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+}
+
+/* 🔴 Vencido (< hoy) - Rojo */
+.alert-mini-pill.alert-venc-vencido,
+.venc-status-pill.vencido,
+.doc-date-val.vencido {
+  background-color: rgba(239, 68, 68, 0.22);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.5);
+  font-weight: 800;
+}
+html:not(.dark) .alert-mini-pill.alert-venc-vencido,
+html:not(.dark) .venc-status-pill.vencido,
+html:not(.dark) .doc-date-val.vencido {
+  background-color: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+  font-weight: 800;
+}
+
+/* ⚪ Sin datos (S/D) */
+.doc-date-val.s_d {
+  color: var(--text-muted, #64748b);
+  font-style: italic;
+  font-weight: 500;
+}
+
 .expanded-action-box {
   display: flex;
   flex-direction: column;

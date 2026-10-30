@@ -14,6 +14,30 @@
 
 const crypto = require('crypto');
 const { normalizar } = require('../utils/shared');
+const { clasificarIcm, clasificarIsp } = require('../utils/seguridadVialClassifier');
+
+/**
+ * Evalúa vigencia de un conjunto de fechas respecto al día actual (umbral 30 días = 1 mes).
+ */
+function calcularAlertaFechas(fechas, warningDays = 30) {
+    let tieneFecha = false;
+    let tienePorVencer = false;
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+
+    for (const f of fechas) {
+        if (!f) continue;
+        tieneFecha = true;
+        const target = new Date(String(f).trim().split('T')[0] + 'T00:00:00');
+        if (isNaN(target.getTime())) continue;
+        const diffDays = Math.ceil((target - now) / 86400000);
+        if (diffDays < 0) return 'VENCIDO';
+        if (diffDays <= warningDays) tienePorVencer = true;
+    }
+
+    if (tienePorVencer) return 'POR_VENCER';
+    return tieneFecha ? 'AL_DIA' : 'S_D';
+}
 
 class HotRamManager {
     constructor() {
@@ -175,7 +199,17 @@ class HotRamManager {
                 db.query('SELECT * FROM public.view_personal_retorno ORDER BY fecha_retorno ASC, nombre ASC')
                     .catch(e => { console.warn('⚠️ [HotRAM] Error view_personal_retorno:', e.message); return { rows: [] }; }),
                 db.query('SELECT * FROM public.view_individual_chofer ORDER BY nombre ASC')
-                    .catch(e => { console.warn('⚠️ [HotRAM] Error view_individual_chofer:', e.message); return { rows: [] }; })
+                    .catch(e => { console.warn('⚠️ [HotRAM] Error view_individual_chofer:', e.message); return { rows: [] }; }),
+                db.query(`
+                    SELECT chofer_id,
+                           ROUND(AVG(icm)::numeric, 2) AS icm_promedio,
+                           ROUND(AVG(isp)::numeric, 2) AS isp_promedio,
+                           SUM(cant_infracciones)::int AS total_infracciones,
+                           COUNT(*)::int AS meses_evaluados
+                    FROM public.seguridad_vial
+                    WHERE anio = $1
+                    GROUP BY chofer_id
+                `, [yNow]).catch(e => { console.warn('⚠️ [HotRAM] Error seguridad_vial_anual:', e.message); return { rows: [] }; })
             ];
 
             if (!skipCal) {
@@ -189,7 +223,8 @@ class HotRamManager {
                     `, [minYm, maxYm]).catch(e => { console.warn('⚠️ [HotRAM] Error view_diagrama_mensual:', e.message); return { rows: [] }; }),
                     db.query(`
                         SELECT diagrama_id, chofer_id, mes_tab, anio, mes_numero, tira_dias,
-                               contabilizador, km_mes_total, cant_viajes_mes, dias_km
+                               contabilizador, km_mes_total, cant_viajes_mes, dias_km,
+                               icm, isp, cant_infracciones, tiempo_conduccion_horas
                         FROM public.view_calendario_diagrama_km_2m
                         ORDER BY anio ASC, mes_numero ASC
                     `).catch(e => { console.warn('⚠️ [HotRAM] Error view_calendario_diagrama_km_2m:', e.message); return { rows: [] }; })
@@ -201,6 +236,7 @@ class HotRamManager {
                 rFlota,
                 rRetorno,
                 rIndividual,
+                rSvAnual,
                 rDiagramaMensual,
                 rCalendario
             ] = await Promise.all(corePromises);
@@ -215,9 +251,25 @@ class HotRamManager {
             this.retorno = rRetorno.rows || [];
 
             // 4. Catálogo y Fichas Individuales
+            const svAnualMap = new Map();
+            (rSvAnual?.rows || []).forEach(row => {
+                const icmVal = row.icm_promedio !== null ? Number(row.icm_promedio) : null;
+                const ispVal = row.isp_promedio !== null ? Number(row.isp_promedio) : null;
+                svAnualMap.set(String(row.chofer_id), {
+                    anio: yNow,
+                    icm_promedio: icmVal,
+                    isp_promedio: ispVal,
+                    total_infracciones: parseInt(row.total_infracciones, 10) || 0,
+                    meses_evaluados: parseInt(row.meses_evaluados, 10) || 0,
+                    icm_clasificacion: clasificarIcm(icmVal),
+                    isp_clasificacion: clasificarIsp(ispVal)
+                });
+            });
+
             const indRows = rIndividual.rows || [];
             this.individualPorId.clear();
             this.catalogoChoferes = indRows.map(c => {
+                c.seguridad_vial_anual = svAnualMap.get(String(c.chofer_id)) || null;
                 this.individualPorId.set(String(c.chofer_id), c);
                 if (c.dni) this.individualPorId.set(String(c.dni).replace(/\D/g, ''), c);
                 return {
@@ -258,6 +310,13 @@ class HotRamManager {
                 (rCalendario.rows || []).forEach(row => {
                     if (row.mes_tab) this.windowTabs.add(row.mes_tab);
                     const chId = String(row.chofer_id);
+
+                    row.icm = row.icm !== null && row.icm !== undefined ? Number(row.icm) : null;
+                    row.isp = row.isp !== null && row.isp !== undefined ? Number(row.isp) : null;
+                    row.cant_infracciones = row.cant_infracciones !== null && row.cant_infracciones !== undefined ? Number(row.cant_infracciones) : 0;
+                    row.tiempo_conduccion_horas = row.tiempo_conduccion_horas !== null && row.tiempo_conduccion_horas !== undefined ? Number(row.tiempo_conduccion_horas) : 0;
+                    row.icm_clasificacion = clasificarIcm(row.icm);
+                    row.isp_clasificacion = clasificarIsp(row.isp);
 
                     // 🛡️ Guardia defensiva: Si la base de datos devuelve 0 km o vacío pero en RAM previa existían KMs > 0 para este mes_tab, conservar los KMs previos
                     if ((!row.km_mes_total || Number(row.km_mes_total) === 0) && prevCalendarioPorChofer.has(chId)) {
@@ -414,8 +473,12 @@ class HotRamManager {
         // Filtro por alerta
         if (alerta === 'DOCS_VENCIDOS') {
             items = items.filter(d => d.alerta_docs_chofer === 'VENCIDO');
+        } else if (alerta === 'DOCS_POR_VENCER') {
+            items = items.filter(d => d.alerta_docs_chofer === 'POR_VENCER');
         } else if (alerta === 'UNIDAD_VENCIDA') {
             items = items.filter(d => d.alerta_docs_unidad === 'VENCIDO');
+        } else if (alerta === 'UNIDAD_POR_VENCER') {
+            items = items.filter(d => d.alerta_docs_unidad === 'POR_VENCER');
         } else if (alerta === 'CUALQUIER_ALERTA') {
             items = items.filter(d => 
                 ['VENCIDO', 'POR_VENCER'].includes(d.alerta_docs_chofer) ||
@@ -634,6 +697,7 @@ class HotRamManager {
             if (mas_tr !== undefined) fItem.mas_tr = mas_tr;
             if (vtv_semi !== undefined) fItem.vtv_semi = vtv_semi;
             if (mas_semi !== undefined) fItem.mas_semi = mas_semi;
+            fItem.alerta_docs_unidad = calcularAlertaFechas([fItem.vtv_tr, fItem.mas_tr, fItem.vtv_semi, fItem.mas_semi], 30);
         }
 
         // Actualizar en Diaria
@@ -645,7 +709,7 @@ class HotRamManager {
             if (mas_tr !== undefined) dItem.mas_tr = mas_tr;
             if (vtv_semi !== undefined) dItem.vtv_semi = vtv_semi;
             if (mas_semi !== undefined) dItem.mas_semi = mas_semi;
-            dItem.alerta_docs_unidad = (vtv_tr || vtv_semi) ? 'AL_DIA' : 'S_D';
+            dItem.alerta_docs_unidad = calcularAlertaFechas([dItem.vtv_tr, dItem.mas_tr, dItem.vtv_semi, dItem.mas_semi], 30);
         }
 
         this.touch();
@@ -657,6 +721,8 @@ class HotRamManager {
     actualizarPareo(unidadId, choferId, { choferNombre, tractor, semi, n_ute } = {}) {
         if (!unidadId && !choferId) return;
 
+        const targetFlota = this.flota.find(f => String(f.unidad_id) === String(unidadId));
+
         // 1. Desasignar chofer previo de la unidad en Diaria, Flota e Individual
         this.diaria.forEach(d => {
             if (String(d.unidad_id) === String(unidadId) && String(d.chofer_id) !== String(choferId)) {
@@ -664,6 +730,11 @@ class HotRamManager {
                 d.n_ute = null;
                 d.tractor = null;
                 d.semi = null;
+                d.vtv_tr = null;
+                d.mas_tr = null;
+                d.vtv_semi = null;
+                d.mas_semi = null;
+                d.alerta_docs_unidad = 'S_D';
                 d.estado_chofer = 'inactivo';
 
                 const prevInd = this.individualPorId.get(String(d.chofer_id));
@@ -685,6 +756,13 @@ class HotRamManager {
             targetChofer.semi = semi || targetChofer.semi || null;
             targetChofer.n_ute = n_ute || targetChofer.n_ute || null;
             targetChofer.estado_chofer = 'circulando';
+            if (targetFlota) {
+                targetChofer.vtv_tr = targetFlota.vtv_tr || targetChofer.vtv_tr || null;
+                targetChofer.mas_tr = targetFlota.mas_tr || targetChofer.mas_tr || null;
+                targetChofer.vtv_semi = targetFlota.vtv_semi || targetChofer.vtv_semi || null;
+                targetChofer.mas_semi = targetFlota.mas_semi || targetChofer.mas_semi || null;
+                targetChofer.alerta_docs_unidad = calcularAlertaFechas([targetChofer.vtv_tr, targetChofer.mas_tr, targetChofer.vtv_semi, targetChofer.mas_semi], 30);
+            }
         }
 
         // 3. Reflejar en Individual
@@ -699,7 +777,6 @@ class HotRamManager {
         }
 
         // 4. Reflejar en Flota
-        const targetFlota = this.flota.find(f => String(f.unidad_id) === String(unidadId));
         if (targetFlota) {
             targetFlota.chofer_id = choferId;
             if (choferNombre) targetFlota.chofer_nombre = choferNombre;
@@ -720,6 +797,11 @@ class HotRamManager {
                 d.n_ute = null;
                 d.tractor = null;
                 d.semi = null;
+                d.vtv_tr = null;
+                d.mas_tr = null;
+                d.vtv_semi = null;
+                d.mas_semi = null;
+                d.alerta_docs_unidad = 'S_D';
                 d.estado_chofer = 'inactivo';
 
                 const ind = this.individualPorId.get(String(d.chofer_id));

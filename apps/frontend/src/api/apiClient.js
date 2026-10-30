@@ -86,7 +86,9 @@ class ApiClient {
     let query = supabase.from('view_diaria_operativa').select('*', { count: 'exact' });
     if (servicio && servicio !== 'TODOS') query = query.eq('servicio', servicio);
     if (alerta === 'DOCS_VENCIDOS') query = query.eq('alerta_docs_chofer', 'VENCIDO');
+    else if (alerta === 'DOCS_POR_VENCER') query = query.eq('alerta_docs_chofer', 'POR_VENCER');
     else if (alerta === 'UNIDAD_VENCIDA') query = query.eq('alerta_docs_unidad', 'VENCIDO');
+    else if (alerta === 'UNIDAD_POR_VENCER') query = query.eq('alerta_docs_unidad', 'POR_VENCER');
     else if (alerta === 'CUALQUIER_ALERTA') {
       query = query.or('alerta_docs_chofer.eq.VENCIDO,alerta_docs_unidad.eq.VENCIDO,alerta_docs_chofer.eq.POR_VENCER,alerta_docs_unidad.eq.POR_VENCER');
     }

@@ -13,6 +13,10 @@ export const CalendarMonthCard = ({
   selectedRange,
   tripsMap,
   onDayClick,
+  icm = null,
+  isp = null,
+  icmClasificacion = null,
+  ispClasificacion = null,
 }) => {
   const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
   const firstDayOfWeek = new Date(year, monthIndex, 1).getDay();
@@ -32,9 +36,27 @@ export const CalendarMonthCard = ({
 
   return (
     <div className={`calendar-month-card ${isActiveMonth ? 'current-active-month' : ''}`}>
-      {/* Título del Mes */}
+      {/* Título del Mes + Badges de Seguridad Vial Top-Right */}
       <div className="month-title-header">
-        <span>{monthName} {year}</span>
+        <span className="month-title-text">{monthName} {year}</span>
+        <div className="month-sv-badges">
+          {icm !== null && icm !== undefined && (
+            <span
+              className={`badge-month-sv badge-sv-${icmClasificacion?.nivel || 'neutral'}`}
+              title={`ICM ${monthName}: ${Number(icm).toFixed(2)} (${icmClasificacion?.label || 'Bajo riesgo'})`}
+            >
+              ICM {Number(icm).toFixed(2)}
+            </span>
+          )}
+          {isp !== null && isp !== undefined && (
+            <span
+              className={`badge-month-sv badge-sv-${ispClasificacion?.nivel || 'neutral'}`}
+              title={`ISP ${monthName}: ${Number(isp).toFixed(2)} (${ispClasificacion?.label || 'Excelente'})`}
+            >
+              ISP {Number(isp).toFixed(2)}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Cabecera L M X J V S D */}

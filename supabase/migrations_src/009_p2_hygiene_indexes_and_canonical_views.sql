@@ -84,7 +84,7 @@ SELECT
   s.vtv AS vtv_semi, s.mas AS mas_semi, s.esp_es, s.vi, s.ve,
   CASE
     WHEN t.vtv < CURRENT_DATE OR s.vtv < CURRENT_DATE OR t.mas < CURRENT_DATE OR s.mas < CURRENT_DATE THEN 'VENCIDO'
-    WHEN t.vtv <= CURRENT_DATE + 15 OR s.vtv <= CURRENT_DATE + 15 OR t.mas <= CURRENT_DATE + 15 OR s.mas <= CURRENT_DATE + 15 THEN 'POR_VENCER'
+    WHEN t.vtv <= CURRENT_DATE + 30 OR s.vtv <= CURRENT_DATE + 30 OR t.mas <= CURRENT_DATE + 30 OR s.mas <= CURRENT_DATE + 30 THEN 'POR_VENCER'
     WHEN t.id IS NOT NULL OR s.id IS NOT NULL THEN 'AL_DIA'
     ELSE 'S_D'
   END AS alerta_docs_unidad,
@@ -198,10 +198,15 @@ SELECT
   END AS alerta_docs_chofer,
   CASE
     WHEN t.vtv < CURRENT_DATE OR s.vtv < CURRENT_DATE OR t.mas < CURRENT_DATE OR s.mas < CURRENT_DATE THEN 'VENCIDO'
-    WHEN t.vtv <= (CURRENT_DATE + INTERVAL '15 days') OR s.vtv <= (CURRENT_DATE + INTERVAL '15 days') OR t.mas <= (CURRENT_DATE + INTERVAL '15 days') OR s.mas <= (CURRENT_DATE + INTERVAL '15 days') THEN 'POR_VENCER'
+    WHEN t.vtv <= (CURRENT_DATE + INTERVAL '30 days') OR s.vtv <= (CURRENT_DATE + INTERVAL '30 days') OR t.mas <= (CURRENT_DATE + INTERVAL '30 days') OR s.mas <= (CURRENT_DATE + INTERVAL '30 days') THEN 'POR_VENCER'
     WHEN t.id IS NOT NULL OR s.id IS NOT NULL THEN 'AL_DIA'
     ELSE 'S_D'
   END AS alerta_docs_unidad,
+  CASE
+    WHEN cd.venc_periodico < CURRENT_DATE OR cd.venc_licencia_nacional < CURRENT_DATE OR cd.venc_cargas_peligrosas < CURRENT_DATE OR cd.apto_medico_venc < CURRENT_DATE OR t.vtv < CURRENT_DATE OR s.vtv < CURRENT_DATE OR t.mas < CURRENT_DATE OR s.mas < CURRENT_DATE THEN 'VENCIDO'
+    WHEN cd.venc_periodico <= (CURRENT_DATE + INTERVAL '30 days') OR cd.venc_licencia_nacional <= (CURRENT_DATE + INTERVAL '30 days') OR cd.venc_cargas_peligrosas <= (CURRENT_DATE + INTERVAL '30 days') OR cd.apto_medico_venc <= (CURRENT_DATE + INTERVAL '30 days') OR t.vtv <= (CURRENT_DATE + INTERVAL '30 days') OR s.vtv <= (CURRENT_DATE + INTERVAL '30 days') OR t.mas <= (CURRENT_DATE + INTERVAL '30 days') OR s.mas <= (CURRENT_DATE + INTERVAL '30 days') THEN 'POR_VENCER'
+    ELSE 'AL_DIA'
+  END AS alerta_vencimientos,
   COALESCE(diag.dia_codigo, '-') AS dia_codigo,
   COALESCE(diag.dia_fecha, CURRENT_DATE::text) AS dia_fecha,
   diag.diagrama_tipo,

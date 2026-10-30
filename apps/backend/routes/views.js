@@ -16,6 +16,7 @@
 
 const express = require('express');
 const db = require('../utils/db');
+const { clasificarIcm, clasificarIsp } = require('../utils/seguridadVialClassifier');
 
 module.exports = function createViewsRouter(hotRam = require('../cache/hotRamManager')) {
     const router = express.Router();
@@ -119,8 +120,12 @@ module.exports = function createViewsRouter(hotRam = require('../cache/hotRamMan
 
             if (alerta === 'DOCS_VENCIDOS') {
                 conditions.push(`alerta_docs_chofer = 'VENCIDO'`);
+            } else if (alerta === 'DOCS_POR_VENCER') {
+                conditions.push(`alerta_docs_chofer = 'POR_VENCER'`);
             } else if (alerta === 'UNIDAD_VENCIDA') {
                 conditions.push(`alerta_docs_unidad = 'VENCIDO'`);
+            } else if (alerta === 'UNIDAD_POR_VENCER') {
+                conditions.push(`alerta_docs_unidad = 'POR_VENCER'`);
             } else if (alerta === 'CUALQUIER_ALERTA') {
                 conditions.push(`(alerta_docs_chofer IN ('VENCIDO', 'POR_VENCER') OR alerta_docs_unidad IN ('VENCIDO', 'POR_VENCER'))`);
             }
@@ -698,6 +703,38 @@ module.exports = function createViewsRouter(hotRam = require('../cache/hotRamMan
                 choferRow.km_ciclo = 0;
             }
 
+            // Fallback de Seguridad Vial Anual si la solicitud no fue servida por Hot RAM
+            if (!choferRow.seguridad_vial_anual) {
+                try {
+                    const svRes = await db.query(`
+                        SELECT ROUND(AVG(icm)::numeric, 2) AS icm_promedio,
+                               ROUND(AVG(isp)::numeric, 2) AS isp_promedio,
+                               SUM(cant_infracciones)::int AS total_infracciones,
+                               COUNT(*)::int AS meses_evaluados
+                        FROM public.seguridad_vial
+                        WHERE chofer_id::text = $1 AND anio = $2
+                    `, [choferRow.chofer_id, new Date().getFullYear()]);
+                    const sv = svRes.rows[0];
+                    if (sv && (sv.icm_promedio !== null || sv.isp_promedio !== null)) {
+                        const icmVal = sv.icm_promedio !== null ? Number(sv.icm_promedio) : null;
+                        const ispVal = sv.isp_promedio !== null ? Number(sv.isp_promedio) : null;
+                        choferRow.seguridad_vial_anual = {
+                            anio: new Date().getFullYear(),
+                            icm_promedio: icmVal,
+                            isp_promedio: ispVal,
+                            total_infracciones: sv.total_infracciones || 0,
+                            meses_evaluados: sv.meses_evaluados || 0,
+                            icm_clasificacion: clasificarIcm(icmVal),
+                            isp_clasificacion: clasificarIsp(ispVal)
+                        };
+                    } else {
+                        choferRow.seguridad_vial_anual = null;
+                    }
+                } catch (eSv) {
+                    choferRow.seguridad_vial_anual = null;
+                }
+            }
+
             res.json({
                 success: true,
                 vista: "public.view_individual_chofer",
@@ -755,7 +792,9 @@ module.exports = function createViewsRouter(hotRam = require('../cache/hotRamMan
             if (tabs) {
                 const tabList = tabs.split(',').map(t => t.trim());
                 sql = `
-                    SELECT diagrama_id, chofer_id, mes_tab, anio, mes_numero, tira_dias, contabilizador, km_mes_total, cant_viajes_mes, dias_km
+                    SELECT diagrama_id, chofer_id, mes_tab, anio, mes_numero, tira_dias, contabilizador,
+                           km_mes_total, cant_viajes_mes, dias_km,
+                           icm, isp, cant_infracciones, tiempo_conduccion_horas
                     FROM public.fn_calendario_diagrama_km($1::uuid, $2::text[], NULL)
                     ORDER BY anio ASC, mes_numero ASC
                 `;
@@ -763,7 +802,9 @@ module.exports = function createViewsRouter(hotRam = require('../cache/hotRamMan
                 vistaNombre = "public.fn_calendario_diagrama_km";
             } else if (anio || zoom === '12') {
                 sql = `
-                    SELECT diagrama_id, chofer_id, mes_tab, anio, mes_numero, tira_dias, contabilizador, km_mes_total, cant_viajes_mes, dias_km
+                    SELECT diagrama_id, chofer_id, mes_tab, anio, mes_numero, tira_dias, contabilizador,
+                           km_mes_total, cant_viajes_mes, dias_km,
+                           icm, isp, cant_infracciones, tiempo_conduccion_horas
                     FROM public.view_calendario_diagrama_km_12m
                     WHERE chofer_id::text = $1
                     ORDER BY anio ASC, mes_numero ASC
@@ -773,7 +814,9 @@ module.exports = function createViewsRouter(hotRam = require('../cache/hotRamMan
             } else {
                 // Default: 2 Meses Operativos Activos (Sep-26 + Oct-26)
                 sql = `
-                    SELECT diagrama_id, chofer_id, mes_tab, anio, mes_numero, tira_dias, contabilizador, km_mes_total, cant_viajes_mes, dias_km
+                    SELECT diagrama_id, chofer_id, mes_tab, anio, mes_numero, tira_dias, contabilizador,
+                           km_mes_total, cant_viajes_mes, dias_km,
+                           icm, isp, cant_infracciones, tiempo_conduccion_horas
                     FROM public.view_calendario_diagrama_km_2m
                     WHERE chofer_id::text = $1
                     ORDER BY anio ASC, mes_numero ASC
@@ -783,16 +826,30 @@ module.exports = function createViewsRouter(hotRam = require('../cache/hotRamMan
             }
 
             const dataRes = await db.query(sql, params);
+            const enrichedRows = (dataRes.rows || []).map(row => {
+                const icmVal = row.icm !== null && row.icm !== undefined ? Number(row.icm) : null;
+                const ispVal = row.isp !== null && row.isp !== undefined ? Number(row.isp) : null;
+                return {
+                    ...row,
+                    icm: icmVal,
+                    isp: ispVal,
+                    cant_infracciones: row.cant_infracciones !== null && row.cant_infracciones !== undefined ? Number(row.cant_infracciones) : 0,
+                    tiempo_conduccion_horas: row.tiempo_conduccion_horas !== null && row.tiempo_conduccion_horas !== undefined ? Number(row.tiempo_conduccion_horas) : 0,
+                    icm_clasificacion: clasificarIcm(icmVal),
+                    isp_clasificacion: clasificarIsp(ispVal)
+                };
+            });
+
             if (hotRam) {
-                hotRam.setCalendarioC2(c2Key, dataRes.rows);
+                hotRam.setCalendarioC2(c2Key, enrichedRows);
             }
 
             res.json({
                 success: true,
                 vista: vistaNombre,
                 latenciaMs: Date.now() - t0,
-                total: dataRes.rows.length,
-                datos: dataRes.rows
+                total: enrichedRows.length,
+                datos: enrichedRows
             });
         } catch (err) {
             console.error("❌ Error en GET /api/views/calendario:", err.message);

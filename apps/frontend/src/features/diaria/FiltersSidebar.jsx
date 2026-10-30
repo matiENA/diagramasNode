@@ -22,7 +22,9 @@ export const FiltersSidebar = ({ filters, onFilterChange, onResetFilters }) => {
   const alertas = [
     { id: 'TODAS', label: 'Sin filtro de alerta' },
     { id: 'DOCS_VENCIDOS', label: '🔴 Documentación Chofer Vencida' },
+    { id: 'DOCS_POR_VENCER', label: '🟡 Docs Chofer por Vencer (1 mes)' },
     { id: 'UNIDAD_VENCIDA', label: '🚚 Unidad (VTV/MASS) Vencida' },
+    { id: 'UNIDAD_POR_VENCER', label: '🟡 Unidad por Vencer (1 mes)' },
     { id: 'CUALQUIER_ALERTA', label: '⚠️ Cualquier Alerta Activa' },
   ];
 

@@ -62,14 +62,35 @@ async function run() {
                   OR (t.mas IS NOT NULL AND t.mas < CURRENT_DATE)
                   OR (s.mas IS NOT NULL AND s.mas < CURRENT_DATE)
                 THEN 'VENCIDO'
-                WHEN (t.vtv IS NOT NULL AND t.vtv <= CURRENT_DATE + INTERVAL '15 days')
-                  OR (s.vtv IS NOT NULL AND s.vtv <= CURRENT_DATE + INTERVAL '15 days')
-                  OR (t.mas IS NOT NULL AND t.mas <= CURRENT_DATE + INTERVAL '15 days')
-                  OR (s.mas IS NOT NULL AND s.mas <= CURRENT_DATE + INTERVAL '15 days')
+                WHEN (t.vtv IS NOT NULL AND t.vtv <= CURRENT_DATE + INTERVAL '30 days')
+                  OR (s.vtv IS NOT NULL AND s.vtv <= CURRENT_DATE + INTERVAL '30 days')
+                  OR (t.mas IS NOT NULL AND t.mas <= CURRENT_DATE + INTERVAL '30 days')
+                  OR (s.mas IS NOT NULL AND s.mas <= CURRENT_DATE + INTERVAL '30 days')
                 THEN 'POR_VENCER'
                 WHEN (t.id IS NOT NULL OR s.id IS NOT NULL) THEN 'AL_DIA'
                 ELSE 'S_D'
             END AS alerta_docs_unidad,
+            CASE 
+                WHEN (cd.venc_periodico IS NOT NULL AND cd.venc_periodico < CURRENT_DATE)
+                  OR (cd.venc_licencia_nacional IS NOT NULL AND cd.venc_licencia_nacional < CURRENT_DATE)
+                  OR (cd.venc_cargas_peligrosas IS NOT NULL AND cd.venc_cargas_peligrosas < CURRENT_DATE)
+                  OR (cd.apto_medico_venc IS NOT NULL AND cd.apto_medico_venc < CURRENT_DATE)
+                  OR (t.vtv IS NOT NULL AND t.vtv < CURRENT_DATE)
+                  OR (s.vtv IS NOT NULL AND s.vtv < CURRENT_DATE)
+                  OR (t.mas IS NOT NULL AND t.mas < CURRENT_DATE)
+                  OR (s.mas IS NOT NULL AND s.mas < CURRENT_DATE)
+                THEN 'VENCIDO'
+                WHEN (cd.venc_periodico IS NOT NULL AND cd.venc_periodico <= CURRENT_DATE + INTERVAL '30 days')
+                  OR (cd.venc_licencia_nacional IS NOT NULL AND cd.venc_licencia_nacional <= CURRENT_DATE + INTERVAL '30 days')
+                  OR (cd.venc_cargas_peligrosas IS NOT NULL AND cd.venc_cargas_peligrosas <= CURRENT_DATE + INTERVAL '30 days')
+                  OR (cd.apto_medico_venc IS NOT NULL AND cd.apto_medico_venc <= CURRENT_DATE + INTERVAL '30 days')
+                  OR (t.vtv IS NOT NULL AND t.vtv <= CURRENT_DATE + INTERVAL '30 days')
+                  OR (s.vtv IS NOT NULL AND s.vtv <= CURRENT_DATE + INTERVAL '30 days')
+                  OR (t.mas IS NOT NULL AND t.mas <= CURRENT_DATE + INTERVAL '30 days')
+                  OR (s.mas IS NOT NULL AND s.mas <= CURRENT_DATE + INTERVAL '30 days')
+                THEN 'POR_VENCER'
+                ELSE 'AL_DIA'
+            END AS alerta_vencimientos,
             -- Día activo / último registrado del diagrama (Opción C)
             COALESCE(diag.dia_codigo, '-') AS dia_codigo,
             COALESCE(diag.dia_fecha, CURRENT_DATE::text) AS dia_fecha,

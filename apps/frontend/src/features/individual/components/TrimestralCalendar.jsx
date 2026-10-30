@@ -49,6 +49,10 @@ export const TrimestralCalendar = ({ choferId, choferNombre }) => {
         tiraDias: mesData?.tira_dias || '',
         kmMesTotal: mesData?.km_mes_total || 0,
         cantViajesMes: mesData?.cant_viajes_mes || 0,
+        icm: mesData?.icm !== undefined ? mesData.icm : null,
+        isp: mesData?.isp !== undefined ? mesData.isp : null,
+        icmClasificacion: mesData?.icm_clasificacion || null,
+        ispClasificacion: mesData?.isp_clasificacion || null,
         isActiveMonth: offset === 0,
       });
     });
@@ -68,6 +72,10 @@ export const TrimestralCalendar = ({ choferId, choferNombre }) => {
         tiraDias: mesData?.tira_dias || '',
         kmMesTotal: mesData?.km_mes_total || 0,
         cantViajesMes: mesData?.cant_viajes_mes || 0,
+        icm: mesData?.icm !== undefined ? mesData.icm : null,
+        isp: mesData?.isp !== undefined ? mesData.isp : null,
+        icmClasificacion: mesData?.icm_clasificacion || null,
+        ispClasificacion: mesData?.isp_clasificacion || null,
         isActiveMonth: mIdx === baseDate.getMonth(),
       });
     }
@@ -336,6 +344,10 @@ export const TrimestralCalendar = ({ choferId, choferNombre }) => {
               selectedRange={selectedRange}
               tripsMap={tripsMap}
               onDayClick={handleDayClick}
+              icm={m.icm}
+              isp={m.isp}
+              icmClasificacion={m.icmClasificacion}
+              ispClasificacion={m.ispClasificacion}
             />
           ))}
         </div>

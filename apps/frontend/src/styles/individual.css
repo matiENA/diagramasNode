@@ -744,7 +744,10 @@ html.dark .badge-km-rango-unit {
 }
 
 .month-title-header {
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
   font-size: 0.88rem;
   font-weight: 800;
   text-transform: uppercase;
@@ -752,6 +755,31 @@ html.dark .badge-km-rango-unit {
   color: var(--text-main);
   padding-bottom: 0.4rem;
   border-bottom: 1px solid var(--border-subtle);
+}
+
+.month-title-text {
+  flex-shrink: 0;
+}
+
+.month-sv-badges {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.badge-month-sv {
+  font-size: 0.68rem;
+  font-weight: 800;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  line-height: 1.1;
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+  letter-spacing: 0.02em;
+  border: 1px solid transparent;
+  user-select: none;
+  cursor: help;
 }
 
 /* Matriz 7xN de Días */
@@ -1035,6 +1063,128 @@ html.dark .badge-ciclo-actual .badge-diagrama-km {
 
 html.dark .badge-ciclo-actual .badge-diagrama-periodo {
   color: #bfdbfe;
+}
+
+/* ==============================================================
+   🛡️ BADGES DE SEGURIDAD VIAL (ICM + ISP ANUAL Y MENSUAL)
+   ============================================================== */
+.driver-badges-sv-anual {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.badge-sv-metric {
+  padding: 0.25rem 0.65rem !important;
+}
+
+.badge-sv-metric .badge-diagrama-km {
+  font-size: 0.82rem !important;
+}
+
+.badge-sv-metric .badge-diagrama-periodo {
+  font-size: 0.72rem !important;
+}
+
+/* Semáforo Verde: Bajo Riesgo / Excelente */
+.badge-sv-verde {
+  background-color: #ecfdf5 !important;
+  color: #047857 !important;
+  border-color: #a7f3d0 !important;
+}
+.badge-sv-verde .badge-diagrama-km {
+  color: #047857 !important;
+}
+.badge-sv-verde .badge-diagrama-periodo {
+  color: #065f46 !important;
+}
+
+html.dark .badge-sv-verde {
+  background-color: rgba(16, 185, 129, 0.15) !important;
+  color: #34d399 !important;
+  border-color: rgba(16, 185, 129, 0.4) !important;
+}
+html.dark .badge-sv-verde .badge-diagrama-km {
+  color: #34d399 !important;
+}
+html.dark .badge-sv-verde .badge-diagrama-periodo {
+  color: #a7f3d0 !important;
+}
+
+/* Semáforo Naranja: Riesgo Medio / Atención */
+.badge-sv-naranja {
+  background-color: #fffbeb !important;
+  color: #b45309 !important;
+  border-color: #fde68a !important;
+}
+.badge-sv-naranja .badge-diagrama-km {
+  color: #b45309 !important;
+}
+.badge-sv-naranja .badge-diagrama-periodo {
+  color: #92400e !important;
+}
+
+html.dark .badge-sv-naranja {
+  background-color: rgba(245, 158, 11, 0.15) !important;
+  color: #fbbf24 !important;
+  border-color: rgba(245, 158, 11, 0.4) !important;
+}
+html.dark .badge-sv-naranja .badge-diagrama-km {
+  color: #fbbf24 !important;
+}
+html.dark .badge-sv-naranja .badge-diagrama-periodo {
+  color: #fde68a !important;
+}
+
+/* Semáforo Rojo: Alto Riesgo / Crítico */
+.badge-sv-rojo {
+  background-color: #fef2f2 !important;
+  color: #b91c1c !important;
+  border-color: #fecaca !important;
+}
+.badge-sv-rojo .badge-diagrama-km {
+  color: #b91c1c !important;
+}
+.badge-sv-rojo .badge-diagrama-periodo {
+  color: #991b1b !important;
+}
+
+html.dark .badge-sv-rojo {
+  background-color: rgba(239, 68, 68, 0.15) !important;
+  color: #f87171 !important;
+  border-color: rgba(239, 68, 68, 0.4) !important;
+}
+html.dark .badge-sv-rojo .badge-diagrama-km {
+  color: #f87171 !important;
+}
+html.dark .badge-sv-rojo .badge-diagrama-periodo {
+  color: #fecaca !important;
+}
+
+/* Estado Neutro / Sin Dato */
+.badge-sv-neutral {
+  background-color: #f8fafc !important;
+  color: #64748b !important;
+  border-color: #cbd5e1 !important;
+}
+.badge-sv-neutral .badge-diagrama-km {
+  color: #64748b !important;
+}
+.badge-sv-neutral .badge-diagrama-periodo {
+  color: #475569 !important;
+}
+
+html.dark .badge-sv-neutral {
+  background-color: rgba(30, 41, 59, 0.5) !important;
+  color: #94a3b8 !important;
+  border-color: rgba(148, 163, 184, 0.25) !important;
+}
+html.dark .badge-sv-neutral .badge-diagrama-km {
+  color: #94a3b8 !important;
+}
+html.dark .badge-sv-neutral .badge-diagrama-periodo {
+  color: #64748b !important;
 }
 
 /* ==============================================================

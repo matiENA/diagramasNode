@@ -1,15 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Disclosure, DisclosureButton, DisclosurePanel, Transition } from '@headlessui/react';
 import { ChevronDown, ChevronUp, Copy, Check, MessageCircle, AlertTriangle, Truck, ExternalLink, Calendar, ShieldAlert } from 'lucide-react';
 import { getDriverDayStatus, calculateDriverReturn } from '../hooks/useDailyDrivers';
 import { UnitAssignModal } from '@/features/flota/components/UnitAssignModal';
 import { copyToClipboard } from '@/utils/clipboard';
+import { buildUnifiedVencimientos } from '@/utils/vencimientosHelper';
 
 export const DailyDriverCard = ({ driver, fechaContexto, kmInfo, onSelectDriver, isRetornoMode = false }) => {
   const [copiedField, setCopiedField] = useState(null);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
 
-  // 1. Estado del día y fatiga para la fecha contexto
+  // 1. Matriz unificada de vencimientos (consumida por el badge y el acordeón)
+  const vencData = useMemo(() => buildUnifiedVencimientos(driver), [driver]);
+
+  // 2. Estado del día y fatiga para la fecha contexto
   const dayStatus = getDriverDayStatus(driver, fechaContexto);
   const displayDate = driver.dia_fecha || fechaContexto || new Date().toISOString().substring(0, 10);
   // Retorno de personal (prioriza cálculo relacional del servidor, fallback a función legacy)
@@ -272,24 +276,13 @@ export const DailyDriverCard = ({ driver, fechaContexto, kmInfo, onSelectDriver,
                       {returnInfo.returnsToday ? '🔄 Retorna HOY' : `🔄 Vuelve en ${returnInfo.diffDays}d`}
                     </span>
                   )}
-                  {driver.alerta_docs_chofer === 'VENCIDO' && (
-                    <span className="alert-mini-pill alert-red" title="Documentación del chofer vencida">
-                      🔴 DOCS
-                    </span>
-                  )}
-                  {driver.alerta_docs_chofer === 'POR_VENCER' && (
-                    <span className="alert-mini-pill alert-amber" title="Documentación del chofer por vencer (<30d)">
-                      🟡 DOCS
-                    </span>
-                  )}
-                  {driver.alerta_docs_unidad === 'VENCIDO' && (
-                    <span className="alert-mini-pill alert-red" title="VTV o MASS de la unidad vencido">
-                      🚚 UNIDAD
-                    </span>
-                  )}
-                  {driver.alerta_docs_unidad === 'POR_VENCER' && (
-                    <span className="alert-mini-pill alert-amber" title="VTV o MASS de la unidad por vencer (<15d)">
-                      🚚 UNIDAD
+                  {/* Badge Unificado de Vencimientos: Comparte características, clases y estados con el acordeón */}
+                  {vencData.globalStatus !== 'vigente' && (
+                    <span
+                      className={`alert-mini-pill alert-venc-${vencData.globalStatus}`}
+                      title={`Control de Vencimientos: ${vencData.badgeLabel} (${vencData.countVencidos} vencidos, ${vencData.countPorVencer} por vencer en < 1 mes). Desplegar acordeón para ver detalle.`}
+                    >
+                      {vencData.globalStatus === 'vencido' ? '🔴' : '🟡'} {vencData.badgeLabel}
                     </span>
                   )}
                   {kmInfo && (kmInfo.km_totales > 0 || kmInfo.hoja_ruta) && (
@@ -335,56 +328,67 @@ export const DailyDriverCard = ({ driver, fechaContexto, kmInfo, onSelectDriver,
             >
               <DisclosurePanel className="daily-card-expanded-body">
                 <div className="daily-expanded-grid">
-                  {/* Columna 1: Documentación del Conductor */}
-                  <div className="expanded-section-box">
-                    <h4 className="expanded-box-title">Documentación Conductor</h4>
-                    <div className="expanded-doc-rows">
-                      <div className="expanded-doc-row">
-                        <span>Periódico:</span>
-                        <strong className="font-mono">{fmtDate(driver.venc_periodico)}</strong>
+                  {/* Bloque Unificado: Merge de Conductor + Unidad consumiendo la misma matriz de vencimientos */}
+                  <div className="expanded-section-box expanded-venc-unified-box">
+                    <div className="unified-venc-header">
+                      <h4 className="expanded-box-title" style={{ margin: 0, border: 'none', padding: 0 }}>
+                        Control de Vencimientos
+                      </h4>
+                      <span className={`venc-status-pill ${vencData.globalStatus}`}>
+                        {vencData.globalStatus === 'vencido' && '🔴 '}
+                        {vencData.globalStatus === 'por_vencer' && '🟡 '}
+                        {vencData.globalStatus === 'vigente' && '🟢 '}
+                        {vencData.badgeLabel}
+                      </span>
+                    </div>
+
+                    <div className="unified-venc-columns">
+                      {/* Sub-tabla Conductor */}
+                      <div className="unified-venc-subgroup">
+                        <div className="unified-venc-subgroup-title">
+                          <span>👤 Documentación Conductor</span>
+                        </div>
+                        <div className="expanded-doc-rows">
+                          {vencData.items.filter((i) => i.grupo === 'conductor').map((item) => (
+                            <div key={item.id} className="expanded-doc-row">
+                              <span className="doc-row-label">{item.nombre}:</span>
+                              <strong
+                                className={`doc-date-val ${item.status}`}
+                                title={item.tooltip}
+                              >
+                                {item.formattedDate}
+                              </strong>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                      <div className="expanded-doc-row">
-                        <span>Licencia Nac.:</span>
-                        <strong className="font-mono">{fmtDate(driver.venc_licencia_nacional)}</strong>
-                      </div>
-                      <div className="expanded-doc-row">
-                        <span>Certificado M.P:</span>
-                        <strong className="font-mono">{fmtDate(driver.venc_cargas_peligrosas)}</strong>
-                      </div>
-                      <div className="expanded-doc-row">
-                        <span>Apto Médico:</span>
-                        <strong className="font-mono">{fmtDate(driver.apto_medico_venc)}</strong>
+
+                      {/* Sub-tabla Unidad */}
+                      <div className="unified-venc-subgroup">
+                        <div className="unified-venc-subgroup-title">
+                          <span>🚚 Vencimientos Unidad</span>
+                        </div>
+                        {vencData.tieneUnidad ? (
+                          <div className="expanded-doc-rows">
+                            {vencData.items.filter((i) => i.grupo === 'unidad').map((item) => (
+                              <div key={item.id} className="expanded-doc-row">
+                                <span className="doc-row-label">{item.nombre}:</span>
+                                <strong
+                                  className={`doc-date-val ${item.status}`}
+                                  title={item.tooltip}
+                                >
+                                  {item.formattedDate}
+                                </strong>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="venc-no-unit">
+                            <span>⚪ Conductor sin unidad asignada (disponible)</span>
+                          </div>
+                        )}
                       </div>
                     </div>
-                  </div>
-
-                  {/* Columna 2: Vencimientos de la Unidad */}
-                  <div className="expanded-section-box">
-                    <h4 className="expanded-box-title">Vencimientos Unidad</h4>
-                    {driver.tractor || driver.semi || driver.n_ute ? (
-                      <div className="expanded-doc-rows">
-                        <div className="expanded-doc-row">
-                          <span>VTV Tractor:</span>
-                          <strong className="font-mono">{fmtDate(driver.vtv_tr)}</strong>
-                        </div>
-                        <div className="expanded-doc-row">
-                          <span>MASS Tractor:</span>
-                          <strong className="font-mono">{fmtDate(driver.mas_tr)}</strong>
-                        </div>
-                        <div className="expanded-doc-row">
-                          <span>VTV Semi:</span>
-                          <strong className="font-mono">{fmtDate(driver.vtv_semi)}</strong>
-                        </div>
-                        <div className="expanded-doc-row">
-                          <span>MASS Semi:</span>
-                          <strong className="font-mono">{fmtDate(driver.mas_semi)}</strong>
-                        </div>
-                      </div>
-                    ) : (
-                      <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontStyle: 'italic', padding: '0.75rem 0', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                        <span>⚪ Conductor sin unidad asignada (disponible)</span>
-                      </div>
-                    )}
                   </div>
 
                   {/* Columna 3: Viaje y Acceso a Ficha Individual */}

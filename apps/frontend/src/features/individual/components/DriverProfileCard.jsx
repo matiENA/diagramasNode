@@ -258,33 +258,60 @@ export const DriverProfileCard = ({ chofer, tripsMap }) => {
               </button>
             </div>
 
-            {/* BADGES COMPARATIVOS DE CICLO (26 A 25) */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-              {/* Ciclo Anterior (sep 26 - oct 25) */}
-              <div
-                className="badge-diagrama-ciclo-header badge-ciclo-anterior"
-                title={`Kilómetros del ciclo anterior de liquidación: ${cicloAnterior.label}`}
-              >
-                <span className="badge-diagrama-km">
-                  {cicloAnterior.km > 0
-                    ? `${cicloAnterior.km.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} km`
-                    : '0,00 km'}
-                </span>
-                <span className="badge-diagrama-periodo">· {cicloAnterior.label}</span>
+            {/* BADGES COMPARATIVOS DE CICLO (26 A 25) + SEGURIDAD VIAL ANUAL */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.35rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                {/* Ciclo Anterior (sep 26 - oct 25) */}
+                <div
+                  className="badge-diagrama-ciclo-header badge-ciclo-anterior"
+                  title={`Kilómetros del ciclo anterior de liquidación: ${cicloAnterior.label}`}
+                >
+                  <span className="badge-diagrama-km">
+                    {cicloAnterior.km > 0
+                      ? `${cicloAnterior.km.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} km`
+                      : '0,00 km'}
+                  </span>
+                  <span className="badge-diagrama-periodo">· {cicloAnterior.label}</span>
+                </div>
+
+                {/* Ciclo en Curso (oct 26 - nov 25) */}
+                <div
+                  className="badge-diagrama-ciclo-header badge-ciclo-actual"
+                  title={`Kilómetros acumulados en el ciclo en curso: ${cicloActual.label}`}
+                >
+                  <span className="badge-diagrama-km">
+                    {cicloActual.km > 0
+                      ? `${cicloActual.km.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} km`
+                      : '0,00 km'}
+                  </span>
+                  <span className="badge-diagrama-periodo">· {cicloActual.label}</span>
+                </div>
               </div>
 
-              {/* Ciclo en Curso (oct 26 - nov 25) */}
-              <div
-                className="badge-diagrama-ciclo-header badge-ciclo-actual"
-                title={`Kilómetros acumulados en el ciclo en curso: ${cicloActual.label}`}
-              >
-                <span className="badge-diagrama-km">
-                  {cicloActual.km > 0
-                    ? `${cicloActual.km.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} km`
-                    : '0,00 km'}
-                </span>
-                <span className="badge-diagrama-periodo">· {cicloActual.label}</span>
-              </div>
+              {/* SEGURIDAD VIAL ANUAL: ICM + ISP (debajo de los containers de KM) */}
+              {chofer?.seguridad_vial_anual && (
+                <div className="driver-badges-sv-anual" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <div
+                    className={`badge-diagrama-ciclo-header badge-sv-metric badge-sv-${chofer.seguridad_vial_anual.icm_clasificacion?.nivel || 'neutral'}`}
+                    title={`Índice de Conducta de Manejo (ICM Anual): ${chofer.seguridad_vial_anual.icm_promedio !== null ? Number(chofer.seguridad_vial_anual.icm_promedio).toFixed(2) : 'S/D'} (${chofer.seguridad_vial_anual.icm_clasificacion?.label || 'Sin datos'})`}
+                  >
+                    <span className="badge-diagrama-km">
+                      ICM {chofer.seguridad_vial_anual.icm_promedio !== null ? Number(chofer.seguridad_vial_anual.icm_promedio).toFixed(2) : 'S/D'}
+                    </span>
+                    <span className="badge-diagrama-periodo">· Anual {chofer.seguridad_vial_anual.anio || 2026}</span>
+                  </div>
+
+                  <div
+                    className={`badge-diagrama-ciclo-header badge-sv-metric badge-sv-${chofer.seguridad_vial_anual.isp_clasificacion?.nivel || 'neutral'}`}
+                    title={`Índice de Seguridad (ISP Anual): ${chofer.seguridad_vial_anual.isp_promedio !== null ? Number(chofer.seguridad_vial_anual.isp_promedio).toFixed(2) : 'S/D'} (${chofer.seguridad_vial_anual.isp_clasificacion?.label || 'Sin datos'})`}
+                  >
+                    <span className="badge-diagrama-km">
+                      ISP {chofer.seguridad_vial_anual.isp_promedio !== null ? Number(chofer.seguridad_vial_anual.isp_promedio).toFixed(2) : 'S/D'}
+                    </span>
+                    <span className="badge-diagrama-periodo">· Anual {chofer.seguridad_vial_anual.anio || 2026}</span>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
