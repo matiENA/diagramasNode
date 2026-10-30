@@ -114,10 +114,8 @@ class HotRamManager {
         if (tabs) {
             const list = String(tabs).split(',').map(t => t.trim()).filter(Boolean);
             if (list.length === 0) return false;
-            return list.every(t => {
-                const ym = this.parseTabYm(t);
-                return ym !== null && ym >= this.windowMinYm && ym <= this.windowMaxYm;
-            });
+            // Garantizar que TODAS las pestañas consultadas estén efectivamente presentes en windowTabs
+            return list.every(t => this.windowTabs.has(t));
         }
         if (anio) {
             const aNum = parseInt(anio, 10);
@@ -125,6 +123,103 @@ class HotRamManager {
             return (aNum * 100 + 1) >= this.windowMinYm && (aNum * 100 + 12) <= this.windowMaxYm;
         }
         return false;
+    }
+
+    /**
+     * Invalida entradas del caché histórico LRU C2
+     */
+    invalidateCalendario(choferId = null) {
+        if (choferId) {
+            const prefix = `${choferId}|`;
+            for (const k of this.calendarioHistoricoLru.keys()) {
+                if (k.startsWith(prefix)) this.calendarioHistoricoLru.delete(k);
+            }
+        } else {
+            this.calendarioHistoricoLru.clear();
+        }
+        this.touch();
+    }
+
+    /**
+     * Refresca las métricas de Seguridad Vial en memoria RAM sin necesidad de rehidratar todo el sistema
+     * @param {Object} db - Instancia de utils/db
+     */
+    async refreshSeguridadVial(db) {
+        if (!db || !db.isConfigured()) return false;
+        try {
+            const yNow = new Date().getFullYear();
+            // 1. Recalcular resumen anual
+            const rSvAnual = await db.query(`
+                SELECT chofer_id,
+                       ROUND(AVG(icm)::numeric, 2) AS icm_promedio,
+                       ROUND(AVG(isp)::numeric, 2) AS isp_promedio,
+                       SUM(cant_infracciones)::int AS total_infracciones,
+                       COUNT(*)::int AS meses_evaluados
+                FROM public.seguridad_vial
+                WHERE anio = $1
+                GROUP BY chofer_id
+            `, [yNow]).catch(e => { console.warn('⚠️ [HotRAM] Error refreshSeguridadVial anual:', e.message); return { rows: [] }; });
+
+            const svAnualMap = new Map();
+            (rSvAnual?.rows || []).forEach(row => {
+                const icmVal = row.icm_promedio !== null ? Number(row.icm_promedio) : null;
+                const ispVal = row.isp_promedio !== null ? Number(row.isp_promedio) : null;
+                svAnualMap.set(String(row.chofer_id), {
+                    anio: yNow,
+                    icm_promedio: icmVal,
+                    isp_promedio: ispVal,
+                    total_infracciones: parseInt(row.total_infracciones, 10) || 0,
+                    meses_evaluados: parseInt(row.meses_evaluados, 10) || 0,
+                    icm_clasificacion: clasificarIcm(icmVal),
+                    isp_clasificacion: clasificarIsp(ispVal)
+                });
+            });
+
+            // Actualizar individualPorId en RAM
+            for (const [id, chofer] of this.individualPorId.entries()) {
+                const chId = String(chofer.chofer_id || id);
+                if (svAnualMap.has(chId)) {
+                    chofer.seguridad_vial_anual = svAnualMap.get(chId);
+                }
+            }
+
+            // 2. Recalcular métricas de cada mes en los calendarios de la ventana activa
+            const rSvMeses = await db.query(`
+                SELECT chofer_id, anio, mes_numero, icm, isp, cant_infracciones, tiempo_conduccion_horas
+                FROM public.seguridad_vial
+                WHERE anio = $1
+            `, [yNow]).catch(e => { console.warn('⚠️ [HotRAM] Error refreshSeguridadVial meses:', e.message); return { rows: [] }; });
+
+            const svMesMap = new Map();
+            (rSvMeses?.rows || []).forEach(row => {
+                const key = `${row.chofer_id}|${row.anio}|${row.mes_numero}`;
+                svMesMap.set(key, row);
+            });
+
+            for (const [chId, meses] of this.calendarioPorChofer.entries()) {
+                meses.forEach(m => {
+                    const key = `${chId}|${m.anio}|${m.mes_numero}`;
+                    const sv = svMesMap.get(key);
+                    if (sv) {
+                        m.icm = sv.icm !== null && sv.icm !== undefined ? Number(sv.icm) : null;
+                        m.isp = sv.isp !== null && sv.isp !== undefined ? Number(sv.isp) : null;
+                        m.cant_infracciones = parseInt(sv.cant_infracciones, 10) || 0;
+                        m.tiempo_conduccion_horas = parseFloat(sv.tiempo_conduccion_horas) || 0;
+                        m.icm_clasificacion = clasificarIcm(m.icm);
+                        m.isp_clasificacion = clasificarIsp(m.isp);
+                    }
+                });
+            }
+
+            // Purgar caché C2 LRU
+            this.calendarioHistoricoLru.clear();
+            this.touch();
+            console.log(`⚡ [HotRAM] Seguridad vial actualizada en RAM para ${svAnualMap.size} choferes. ETag: ${this.getEtag()}`);
+            return true;
+        } catch (err) {
+            console.error('❌ [HotRAM] Error al refrescar seguridad vial:', err.message);
+            return false;
+        }
     }
 
     getCalendarioC2(key, ttlMs = 10 * 60 * 1000) {
@@ -225,9 +320,10 @@ class HotRamManager {
                         SELECT diagrama_id, chofer_id, mes_tab, anio, mes_numero, tira_dias,
                                contabilizador, km_mes_total, cant_viajes_mes, dias_km,
                                icm, isp, cant_infracciones, tiempo_conduccion_horas
-                        FROM public.view_calendario_diagrama_km_2m
+                        FROM public.view_calendario_diagrama_km
+                        WHERE (anio * 100 + mes_numero) BETWEEN $1 AND $2
                         ORDER BY anio ASC, mes_numero ASC
-                    `).catch(e => { console.warn('⚠️ [HotRAM] Error view_calendario_diagrama_km_2m:', e.message); return { rows: [] }; })
+                    `, [minYm, maxYm]).catch(e => { console.warn('⚠️ [HotRAM] Error view_calendario_diagrama_km (ventana activa):', e.message); return { rows: [] }; })
                 );
             }
 

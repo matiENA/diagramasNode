@@ -9,6 +9,27 @@ const mesesAbrev = [
 ];
 
 /**
+ * Semáforos canónicos de Seguridad Vial (ICM + ISP)
+ */
+export function clasificarIcm(icm) {
+  if (icm === null || icm === undefined || icm === '') return null;
+  const val = Number(icm);
+  if (isNaN(val)) return null;
+  if (val < 0.08) return { nivel: 'verde', label: 'Bajo Riesgo', color: '#10b981' };
+  if (val <= 0.12) return { nivel: 'naranja', label: 'Riesgo Medio', color: '#f59e0b' };
+  return { nivel: 'rojo', label: 'Alto Riesgo', color: '#ef4444' };
+}
+
+export function clasificarIsp(isp) {
+  if (isp === null || isp === undefined || isp === '') return null;
+  const val = Number(isp);
+  if (isNaN(val)) return null;
+  if (val < 1.20) return { nivel: 'verde', label: 'Excelente', color: '#10b981' };
+  if (val <= 1.50) return { nivel: 'naranja', label: 'Atención', color: '#f59e0b' };
+  return { nivel: 'rojo', label: 'Crítico', color: '#ef4444' };
+}
+
+/**
  * Función canónica para computar el JSON contabilizador a partir de la tira de días
  */
 export function calcularContabilizador(diasArr = []) {
@@ -117,6 +138,16 @@ export const useCalendarDiagramaKm = (choferId, zoomLevel = 3, baseDate = new Da
       let totalViajes = 0;
 
       months.forEach((m) => {
+        // Enriquecer y blindar métricas decimales de Seguridad Vial
+        if (m.icm !== undefined && m.icm !== null) {
+          m.icm = Number(m.icm);
+          if (!m.icm_clasificacion) m.icm_clasificacion = clasificarIcm(m.icm);
+        }
+        if (m.isp !== undefined && m.isp !== null) {
+          m.isp = Number(m.isp);
+          if (!m.isp_clasificacion) m.isp_clasificacion = clasificarIsp(m.isp);
+        }
+
         if (m.mes_tab) {
           monthsMap[m.mes_tab] = m;
         }

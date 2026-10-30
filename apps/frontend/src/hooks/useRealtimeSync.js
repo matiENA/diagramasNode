@@ -89,6 +89,19 @@ export function useRealtimeSync() {
           }
         }
       )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'seguridad_vial' },
+        (payload) => {
+          const chId = payload.new?.chofer_id || payload.old?.chofer_id;
+          if (chId) {
+            scheduleInvalidate(queryKeys.individual.calendar(chId));
+            scheduleInvalidate(queryKeys.individual.detail(chId));
+          } else {
+            scheduleInvalidate(queryKeys.individual.all);
+          }
+        }
+      )
       .subscribe((status, err) => {
         if (status === 'SUBSCRIBED') {
           console.log('⚡ [Realtime] Conectado exitosamente al canal en vivo de Supabase');

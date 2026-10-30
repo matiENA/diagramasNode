@@ -213,12 +213,13 @@ class ApiClient {
   }
 
   // 6. Calendario Diagrama + KMs
-  async getCalendarioDiagramaKm(choferId, zoom = 3, targetTabs = [], anio = null) {
+  async getCalendarioDiagramaKm(choferId, zoom = 3, targetTabs = [], anio = null, fresh = false) {
     if (!choferId) return [];
     try {
       const tabsParam = targetTabs.length ? `&tabs=${encodeURIComponent(targetTabs.join(','))}` : '';
       const anioParam = anio ? `&anio=${encodeURIComponent(anio)}` : '';
-      const res = await this.fetchJson(`/api/views/calendario/${encodeURIComponent(choferId)}?zoom=${zoom}${tabsParam}${anioParam}`);
+      const freshParam = fresh ? '&fresh=1' : '';
+      const res = await this.fetchJson(`/api/views/calendario/${encodeURIComponent(choferId)}?zoom=${zoom}${tabsParam}${anioParam}${freshParam}`);
       if (res && res.success) {
         return res.datos || [];
       }
@@ -228,7 +229,7 @@ class ApiClient {
 
     let query = supabase
       .from('view_calendario_diagrama_km')
-      .select('diagrama_id, chofer_id, mes_tab, anio, mes_numero, tira_dias, contabilizador, km_mes_total, cant_viajes_mes, dias_km')
+      .select('diagrama_id, chofer_id, mes_tab, anio, mes_numero, tira_dias, contabilizador, km_mes_total, cant_viajes_mes, dias_km, icm, isp, cant_infracciones, tiempo_conduccion_horas')
       .eq('chofer_id', choferId);
 
     if (targetTabs.length > 0) {
@@ -239,7 +240,37 @@ class ApiClient {
 
     const { data, error } = await query.order('anio', { ascending: true }).order('mes_numero', { ascending: true });
     if (error) throw error;
-    return data || [];
+    return (data || []).map(r => ({
+      ...r,
+      icm: r.icm !== null && r.icm !== undefined ? Number(r.icm) : null,
+      isp: r.isp !== null && r.isp !== undefined ? Number(r.isp) : null,
+      cant_infracciones: r.cant_infracciones ? Number(r.cant_infracciones) : 0,
+      tiempo_conduccion_horas: r.tiempo_conduccion_horas ? Number(r.tiempo_conduccion_horas) : 0
+    }));
+  }
+
+  async invalidateCalendario(choferId = null) {
+    try {
+      return await this.fetchJson('/api/views/invalidate-calendario', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ choferId })
+      });
+    } catch (err) {
+      console.warn('⚠️ [ApiClient] Error invalidando calendario en backend:', err.message);
+      return null;
+    }
+  }
+
+  async refreshSeguridadVial() {
+    try {
+      return await this.fetchJson('/api/views/refresh-seguridad-vial', {
+        method: 'POST'
+      });
+    } catch (err) {
+      console.warn('⚠️ [ApiClient] Error refrescando seguridad vial:', err.message);
+      return null;
+    }
   }
 
   // 7. Cards Diarias / Novedades

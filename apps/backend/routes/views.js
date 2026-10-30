@@ -659,9 +659,10 @@ module.exports = function createViewsRouter(hotRam = require('../cache/hotRamMan
         const t0 = Date.now();
         try {
             const { choferId } = req.params;
+            const forceFresh = req.query.fresh === '1' || req.query.fresh === 'true';
 
-            // ⚡ 1. Servicio Hot RAM (< 1ms)
-            if (hotRam && hotRam.isReady) {
+            // ⚡ 1. Servicio Hot RAM (< 1ms) si no se fuerza recarga
+            if (!forceFresh && hotRam && hotRam.isReady) {
                 const dato = hotRam.queryIndividualChofer(choferId);
                 if (dato) {
                     return res.json({
@@ -752,10 +753,11 @@ module.exports = function createViewsRouter(hotRam = require('../cache/hotRamMan
         const t0 = Date.now();
         try {
             const { choferId } = req.params;
-            const { zoom = '3', anio, tabs } = req.query;
+            const { zoom = '3', anio, tabs, fresh } = req.query;
+            const forceFresh = fresh === '1' || fresh === 'true';
 
-            // ⚡ 1. Servicio Hot RAM C1 (< 2ms) cuando el rango consultado cae en la ventana activa
-            if (hotRam && hotRam.isReady && hotRam.isCalendarioInWindow({ anio, tabs })) {
+            // ⚡ 1. Servicio Hot RAM C1 (< 2ms) cuando el rango consultado cae en la ventana activa (sin fresh)
+            if (!forceFresh && hotRam && hotRam.isReady && hotRam.isCalendarioInWindow({ anio, tabs })) {
                 const datos = hotRam.queryCalendario(choferId, { anio, tabs });
                 return res.json({
                     success: true,
@@ -766,9 +768,9 @@ module.exports = function createViewsRouter(hotRam = require('../cache/hotRamMan
                 });
             }
 
-            // ⚡ 2. Caché LRU C2 bajo demanda (10 min TTL) para zooms históricos 6M / 12M
+            // ⚡ 2. Caché LRU C2 bajo demanda (10 min TTL) para zooms históricos 6M / 12M (sin fresh)
             const c2Key = `${choferId}|${anio || ''}|${tabs || ''}`;
-            if (hotRam) {
+            if (!forceFresh && hotRam) {
                 const cachedC2 = hotRam.getCalendarioC2(c2Key);
                 if (cachedC2) {
                     return res.json({
@@ -1062,6 +1064,38 @@ module.exports = function createViewsRouter(hotRam = require('../cache/hotRamMan
             });
         } catch (err) {
             console.error("❌ Error en GET /api/views/chofer-observaciones:", err.message);
+            res.status(500).json({ success: false, error: err.message });
+        }
+    });
+
+    // 13. POST /api/views/invalidate-calendario — Purgar caché de calendario y métricas
+    router.post('/invalidate-calendario', async (req, res) => {
+        try {
+            const { choferId } = req.body || {};
+            if (hotRam) {
+                if (typeof hotRam.refreshSeguridadVial === 'function') {
+                    await hotRam.refreshSeguridadVial(db);
+                } else if (typeof hotRam.invalidateCalendario === 'function') {
+                    hotRam.invalidateCalendario(choferId);
+                }
+            }
+            res.json({ success: true, message: "Caché de calendario y seguridad vial invalidado exitosamente" });
+        } catch (err) {
+            console.error("❌ Error en POST /api/views/invalidate-calendario:", err.message);
+            res.status(500).json({ success: false, error: err.message });
+        }
+    });
+
+    // 14. POST /api/views/refresh-seguridad-vial — Recarga estática y reactiva de Seguridad Vial en RAM
+    router.post('/refresh-seguridad-vial', async (req, res) => {
+        try {
+            if (hotRam && typeof hotRam.refreshSeguridadVial === 'function') {
+                const ok = await hotRam.refreshSeguridadVial(db);
+                return res.json({ success: ok, message: ok ? "Seguridad vial refrescada en RAM" : "No se pudo refrescar" });
+            }
+            res.json({ success: false, error: "Hot RAM no disponible" });
+        } catch (err) {
+            console.error("❌ Error en POST /api/views/refresh-seguridad-vial:", err.message);
             res.status(500).json({ success: false, error: err.message });
         }
     });
