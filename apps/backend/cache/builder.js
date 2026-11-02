@@ -27,7 +27,6 @@ try {
 const db = require('../utils/db');
 const { supabase } = require('../utils/shared');
 const crypto = require('crypto');
-const hotRamManager = require('./hotRamManager');
 
 // Control de versión para Dirty Check granular y supresión de Egress
 let lastSupabaseStatsString = null;
@@ -111,25 +110,6 @@ async function verificarCambiosSupabase() {
     return null;
 }
 
-function extraerViajesDesdeHotRam(limiteIso) {
-    const out = [];
-    for (const [fIso, entries] of hotRamManager.kmDiariaPorFecha.entries()) {
-        if (limiteIso && fIso < limiteIso) continue;
-        for (const it of entries) {
-            out.push({
-                fecha: fIso,
-                dominio: it.dominio || '',
-                chofer_nombre: null,
-                km_totales: it.km_totales,
-                hoja_ruta: Array.isArray(it.hoja_ruta) ? it.hoja_ruta.join(', ') : (it.hoja_ruta || ''),
-                id_chofer: it.id_chofer,
-                id_unidad: it.id_unidad
-            });
-        }
-    }
-    return out;
-}
-
 function formatDateISO(val) {
     if (!val) return '';
     if (val instanceof Date) return val.toISOString().split('T')[0];
@@ -146,24 +126,14 @@ async function actualizarCacheDesdeSupabase(cacheDatosGlobales, io, ioDash, opci
     const t0 = Date.now();
     let statsActuales = null;
 
-    // 🛡️ 1. DIRTY CHECK GRANULAR: Evita doble hidratación de tablas crudas + vistas
+    // 🛡️ 1. DIRTY CHECK GRANULAR: Evita doble hidratación si no hay cambios en BD
     if (db.isConfigured()) {
         statsActuales = await verificarCambiosSupabase();
     }
 
-    if (!forceFull && cacheDatosGlobales.diagramas && cacheDatosGlobales.diagramas.diagramas?.length > 0 && hotRamManager.isReady && statsActuales) {
+    if (!forceFull && cacheDatosGlobales.diagramas && cacheDatosGlobales.diagramas.diagramas?.length > 0 && statsActuales) {
         if (statsActuales.all === lastSupabaseStatsString) {
             console.log("⚡ [RAM Supabase] Dirty Check: Sin cambios en BD (0 bytes egress). RAM al día.");
-            return true;
-        }
-
-        // Si SOLO cambiaron diagramas/KMs y las tablas maestras siguen idénticas, refrescar solo vistas en HotRAM (sin bajar las 9 tablas crudas)
-        if (statsActuales.core === lastCoreStatsString && statsActuales.cal !== lastCalStatsString) {
-            await hotRamManager.hydrateFromDatabase(db, { skipCalendario: false });
-            lastSupabaseStatsString = statsActuales.all;
-            lastCalStatsString = statsActuales.cal;
-            cacheDatosGlobales.ultimaActualizacion = new Date().toISOString();
-            if (io) emitirDatosSiCambiaron(io, cacheDatosGlobales);
             return true;
         }
     }
@@ -188,11 +158,7 @@ async function actualizarCacheDesdeSupabase(cacheDatosGlobales, io, ioDash, opci
 
     try {
         if (db.isConfigured()) {
-            const skipCal = !forceFull && !debeCargarKm && hotRamManager.isReady && statsActuales && statsActuales.cal === lastCalStatsString;
-
-            // 1. Hidratar HotRAM en paralelo con tablas crudas (sin ejecutar view_calendario_km duplicado)
             const [
-                ,
                 rUnidades,
                 rChoferes,
                 rMovimientos,
@@ -201,9 +167,9 @@ async function actualizarCacheDesdeSupabase(cacheDatosGlobales, io, ioDash, opci
                 rTractores,
                 rSemis,
                 rServUnidades,
-                rServChoferes
+                rServChoferes,
+                rKm
             ] = await Promise.all([
-                hotRamManager.hydrateFromDatabase(db, { skipCalendario: skipCal }),
                 db.query('SELECT id, n_ute, servicio_id, tractor_id, semi_id, fecha_acople, estado FROM unidades ORDER BY n_ute ASC'),
                 db.query('SELECT id, nombre, legajo, servicio_id, estado, unidad_id, foto FROM choferes ORDER BY nombre ASC'),
                 db.query('SELECT * FROM movimientos'),
@@ -215,7 +181,8 @@ async function actualizarCacheDesdeSupabase(cacheDatosGlobales, io, ioDash, opci
                 db.query('SELECT id, servicio_id, patente, n_interno, marca, modelo, vtv, mas, estado FROM tractores ORDER BY patente ASC').catch(() => ({ rows: [] })),
                 db.query('SELECT id, servicio_id, patente, n_interno, marca, cisternado, esp_es, vi, ve, vtv, mas, estado FROM semis ORDER BY patente ASC').catch(() => ({ rows: [] })),
                 db.query('SELECT id, denominacion, spreadsheet_id, activo FROM servicios_unidades ORDER BY denominacion ASC').catch(() => ({ rows: [] })),
-                db.query('SELECT id, denominacion, servicio_unidad_id, spreadsheet_id, activo FROM servicios_choferes ORDER BY denominacion ASC').catch(() => ({ rows: [] }))
+                db.query('SELECT id, denominacion, servicio_unidad_id, spreadsheet_id, activo FROM servicios_choferes ORDER BY denominacion ASC').catch(() => ({ rows: [] })),
+                debeCargarKm ? db.query('SELECT fecha, dominio, chofer_nombre, km_totales, hoja_ruta, id_chofer, id_unidad FROM public.movimientos_km WHERE fecha >= $1 ORDER BY fecha ASC', [limiteIso]).catch(() => ({ rows: [] })) : Promise.resolve({ rows: [] })
             ]);
 
             rowsUnidades = rUnidades.rows || [];
@@ -228,8 +195,8 @@ async function actualizarCacheDesdeSupabase(cacheDatosGlobales, io, ioDash, opci
             rowsServiciosUnidades = rServUnidades.rows || [];
             rowsServiciosChoferes = rServChoferes.rows || [];
 
-            if (debeCargarKm || !skipCal) {
-                rowsMovimientosKm = extraerViajesDesdeHotRam(limiteIso);
+            if (debeCargarKm) {
+                rowsMovimientosKm = rKm.rows || [];
                 kmCacheCargado = true;
             }
         } else {
@@ -449,11 +416,9 @@ async function actualizarCacheDesdeSupabase(cacheDatosGlobales, io, ioDash, opci
         const docPorChoferId = {};
         const docPorDni = {};
         const docPorDrv = {};
-        hotRamManager.docsPorChofer.clear();
         (rowsChoferDocumentacion || []).forEach(doc => {
             if (doc.chofer_id) {
                 docPorChoferId[doc.chofer_id] = doc;
-                hotRamManager.docsPorChofer.set(String(doc.chofer_id), doc);
             }
             if (doc.dni) docPorDni[String(doc.dni).replace(/\D/g, '')] = doc;
             if (doc.drv_codigo) docPorDrv[doc.drv_codigo] = doc;
@@ -1865,7 +1830,6 @@ function iniciarCachePolling(cacheDatosGlobales, io, ioDash) {
 }
 
 module.exports = { 
-    hotRamManager,
     iniciarCachePolling, 
     flujoEncoladoGlobal,
     actualizarCacheDesdeSupabase,

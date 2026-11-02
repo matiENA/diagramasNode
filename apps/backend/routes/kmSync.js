@@ -9,7 +9,6 @@
 
 const express = require('express');
 const db = require('../utils/db');
-const hotRam = require('../cache/hotRamManager');
 const { 
     fetchRango, 
     ID_SHEET_KILOMETROS 
@@ -537,16 +536,6 @@ async function sincronizarKmDesdeSheets(cacheDatosGlobales = null, io = null, io
         } catch (cErr) {
             console.warn(`⚠️ [Partición 7] Advertencia en cisternas_km upsert:`, cErr.message);
         }
-    }
-
-    // Rehidratar Hot RAM en caliente para que los endpoints sirvan los datos actualizados de inmediato
-    try {
-        if (hotRam && typeof hotRam.hydrateFromDatabase === 'function') {
-            await hotRam.hydrateFromDatabase(db);
-            console.log('⚡ [Partición 7] Memoria Hot RAM rehidratada con éxito tras sincronización.');
-        }
-    } catch (hErr) {
-        console.warn('⚠️ [Partición 7] Error al rehidratar Hot RAM:', hErr.message);
     }
 
     return {

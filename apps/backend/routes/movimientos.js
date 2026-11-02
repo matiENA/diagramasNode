@@ -15,7 +15,7 @@ const {
     mesesLargo
 } = require('../utils/shared');
 
-module.exports = function createMovimientosRouter(hotRam = require('../cache/hotRamManager'), io = null) {
+module.exports = function createMovimientosRouter(io = null) {
     const router = express.Router();
 
     // Caché en memoria para evitar saturar la cuota de Google Sheets (TTL: 30 segundos)
@@ -269,16 +269,6 @@ module.exports = function createMovimientosRouter(hotRam = require('../cache/hot
                 client.release();
             }
 
-            // Sincronizar en Hot RAM tras confirmar el COMMIT en base de datos
-            if (hotRam) {
-                if (desunirIds.length > 0) {
-                    desunirIds.forEach(uId => hotRam.desasignarUnidad(uId));
-                }
-                if (validPareos.length > 0) {
-                    validPareos.forEach(p => hotRam.actualizarPareo(p.id_unidad, p.id_chofer));
-                }
-            }
-
             if (io) {
                 io.emit('datos_actualizados', {
                     timestamp: new Date().toISOString(),
@@ -336,17 +326,7 @@ module.exports = function createMovimientosRouter(hotRam = require('../cache/hot
             );
             const rpcData = r.rows[0]?.res || {};
 
-            // 2. Reflejar inmediatamente en Hot RAM (< 1ms)
-            if (hotRam) {
-                hotRam.actualizarPareo(unidadId, choferId, {
-                    choferNombre: choferNombre || rpcData.chofer_nombre,
-                    tractor: tractor || rpcData.tractor,
-                    semi: semi || rpcData.semi,
-                    n_ute: n_ute || rpcData.n_ute
-                });
-            }
-
-            // 3. Emitir evento Socket.IO para sincronización instantánea multicliente
+            // 2. Emitir evento Socket.IO para sincronización instantánea multicliente
             if (io) {
                 io.emit('datos_actualizados', {
                     timestamp: new Date().toISOString(),
@@ -392,17 +372,7 @@ module.exports = function createMovimientosRouter(hotRam = require('../cache/hot
             );
             const rpcData = r.rows[0]?.res || {};
 
-            // 2. Liberar inmediatamente en Hot RAM (< 1ms)
-            if (hotRam) {
-                if (rpcData.unidad_liberada) {
-                    hotRam.desasignarUnidad(rpcData.unidad_liberada);
-                }
-                if (typeof hotRam.desasignarChofer === 'function') {
-                    hotRam.desasignarChofer(choferId);
-                }
-            }
-
-            // 3. Emitir evento Socket.IO
+            // 2. Emitir evento Socket.IO
             if (io) {
                 io.emit('datos_actualizados', {
                     timestamp: new Date().toISOString(),

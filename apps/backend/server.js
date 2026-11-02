@@ -34,8 +34,6 @@ const createServiciosRouter = require('./routes/servicios');
 const createActivosRouter = require('./routes/activos');
 const createViewsRouter = require('./routes/views');
 const createMovimientosRouter = require('./routes/movimientos');
-const hotRamManager = require('./cache/hotRamManager');
-const createHotRamRouter = require('./routes/hotRamRoutes');
 
 // ==============================================================
 // 🚀 EXPRESS + SOCKET.IO
@@ -374,16 +372,14 @@ app.use('/api/auth', createAuthRouter());
 app.use('/api/servicios', createServiciosRouter(cacheDatosGlobales));
 
 // Vistas relacionales (Supabase/PostgreSQL) - portado desde eor/server.js (v1 unificada)
-app.use('/api/views', createViewsRouter(hotRamManager));
+app.use('/api/views', createViewsRouter());
 
 // Movimientos - recorte diario y sync-supabase - portado desde eor/server.js (v1 unificada)
-app.use('/api/movimientos', createMovimientosRouter(hotRamManager, io));
+app.use('/api/movimientos', createMovimientosRouter(io));
 
 // Activos — Catálogo canónico de tractores, semis y gestión de acoples
-app.use('/api', createActivosRouter(cacheDatosGlobales, io, hotRamManager));
+app.use('/api', createActivosRouter(cacheDatosGlobales, io));
 
-// Hot RAM — Endpoints dedicados (/ram, /ram/diagramas, /diagramas/consulta, /api/km/unidades, /api/km/choferes)
-app.use('/', createHotRamRouter(hotRamManager, cacheDatosGlobales));
 
 // Sync Workers — Partición 7 (KM) y Partición 5 (Diagramas)
 try {
@@ -689,7 +685,6 @@ app.use(express.static(path.join(__dirname, 'public'), {
     lastModified: true
 }));
 
-// Resumen de RAM y KPIs delegado a createHotRamRouter (/ram)
 
 app.get('/api/km/resumen', async (req, res) => {
     try {
