@@ -6,6 +6,7 @@ import { queryKeys } from '@/api/queryKeys';
 import { copyToClipboard } from '@/utils/clipboard';
 import { convertImageToWebP } from '@/utils/imageToWebp';
 import { calcularKmCiclo, calcularCiclosComparativos } from '@/utils/dateCycleUtils';
+import { PatenteMercosur } from '@/components/common/PatenteMercosur';
 
 export const DriverProfileCard = ({ chofer, tripsMap }) => {
   const [copiedField, setCopiedField] = useState(null);
@@ -399,49 +400,31 @@ export const DriverProfileCard = ({ chofer, tripsMap }) => {
               </span>
             </div>
 
-            {/* Columna 2: TRACTOR (Dashed Badge Copiable) */}
+            {/* Columna 2: TRACTOR (Portapatente Dashed + Chapa Mercosur 1:1 Copiable Raw) */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
               <span className="driver-unit-prop-label" style={{ fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)' }}>
                 TRACTOR
               </span>
-              <span
-                role="button"
-                tabIndex={0}
-                className={`driver-unit-prop-val badge-easycopy ${copiedField === 'tractor' ? 'copied' : ''}`}
-                onClick={(e) => handleCopy(chofer.tractor, 'tractor', e)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') handleCopy(chofer.tractor, 'tractor', e);
-                }}
-                title={`Copiar Tractor: ${chofer.tractor || '-'}`}
-                aria-label={`Copiar Tractor: ${chofer.tractor || '-'}`}
-              >
-                <span>{chofer.tractor || '-'}</span>
-                {copiedField === 'tractor' ? <Check size={12} color="currentColor" /> : <Copy size={11} className="easycopy-icon" />}
-              </span>
+              <PatenteMercosur
+                fieldLabel="Tractor"
+                patente={chofer.tractor}
+                variant="field"
+              />
               {chofer.marca_tr && (
                 <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{chofer.marca_tr}</span>
               )}
             </div>
 
-            {/* Columna 3: SEMI (Dashed Badge Copiable) */}
+            {/* Columna 3: SEMI (Portapatente Dashed + Chapa Mercosur 1:1 Copiable Raw) */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
               <span className="driver-unit-prop-label" style={{ fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)' }}>
                 SEMI
               </span>
-              <span
-                role="button"
-                tabIndex={0}
-                className={`driver-unit-prop-val badge-easycopy ${copiedField === 'semi' ? 'copied' : ''}`}
-                onClick={(e) => handleCopy(chofer.semi, 'semi', e)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') handleCopy(chofer.semi, 'semi', e);
-                }}
-                title={`Copiar Semi: ${chofer.semi || '-'}`}
-                aria-label={`Copiar Semi: ${chofer.semi || '-'}`}
-              >
-                <span>{chofer.semi || '-'}</span>
-                {copiedField === 'semi' ? <Check size={12} color="currentColor" /> : <Copy size={11} className="easycopy-icon" />}
-              </span>
+              <PatenteMercosur
+                fieldLabel="Semi"
+                patente={chofer.semi}
+                variant="field"
+              />
               {chofer.marca_semi && (
                 <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
                   {chofer.marca_semi} {chofer.cisternado ? `(${chofer.cisternado})` : ''}

@@ -741,6 +741,108 @@ html.dark .unit-badge-pill.copied {
   line-height: 1;
 }
 
+/* ==============================================================
+   🇦🇷 CHAPA PATENTE MERCOSUR 1:1 PURA (COPIABLE RAW DATA)
+   ============================================================== */
+.patente-mercosur-plate {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  background-color: #ffffff !important;
+  border: 1.5px solid #000000;
+  border-radius: 4px;
+  overflow: hidden;
+  min-width: 68px;
+  height: 24px;
+  box-sizing: border-box;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  cursor: pointer;
+  user-select: all;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  flex-shrink: 0;
+  width: fit-content;
+}
+
+.patente-plate-field {
+  min-width: 76px;
+  height: 26px;
+}
+
+.patente-mercosur-plate:hover {
+  transform: scale(1.05);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+}
+
+.patente-mercosur-plate:active {
+  transform: scale(0.95);
+}
+
+.patente-mercosur-plate:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.patente-mercosur-plate.copied {
+  border-color: #047857;
+}
+
+/* Franja Superior Azul Mercosur (#003399) */
+.patente-mercosur-band {
+  width: 100%;
+  height: 5px;
+  background-color: #003399 !important;
+  flex-shrink: 0;
+}
+
+/* Cuerpo Blanco de la Patente */
+.patente-mercosur-body {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px 1px 6px;
+  background-color: #ffffff !important;
+}
+
+.patente-mercosur-text {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 900;
+  color: #000000 !important;
+  letter-spacing: 0.03em;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.patente-plate-field .patente-mercosur-text {
+  font-size: 11.5px;
+}
+
+.patente-mercosur-copied-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 900;
+  color: #047857 !important;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.patente-empty-val {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  padding: 0 0.25rem;
+}
+
 .btn-assign-gear-mini {
   display: inline-flex;
   align-items: center;

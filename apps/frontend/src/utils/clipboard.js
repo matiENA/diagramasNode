@@ -92,3 +92,46 @@ export async function copyToClipboard(texto, label = '', event = null) {
     return false;
   }
 }
+
+/**
+ * Normaliza y extrae la patente argentina en formato raw data (sin espacios, guiones ni puntos):
+ * - ej. "AD 337 AV" -> "AD337AV"
+ * - ej. "HQK 842"   -> "HQK842"
+ */
+export function normalizarPatenteRaw(patenteRaw) {
+  if (!patenteRaw) return '';
+  const clean = String(patenteRaw).trim().toUpperCase();
+  if (clean === 'S/D' || clean === '-' || clean === '—') return '';
+  return clean.replace(/[\s\-_.]/g, '');
+}
+
+/**
+ * Formatea una patente argentina según su formato oficial con espaciado para visualización 1:1:
+ * - Mercosur (7 caracteres): XX 000 XX  (ej. AD 337 AV, AH 751 FC)
+ * - Pre-Mercosur (6 caracteres): XXX 000  (ej. AAO 123, HQK 842)
+ * - Histórico / 5 caracteres: XX 000
+ */
+export function formatearPatenteVisual(patenteRaw) {
+  if (!patenteRaw) return '';
+  const clean = String(patenteRaw).trim().toUpperCase();
+  if (clean === 'S/D' || clean === '-' || clean === '—') return clean;
+
+  const stripped = clean.replace(/[\s\-_.]/g, '');
+
+  // Formato Mercosur: 2 letras, 3 dígitos, 2 letras -> XX 000 XX
+  if (/^[A-Z]{2}\d{3}[A-Z]{2}$/.test(stripped)) {
+    return stripped.replace(/^([A-Z]{2})(\d{3})([A-Z]{2})$/, '$1 $2 $3');
+  }
+
+  // Formato Clásico Pre-Mercosur: 3 letras, 3 dígitos -> XXX 000
+  if (/^[A-Z]{3}\d{3}$/.test(stripped)) {
+    return stripped.replace(/^([A-Z]{3})(\d{3})$/, '$1 $2');
+  }
+
+  // Formato 2 letras, 3 dígitos -> XX 000
+  if (/^[A-Z]{2}\d{3}$/.test(stripped)) {
+    return stripped.replace(/^([A-Z]{2})(\d{3})$/, '$1 $2');
+  }
+
+  return clean;
+}

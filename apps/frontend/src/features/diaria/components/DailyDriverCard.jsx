@@ -5,6 +5,7 @@ import { getDriverDayStatus, calculateDriverReturn } from '../hooks/useDailyDriv
 import { UnitAssignModal } from '@/features/flota/components/UnitAssignModal';
 import { copyToClipboard } from '@/utils/clipboard';
 import { buildUnifiedVencimientos } from '@/utils/vencimientosHelper';
+import { PatenteMercosur } from '@/components/common/PatenteMercosur';
 
 export const DailyDriverCard = ({ driver, fechaContexto, kmInfo, onSelectDriver, isRetornoMode = false }) => {
   const [copiedField, setCopiedField] = useState(null);
@@ -164,45 +165,19 @@ export const DailyDriverCard = ({ driver, fechaContexto, kmInfo, onSelectDriver,
               <div className="daily-card-unit-box">
                 {driver.tractor || driver.semi || driver.n_ute ? (
                   <>
-                    <div
-                      role="button"
-                      tabIndex={0}
-                      className={`unit-badge-pill ${copiedField === 'tractor' ? 'copied' : ''}`}
-                      onClick={(e) => handleCopy(driver.tractor, 'Tractor', e)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') handleCopy(driver.tractor, 'Tractor', e);
-                      }}
-                      title={`Clic para copiar Tractor: ${driver.tractor || '—'}`}
-                      aria-label={`Copiar Tractor: ${driver.tractor || '—'}`}
-                    >
-                      <span className="unit-label">TRAC</span>
-                      <span className="unit-val font-mono">{driver.tractor || '—'}</span>
-                      {copiedField === 'tractor' ? (
-                        <Check size={11} color="currentColor" />
-                      ) : (
-                        <Copy size={10} className="easycopy-icon" />
-                      )}
-                    </div>
+                    <PatenteMercosur
+                      label="TRAC"
+                      fieldLabel="Tractor"
+                      patente={driver.tractor}
+                      variant="inline"
+                    />
 
-                    <div
-                      role="button"
-                      tabIndex={0}
-                      className={`unit-badge-pill ${copiedField === 'semi' ? 'copied' : ''}`}
-                      onClick={(e) => handleCopy(driver.semi, 'Semi', e)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') handleCopy(driver.semi, 'Semi', e);
-                      }}
-                      title={`Clic para copiar Semi: ${driver.semi || '—'}`}
-                      aria-label={`Copiar Semi: ${driver.semi || '—'}`}
-                    >
-                      <span className="unit-label">SEMI</span>
-                      <span className="unit-val font-mono">{driver.semi || '—'}</span>
-                      {copiedField === 'semi' ? (
-                        <Check size={11} color="currentColor" />
-                      ) : (
-                        <Copy size={10} className="easycopy-icon" />
-                      )}
-                    </div>
+                    <PatenteMercosur
+                      label="SEMI"
+                      fieldLabel="Semi"
+                      patente={driver.semi}
+                      variant="inline"
+                    />
 
                     <button
                       type="button"
